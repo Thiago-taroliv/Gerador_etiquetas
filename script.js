@@ -176,19 +176,90 @@ function openPreviewNewTab() {
 function copyEmailBody() { 
     if (!window.__lastEmailBody) { alert('Gere os documentos primeiro.'); return; } navigator.clipboard.writeText(window.__lastEmailBody).then(() => alert('Corpo do e-mail copiado.')).catch(err => alert('Erro ao copiar: ' + err));
  }
+// ===== substituir / adicionar: envio via mailto com corpo completo (igual preview) =====
 
- function enviarEmail(destinatario, endereco) {
-  const emails = "michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br"
+function buildEmailBodyFromData(d) {
+  const unitDisplay = d.unit_name && d.unit_name.trim() ? d.unit_name.trim() : (d.dest_name && d.dest_name.trim() ? d.dest_name.trim() : '[unidade não preenchida]');
+  const ref = d.reference && d.reference.trim() ? d.reference.trim() : '[preencha Ticket/OS]';
 
-  const assunto = "Nota fiscal para envio de equipamentos"
-  const corpo = `
-Destinatário: ${destinatario}
-Endereço: ${endereco}
+  // items -> linhas "7 x RASTREADOR RA24"
+  const itemsLines = (Array.isArray(d.items) && d.items.length)
+    ? d.items.map(it => `${it.qty} x ${it.desc}`).join('\n')
+    : '- (sem itens informados) -';
 
-Atenciosamente,
-`
+  const cnpjCpf = d.dest_doc || '';
+  const nome = d.dest_name || '';
+  const endereco = [d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ');
+  const carrier = d.carrier || '';
 
-  const mailto = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`
+  const lines = [
+    'Olá financeiro,',
+    '',
+    `Preciso de uma nota fiscal de envio para ${unitDisplay} referente a(o) Ticket/OS ${ref}.`,
+    '',
+    'Serão:',
+    `${itemsLines}`,
+    '',
+    'Segue os dados para emissão:',
+    `CNPJ: ${cnpjCpf}`,
+    `Nome/Razão Social: ${nome}`,
+    `Endereço: ${endereco}`,
+    `Provável envio por: ${carrier}`,
+    ''
+  ];
 
-  window.location.href = mailto
+  return lines.join('\n');
 }
+
+function enviarEmailViaMailtoUsingData() {
+  // destinatárias fixas
+  const emails = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
+
+  // pega dados do formulário via sua função collectData()
+  let d = { };
+  try {
+    d = collectData();
+  } catch (e) {
+    // fallback mínimo se collectData não existir
+    d = {
+      unit_name: document.getElementById('unit_name')?.value || '',
+      reference: document.getElementById('reference')?.value || '',
+      items: [],
+      dest_doc: document.getElementById('dest_doc')?.value || '',
+      dest_name: document.getElementById('dest_name')?.value || '',
+      dest_addr1: document.getElementById('dest_addr1')?.value || '',
+      dest_addr2: document.getElementById('dest_addr2')?.value || '',
+      carrier: document.getElementById('carrier')?.value || ''
+    };
+  }
+
+  // assunto (mesmo padrão do preview)
+  const assuntoBase = 'Nota fiscal para envio';
+  const assunto = d.reference && d.reference.trim()
+    ? `${assuntoBase} - Ticket/OS ${d.reference.trim()}`
+    : assuntoBase;
+
+  // corpo (construído igual ao preview)
+  const body = buildEmailBodyFromData(d);
+
+  // monta mailto e abre
+  const href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
+
+  // Abre cliente padrão (Outlook desktop quando configurado)
+  window.location.href = href;
+}
+
+// liga o botão (sem script inline)
+document.addEventListener('DOMContentLoaded', () => {
+  const botao = document.getElementById('btnEnviar');
+  if (!botao) {
+    console.warn('Botão #btnEnviar não encontrado.');
+    return;
+  }
+  botao.addEventListener('click', (ev) => {
+    ev.preventDefault();
+    // Gera preview atualizado (opcional) e abre o mailto com corpo completo
+    try { generateAll(); } catch(e) { /* ignore */ }
+    enviarEmailViaMailtoUsingData();
+  });
+});
