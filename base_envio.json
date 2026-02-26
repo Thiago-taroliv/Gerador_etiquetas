@@ -1,0 +1,122 @@
+[
+  {
+    "destinatario": "L.S. RASTREAMENTO",
+    "cpf_cnpj": "50.173.454/0001-32",
+    "endereco_linha1": "Rua Santa Maria Madalena, N 100 - Alberto Maia",
+    "endereco_linha2": "Camaragibe - PE - 54771-605"
+  },
+  {
+    "destinatario": "AUXTER SP MAQUINAS E PARTS LTDA",
+    "cpf_cnpj": "",
+    "endereco_linha1": "Avenida dos Remedios, 81 - Remedios",
+    "endereco_linha2": "Osasco - SP - 06298-000"
+  },
+  {
+    "destinatario": "AUXTER REMTAL LOGISTICA LTDA",
+    "cpf_cnpj": "",
+    "endereco_linha1": "Avenida dos Remedios, 141 - Remedios",
+    "endereco_linha2": "Osasco - SP - 06298-000"
+  },
+  {
+    "destinatario": "BFSAT",
+    "cpf_cnpj": "28.050.436/0001-04",
+    "endereco_linha1": "Avenida Presidente Kennedy, 502 - Contorno",
+    "endereco_linha2": "Ponta Grossa - PR - 84052-465"
+  },
+  {
+    "destinatario": "CAIRAN ANDRE MORAIS TEXEIRA",
+    "cpf_cnpj": "42.073.656/0001-84",
+    "endereco_linha1": "Av. Nadyr Mota Cortes, 111 - Jardim Santa Rosa",
+    "endereco_linha2": "São José dos Campos - SP"
+  },
+  {
+    "destinatario": "CARGO POLO COMERCIO LOGISTICA E TRANSPORTES LTDA",
+    "cpf_cnpj": "15.665.528/0015-52",
+    "endereco_linha1": "Rua Marieta Costa Teixeira, 18",
+    "endereco_linha2": "Ponta Grossa - PR - 84043-744"
+  },
+  {
+    "destinatario": "KML RASTREADORES",
+    "cpf_cnpj": "55.808.938/0001-24",
+    "endereco_linha1": "Rua Jerônimo Perucci, 552 - Jardim Morada do Sol",
+    "endereco_linha2": "Indaiatuba - SP - 13346-470"
+  },
+  {
+    "destinatario": "FAGNER DE LANES FERNANDO",
+    "cpf_cnpj": "55.887.258/0001-43",
+    "endereco_linha1": "Rua Esperança, 77 - Santo Agostinho",
+    "endereco_linha2": "Volta Redonda - RJ - 27214-720"
+  },
+  {
+    "destinatario": "MARIA APARECIDA VIEIRA DE OLIVEIRA",
+    "cpf_cnpj": "30.637.838/0001-51",
+    "endereco_linha1": "Rua Rosa Paula Paulina, 18 - Santa Bárbara",
+    "endereco_linha2": "Cariacica - ES - 29145-290"
+  },
+  {
+    "destinatario": "VAMOS LOCACAO DE CAMINHOES, MAQUINAS E EQUIPAMENTOS S.A",
+    "cpf_cnpj": "23.373.000/0029-33",
+    "endereco_linha1": "Rod. Governador Mário Covas, 256 - Padre Mathias",
+    "endereco_linha2": "Cariacica - ES - 29157-100"
+  },
+  {
+    "destinatario": "GILVAN A.F. JUNIOR",
+    "cpf_cnpj": "29.812.214/0001-44",
+    "endereco_linha1": "Rua Vicente Luiz de Brito, 412 - Bortolândia",
+    "endereco_linha2": "São Paulo - SP - 02352-140"
+  },
+  {
+    "destinatario": "JANIEL DE OLIVEIRA BARRETO",
+    "cpf_cnpj": "53.783.936/0001-00",
+    "endereco_linha1": "Rua São José, Travessa A Casa 10 - Embaré",
+    "endereco_linha2": "Santos - SP - 11040-200"
+  },
+  {
+    "destinatario": "KALEB SARAIVA ALCINO",
+    "cpf_cnpj": "58.012.000/0001-91",
+    "endereco_linha1": "Rua José Trombini, 65 - Damasco",
+    "endereco_linha2": "Varginha - MG - 37060-220"
+  },
+  {
+    "destinatario": "LD SERVICOS",
+    "cpf_cnpj": "32.551.968/0001-00",
+    "endereco_linha1": "Rua Olivia Dias Pontes Marques, 110 - Recreio",
+    "endereco_linha2": "Embu Guaçu - SP - 06929-400"
+  },
+  {
+    "destinatario": "LUAN RASTREADORES",
+    "cpf_cnpj": "53.924.331/0001-84",
+    "endereco_linha1": "Rua Augusto dos Anjos, 254 - Barreirinha",
+    "endereco_linha2": "Curitiba - PR - 82220-190"
+  },
+  {
+    "destinatario": "LUCIANO DE OLIVEIRA PEREIRA",
+    "cpf_cnpj": "246.617.538-01",
+    "endereco_linha1": "Rua Antunieta Martins Link 58 - Vila União",
+    "endereco_linha2": "Campinas - SP - 13060-781"
+  },
+  {
+    "destinatario": "MCM RASTREADORES",
+    "cpf_cnpj": "29.810.913/0001-55",
+    "endereco_linha1": "Rua Santa Fé 47 Bloco 50 Ap103 - Residencial Santa Inês",
+    "endereco_linha2": "Cuiabá - MT - 78600-000"
+  },
+  {
+    "destinatario": "FK COMERCIO DE PRODUTOS ELETRÔNICOS LTDA",
+    "cpf_cnpj": "47.111.447/0001-00",
+    "endereco_linha1": "Rua Renascença, 148 - Guaraituba",
+    "endereco_linha2": "Colombo - PR - 83410-550"
+  },
+  {
+    "destinatario": "GT QUÍMICA",
+    "cpf_cnpj": "14.841.512/0001-95",
+    "endereco_linha1": "Rua Adolfo Frejat, 45 - Terra Firme",
+    "endereco_linha2": "Rio das Ostras - RJ - 28897-030"
+  },
+  {
+    "destinatario": "SÉRGIO SANTOS SOUZA",
+    "cpf_cnpj": "019.627.589-07",
+    "endereco_linha1": "Av Presidente Kennedy 335 - Chapada",
+    "endereco_linha2": "Ponta Grossa - PR - 84062-016"
+  }
+]
