@@ -176,3 +176,19 @@ function openPreviewNewTab() {
 function copyEmailBody() { 
     if (!window.__lastEmailBody) { alert('Gere os documentos primeiro.'); return; } navigator.clipboard.writeText(window.__lastEmailBody).then(() => alert('Corpo do e-mail copiado.')).catch(err => alert('Erro ao copiar: ' + err));
  }
+
+ function enviarEmail(destinatario, endereco) {
+  const emails = "michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br"
+
+  const assunto = "Nota fiscal para envio de equipamentos"
+  const corpo = `
+Destinatário: ${destinatario}
+Endereço: ${endereco}
+
+Atenciosamente,
+`
+
+  const mailto = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`
+
+  window.location.href = mailto
+}
