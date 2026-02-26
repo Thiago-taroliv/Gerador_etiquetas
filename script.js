@@ -170,8 +170,49 @@ Provável envio por: ${d.carrier}
 }
 
 function openPreviewNewTab() {
-     const content = document.getElementById('preview').innerHTML; const style = Array.from(document.querySelectorAll('style')).map(s => s.innerHTML).join('\n'); const win = window.open('', '_blank'); const doc = win.document; doc.open(); doc.write(`<!doctype html><meta charset="utf-8"><title>Preview Impressão</title><style>${style}</style><body>${content}</body>`); doc.close(); setTimeout(() => win.focus(), 200);
-     }
+  const content = document.getElementById('preview').innerHTML;
+
+  // Pega todos os <link rel="stylesheet"> atuais (ex.: style.css)
+  const linkHrefs = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+                         .map(l => l.href)
+                         .filter(Boolean);
+
+  // Pega conteúdo de <style> inline, se existir
+  const inlineStyles = Array.from(document.querySelectorAll('style'))
+                            .map(s => s.innerHTML)
+                            .join('\n');
+
+  // Monta as tags <link> para inserir no head da nova aba
+  const linksHtml = linkHrefs.map(h => `<link rel="stylesheet" href="${h}">`).join('\n');
+
+  // base para garantir que hrefs relativos funcionem (usa a mesma origem/rota)
+  const baseHref = location.origin + location.pathname;
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Não foi possível abrir nova aba — verifique o bloqueador de popups.'); return; }
+
+  const doc = win.document;
+  doc.open();
+  doc.write(`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<base href="${baseHref}">
+<title>Preview Impressão</title>
+${linksHtml}
+<style>${inlineStyles}</style>
+</head>
+<body>${content}</body>
+</html>`);
+  doc.close();
+
+  // espera as folhas de estilo carregarem antes de focar a janela (mais confiável para impressão)
+  const tryFocus = () => {
+    try { win.focus(); } catch(e){ /* ignore */ }
+  };
+  // aguarda um pouco para garantir carregamento (padrão seguro)
+  setTimeout(tryFocus, 250);
+}
 
 function copyEmailBody() { 
     if (!window.__lastEmailBody) { alert('Gere os documentos primeiro.'); return; } navigator.clipboard.writeText(window.__lastEmailBody).then(() => alert('Corpo do e-mail copiado.')).catch(err => alert('Erro ao copiar: ' + err));
