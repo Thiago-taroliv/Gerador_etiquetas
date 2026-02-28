@@ -17,134 +17,177 @@
                 <strong>Formulário (mínimo de envio)</strong>
                 <div class="small">Carregue um arquivo JSON com registros simples ou use o seletor para preencher.</div>
 
-                <label>Remetente</label>
-                <select id="sender_select">
-                    <option value="ranor">Ranor Rastreamento</option>
-                    <option value="nortrack">NORTRACK OPERAÇÕES LTDA</option>
-                    <option value="custom">Personalizado</option>
-                </select>
+                <!-- SEÇÃO: REMETENTE -->
+                <fieldset>
+                    <legend>Remetente</legend>
 
-                <label>Empresa remetente (auto)</label>
-                <input id="sender_company" type="text" readonly>
+                    <label>Selecionar remetente</label>
+                    <select id="sender_select">
+                        <option value="ranor">Ranor Rastreamento</option>
+                        <option value="nortrack">NORTRACK OPERAÇÕES LTDA</option>
+                        <option value="custom">Personalizado</option>
+                    </select>
 
-                <label>CNPJ (remetente)</label>
-                <input id="sender_cnpj" type="text" readonly>
+                    <label>Empresa</label>
+                    <input id="sender_company" type="text" readonly>
 
-                <label>Endereço remetente (auto)</label>
-                <input id="sender_address" type="text" readonly>
+                    <label>CNPJ</label>
+                    <input id="sender_cnpj" type="text" readonly>
 
-                <hr>
+                    <label>Endereço</label>
+                    <input id="sender_address" type="text" readonly>
+                </fieldset>
 
-                <label>Carregar base de envio (JSON)</label>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input id="file_input" type="file" accept=".json">
-                    <button class="secondary" onclick="loadJsonFile()">Carregar</button>
-                    <button class="secondary" onclick="clearBase()">Limpar</button>
-                </div>
-                <div class="small" style="margin-top:6px">Formato: array de objetos com chaves:
-                    <code>destinatario,cpf_cnpj,endereco_linha1,endereco_linha2,contato</code>
-                </div>
+                <!-- SEÇÃO: BASE DE ENVIO -->
+                <fieldset>
+                    <legend>Base de Envio (JSON)</legend>
 
-                <label>Escolher registro (base)</label>
-                <select id="client_select">
-                    <option value="">— nenhum —</option>
-                </select>
-
-                <hr>
-
-                <label>Unidade (onde será feita instalação/manutenção)</label>
-                <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
-
-                <label>Observações (opcional)</label>
-                <textarea id="obs"></textarea>
-
-                <hr>
-
-                <label>Destinatário (preenchido pela base ou manual)</label>
-                <input id="dest_name" type="text" placeholder="">
-
-                <div class="row">
-                    <div class="col">
-                        <label>CPF / CNPJ</label>
-                        <input id="dest_doc" type="text" placeholder="">
+                    <label>Carregar arquivo</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <input id="file_input" type="file" accept=".json">
+                        <button class="secondary" onclick="loadJsonFile()">Carregar</button>
+                        <button class="secondary" onclick="clearBase()">Limpar</button>
                     </div>
-                    <div class="col">
-                        <label>Contato (opcional)</label>
-                        <input id="dest_phone" type="text" placeholder="">
+                    <div class="small" style="margin-top:6px">Formato: array com chaves:
+                        <code>destinatario,cpf_cnpj,endereco_linha1,endereco_linha2,contato</code>
                     </div>
-                </div>
 
-                <label>Endereço linha 1</label>
-                <input id="dest_addr1" type="text" placeholder="">
+                    <label>Selecionar registro</label>
+                    <select id="client_select">
+                        <option value="">— nenhum —</option>
+                    </select>
+                </fieldset>
 
-                <label>Endereço linha 2 (bairro / cidade / uf / cep)</label>
-                <input id="dest_addr2" type="text" placeholder="">
+                <!-- SEÇÃO: UNIDADE E OBSERVAÇÕES -->
+                <fieldset>
+                    <legend>Unidade & Observações</legend>
 
-                <label>Itens (descrição e qtd)</label>
-                <table class="items-table" id="items_table">
-                    <thead>
-                        <tr>
-                            <th>Descrição</th>
-                            <th style="width:80px">Qtd</th>
-                            <th style="width:40px"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="items_body">
-                        <tr>
-                            <td><input class="it-desc" value="RASTREADOR RA24"
-                                    style="width:100%; border:0; outline:none"></td>
-                            <td><input class="it-qty" type="number" value="1" min="1"
-                                    style="width:100%; border:0; outline:none"></td>
-                            <td class="center"><button type="button" onclick="removeItem(this)">✕</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div class="actions">
-                    <button onclick="addItem()">Adicionar item</button>
-                    <button class="secondary" onclick="clearItems()">Limpar itens</button>
-                </div>
+                    <label>Unidade (instalação/manutenção)</label>
+                    <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
 
-                <div class="row">
-                    <div class="col">
-                        <label>Data (chegada/assinatura - preencher manualmente)</label>
-                        <input id="send_date" type="date" value="">
+                    <label>Observações (opcional)</label>
+                    <textarea id="obs"></textarea>
+                </fieldset>
+
+                <!-- SEÇÃO: DESTINATÁRIO -->
+                <fieldset>
+                    <legend>Destinatário</legend>
+
+                    <label>Nome / Razão Social</label>
+                    <input id="dest_name" type="text" placeholder="">
+
+                    <div class="row">
+                        <div class="col">
+                            <label>CPF / CNPJ</label>
+                            <input id="dest_doc" type="text" placeholder="">
+                        </div>
+                        <div class="col">
+                            <label>Contato (opcional)</label>
+                            <input id="dest_phone" type="text" placeholder="">
+                        </div>
                     </div>
-                    <div class="col">
-                        <label>Volumes (nº de etiquetas)</label>
-                        <input id="total_vol" type="number" value="1" min="1">
+
+                    <label>Endereço linha 1</label>
+                    <input id="dest_addr1" type="text" placeholder="">
+
+                    <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
+                    <input id="dest_addr2" type="text" placeholder="">
+                </fieldset>
+
+                <!-- SEÇÃO: ITENS -->
+                <fieldset>
+                    <legend>Itens (descrição e quantidade)</legend>
+
+                    <table class="items-table" id="items_table">
+                        <thead>
+                            <tr>
+                                <th>Descrição</th>
+                                <th style="width:80px">Qtd</th>
+                                <th style="width:40px"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="items_body">
+                            <tr>
+                                <td><input class="it-desc" value="RASTREADOR RA24"
+                                        style="width:100%; border:0; outline:none"></td>
+                                <td><input class="it-qty" type="number" value="1" min="1"
+                                        style="width:100%; border:0; outline:none"></td>
+                                <td class="center"><button type="button" onclick="removeItem(this)">✕</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="actions">
+                        <button onclick="addItem()">Adicionar item</button>
+                        <button class="secondary" onclick="clearItems()">Limpar itens</button>
                     </div>
-                </div>
+                </fieldset>
 
-                <label>Ticket/OS (referência)</label>
-                <input id="reference" type="text" placeholder="Ex: 465">
+                <!-- SEÇÃO: DADOS ADICIONAIS -->
+                <fieldset>
+                    <legend>Dados Adicionais</legend>
 
-                <label>Transportadora</label>
-                <input id="carrier" type="text" value="Jadlog">
+                    <div class="row">
+                        <div class="col">
+                            <label>Volumes (nº de etiquetas)</label>
+                            <input id="total_vol" type="number" value="1" min="1">
+                        </div>
+                        <div class="col">
+                            <label>Ticket/OS (referência)</label>
+                            <input id="reference" type="text" placeholder="Ex: 465">
+                        </div>
+                    </div>
 
-                <label>Recebedor/Responsável (assinatura)</label>
-                <input id="receiver" type="text" value="">
+                    <label>Transportadora</label>
+                    <input id="carrier" type="text" value="Jadlog">
 
-                <div class="actions no-print">
-                    <button onclick="generateAll()">Gerar / Atualizar</button>
-                    <button class="secondary" onclick="openPreviewNewTab()">Abrir preview em nova aba</button>
-                    <button class="secondary" onclick="window.print()">Imprimir</button>
-                    <button class="secondary" onclick="copyEmailBody()">Copiar corpo do e-mail</button>
-                    <button id="btnEnviar">Enviar E-mail</button>
-                    <script src="script.js" defer></script>
-                </div>
+                    <label>Recebedor/Responsável (assinatura)</label>
+                    <input id="receiver" type="text" value="">
+                </fieldset>
+
+                <!-- SEÇÃO: AÇÕES -->
+                <fieldset style="margin-top: 12px;">
+                    <legend>Geração de Documentos</legend>
+
+                    <label>Selecione os documentos a gerar:</label>
+                    <select id="doc-selector">
+                        <option value="">— selecione —</option>
+                        <option value="labels">Apenas Etiqueta</option>
+                        <option value="romaneio">Apenas Romaneio</option>
+                        <option value="both">Etiqueta + Romaneio</option>
+                    </select>
+
+                    <div class="actions" style="gap: 12px; margin-top: 12px;">
+                        <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
+                        <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
+                    </div>
+                </fieldset>
+
+                <fieldset>
+                    <legend>E-mail</legend>
+
+                    <div class="actions" style="gap: 12px;">
+                        <button class="secondary" onclick="copyEmailBody()">Copiar Corpo do E-mail</button>
+                        <button id="btnEnviar">Enviar E-mail</button>
+                    </div>
+                </fieldset>
+                <script src="script.js" defer></script>
             </div>
 
             <div class="card no-print">
                 <strong>Ajuda / notas</strong>
                 <div class="small" style="margin-top:8px">
-                    - Carregue um JSON simples e selecione o registro para preencher os campos do destinatário.<br>
-                    - Data do romaneio: preencha com a data de chegada/assinatura (campo em branco).<br>
-                    - Para imprimir sem cortes: Abra preview em nova aba → imprimir com escala 100% e margens nenhuma.
+                    • Carregue um JSON e selecione um registro para preencher o destinatário.<br><br>
+                    • No preview, escolha quais documentos deseja gerar (etiqueta, romaneio e/ou e-mail).<br><br>
+                    • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
+                    • Para imprimir sem cortes: abra preview em nova aba → imprimir com escala 100% e margens nenhuma.
                 </div>
             </div>
         </div>
 
-        <div class="preview-pages" id="preview"></div>
+        <div class="preview-container" id="preview-container" style="display: none;">
+            <div class="preview-documents" id="preview-documents"></div>
+            <div class="preview-email" id="preview-email"></div>
+        </div>
     </div>
 
     <script src="script.js"></script>
