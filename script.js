@@ -240,11 +240,11 @@ function renderRomaneio(data) {
 
     rom.innerHTML = `
         <div>
-            <div style="font-size:20px;color:var(--brand);font-weight:700;margin-bottom:6px">Romaneio de Entrega</div>
+            <div style="font-size:30px;color:var(--brand);font-weight:700;margin-bottom:6px">Romaneio de Entrega</div>
             <div style="margin-bottom:8px;">
                 <strong>Empresa:</strong> ${escapeHtml(data.sender_company)} &nbsp;&nbsp;
                 <strong>CNPJ:</strong> ${escapeHtml(data.sender_cnpj)}<br>
-                <strong>endereço:</strong> ${escapeHtml(data.sender_address)}
+                <strong>Endereço:</strong> ${escapeHtml(data.sender_address)}
             </div>
             <div style="display:flex;gap:12px;">
                 <div style="flex:1;">
@@ -258,7 +258,8 @@ function renderRomaneio(data) {
                     ${escapeHtml(data.dest_addr2)}
                 </div>
             </div>
-            <div style="margin-top:12px;background:var(--brand);color:#fff;display:inline-block;padding:6px 8px;border-radius:4px">Descrição das Mercadorias</div>
+            <br><hr><br>
+            <div style="margin-top:12px;background:var(--brand);color:#fff;display:inline-block;padding:6px 8px;border-radius:2px">Descrição das Mercadorias</div>
             <table class="romaneio-table" style="margin-top:8px;width:100%;border-collapse:collapse;">
                 <thead style="background:#f6f6f6;">
                     <tr>
@@ -269,13 +270,15 @@ function renderRomaneio(data) {
                 </thead>
                 <tbody>${rows}</tbody>
             </table>
-            <div style="margin-top:8px;"><strong>Total de Volumes:</strong> ${escapeHtml(String(data.total_vol))}</div>
-            <div style="margin-top:12px;background:var(--brand);color:#fff;display:inline-block;padding:6px 8px;border-radius:4px">Recebimento</div>
+            <div style="margin-top:8px;"><strong>Total de Volumes (CAIXAS):</strong> ${escapeHtml(String(data.total_vol))}</div>
+            <footer style="margin-top:12px;">
+            <div style="margin-top:12px;background:var(--brand);color:#fff;display:inline-block;padding:6px 8px;border-radius:2px">Recebimento</div>
             <div style="margin-top:8px;">
-                <strong>Data (chegada/assinatura):</strong> _______________<br>
-                <strong>Recebedor/Responsável:</strong> ${escapeHtml(data.receiver)}<br>
-                <div style="margin-top:8px;border-top:1px dashed #aaa;width:60%;padding-top:6px">Assinatura</div>
+                <strong>Data (chegada/assinatura):</strong> _____/_____/_______<br>
+                <strong>Recebedor/Responsável:</strong> ${escapeHtml(data.receiver)}<br><br>
+                <div style="margin-top:20px;border-top:1px;width:60%;padding-top:6px"><strong>Assinatura: ______________________________________________</strong></div>
             </div>
+            </footer>
         </div>
     `;
 
