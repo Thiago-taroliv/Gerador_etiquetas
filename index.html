@@ -10,8 +10,45 @@
 </head>
 
 <body>
-    <div class="container">
-        <h1>Gerador : Etiqueta · Romaneio · Envio</h1>
+    <!-- TELA DE LOGIN -->
+    <div id="auth_container" class="login-wrapper" style="display: none;">
+        <div class="login-card">
+            <div class="login-header">
+                <img src="./img/logo.png" alt="Ranor" class="login-logo">
+                <h1>Acesso Restrito</h1>
+                <p>Autenticação Segura</p>
+            </div>
+            
+            <div class="login-body">
+                <label>E-mail</label>
+                <input id="login_email" type="email" placeholder="seu@email.com" />
+                
+                <label>Senha</label>
+                <input id="login_password" type="password" placeholder="••••••••" />
+                
+                <button onclick="handleLogin()" class="btn-login" id="btn_login_submit">Entrar no Sistema</button>
+                <div id="login_error" class="login-error" style="display: none;">Login ou senha incorretos.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP PRINCIPAL (Oculto até logar) -->
+    <div id="app_content" style="display: none;">
+        
+        <!-- NAVBAR -->
+        <nav class="top-nav">
+            <div class="nav-brand">
+                <img src="./img/logo.png" alt="Ranor" class="nav-logo">
+            </div>
+            <div class="nav-links">
+                <button class="nav-btn" onclick="handleLogout()">Sair</button>
+            </div>
+        </nav>
+
+        <div class="container" style="padding-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>Gerador : Etiqueta · Romaneio · Envio</h1>
+            </div>
 
         <div class="grid">
             <div class="card">
@@ -43,11 +80,11 @@
                 <fieldset>
                     <legend>Base de Envio (JSON)</legend>
 
-                    <label>Carregar arquivo</label>
+                    <label>Carregar / Backup de arquivo</label>
                     <div style="display:flex;gap:8px;align-items:center;">
                         <input id="file_input" type="file" accept=".json">
-                        <button class="secondary" onclick="loadJsonFile()">Carregar</button>
-                        <button class="secondary" onclick="clearBase()">Limpar</button>
+                        <button class="btn-outline" onclick="loadJsonFile()">Importar JSON</button>
+                        <button class="btn-accent" onclick="exportToJSON()">Exportar Backup</button>
                     </div>
                     <div class="small" style="margin-top:6px">Formato: array com chaves:
                         <code>destinatario,cpf_cnpj,endereco_linha1,endereco_linha2,contato</code>
@@ -93,6 +130,10 @@
 
                     <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
                     <input id="dest_addr2" type="text" placeholder="">
+
+                    <div style="text-align: right; margin-top: 12px;">
+                        <button type="button" class="btn-accent" onclick="salvarDestinatarioAtual()" style="font-size: 12px; padding: 6px 14px;">Salvar na Nuvem</button>
+                    </div>
                 </fieldset>
 
                 <!-- SEÇÃO: ITENS -->
@@ -171,7 +212,11 @@
                         <button id="btnEnviar">Enviar E-mail</button>
                     </div>
                 </fieldset>
-                <script src="script.js" defer></script>
+
+                <!-- Importando o Supabase diretamente pra dentro do seu frontend -->
+                <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+                <script type="module" src="js/app.js"></script>
             </div>
 
             <div class="card no-print">
@@ -189,9 +234,8 @@
             <div class="preview-documents" id="preview-documents"></div>
             <div class="preview-email" id="preview-email"></div>
         </div>
-    </div>
-
-    <script src="script.js"></script>
+        </div>
+    </div> <!-- Fim do #app_content -->
 </body>
 
 </html>
