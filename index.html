@@ -40,16 +40,19 @@
             <div class="nav-brand">
                 <img src="./img/logo.png" alt="Ranor" class="nav-logo">
             </div>
+            <div class="nav-center">
+                <button class="nav-tab active" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
+                <button class="nav-tab" onclick="switchTab('tab-destinatarios')">Gerenciar Destinatários</button>
+                <button class="nav-tab" onclick="switchTab('tab-itens')">Gerenciar Itens</button>
+            </div>
             <div class="nav-links">
                 <button class="nav-btn" onclick="handleLogout()">Sair</button>
             </div>
         </nav>
 
-        <div class="container" style="padding-top: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h1>Gerador : Etiqueta · Romaneio · Envio</h1>
-            </div>
-
+        <div class="container">
+            <!-- ABA 1: ROMANEIO (ATUAL) -->
+            <div id="tab-romaneio" class="tab-content" style="display: block;">
         <div class="grid">
             <div class="card">
                 <strong>Formulário (mínimo de envio)</strong>
@@ -96,15 +99,12 @@
                     </select>
                 </fieldset>
 
-                <!-- SEÇÃO: UNIDADE E OBSERVAÇÕES -->
+                <!-- SEÇÃO: UNIDADE -->
                 <fieldset>
-                    <legend>Unidade & Observações</legend>
+                    <legend>Unidade</legend>
 
                     <label>Unidade (instalação/manutenção)</label>
                     <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
-
-                    <label>Observações (opcional)</label>
-                    <textarea id="obs"></textarea>
                 </fieldset>
 
                 <!-- SEÇÃO: DESTINATÁRIO -->
@@ -136,29 +136,27 @@
                     </div>
                 </fieldset>
 
+                <!-- SEÇÃO: MODE CLIENTE -->
+                <fieldset>
+                    <legend>Modo de Entrega</legend>
+                    <div style="display:flex;gap:20px;">
+                        <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                            <input type="radio" id="client_mode_single" name="client_mode" value="single" checked onchange="toggleClientMode()">
+                            <span>Um cliente (romaneio simples)</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                            <input type="radio" id="client_mode_multi" name="client_mode" value="multi" onchange="toggleClientMode()">
+                            <span>Múltiplos clientes (romaneio agrupado)</span>
+                        </label>
+                    </div>
+                </fieldset>
+
                 <!-- SEÇÃO: ITENS -->
                 <fieldset>
                     <legend>Itens (descrição e quantidade)</legend>
 
-                    <table class="items-table" id="items_table">
-                        <thead>
-                            <tr>
-                                <th>Descrição</th>
-                                <th style="width:80px">Qtd</th>
-                                <th style="width:40px"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="items_body">
-                            <tr>
-                                <td><input class="it-desc" value="RASTREADOR RA24"
-                                        style="width:100%; border:0; outline:none"></td>
-                                <td><input class="it-qty" type="number" value="1" min="1"
-                                        style="width:100%; border:0; outline:none"></td>
-                                <td class="center"><button type="button" onclick="removeItem(this)">✕</button></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div class="actions">
+                    <div id="items_container" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                    <div class="actions" style="margin-top: 12px;">
                         <button onclick="addItem()">Adicionar item</button>
                         <button class="secondary" onclick="clearItems()">Limpar itens</button>
                     </div>
@@ -174,10 +172,17 @@
                             <input id="total_vol" type="number" value="1" min="1">
                         </div>
                         <div class="col">
-                            <label>Ticket/OS (referência)</label>
-                            <input id="reference" type="text" placeholder="Ex: 465">
+                            <label>Tipo de Referência</label>
+                            <select id="reference_type" onchange="toggleReferenceInput()">
+                                <option value="ticket">Ticket</option>
+                                <option value="os">OS</option>
+                                <option value="none">Nenhum (Fornecedor)</option>
+                            </select>
                         </div>
                     </div>
+
+                    <label>Número da Referência</label>
+                    <input id="reference" type="text" placeholder="Ex: 465">
 
                     <label>Transportadora</label>
                     <input id="carrier" type="text" value="Jadlog">
@@ -229,6 +234,61 @@
                 </div>
             </div>
         </div>
+            </div> <!-- Fim da tab-romaneio -->
+
+            <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
+            <div id="tab-destinatarios" class="tab-content" style="display: none;">
+                <div class="grid">
+                    <div class="card">
+                        <strong>Gerenciar Destinatários</strong>
+                        <div class="small">Adicione, edite e delete registros de destinatários no banco de dados.</div>
+                        
+                        <fieldset>
+                            <legend>Novo Destinatário</legend>
+                            
+                            <label>Nome / Razão Social</label>
+                            <input id="new_dest_name" type="text" placeholder="Ex: João Silva">
+                            
+                            <div class="row">
+                                <div class="col">
+                                    <label>CPF / CNPJ</label>
+                                    <input id="new_dest_doc" type="text" placeholder="">
+                                </div>
+                                <div class="col">
+                                    <label>Contato</label>
+                                    <input id="new_dest_phone" type="text" placeholder="">
+                                </div>
+                            </div>
+                            
+                            <label>Endereço linha 1</label>
+                            <input id="new_dest_addr1" type="text" placeholder="">
+                            
+                            <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
+                            <input id="new_dest_addr2" type="text" placeholder="">
+                            
+                            <div style="margin-top: 12px;">
+                                <button onclick="saveNewDestinatario()">Salvar Novo Destinatário</button>
+                            </div>
+                        </fieldset>
+                        
+                        <fieldset>
+                            <legend>Destinatários Cadastrados</legend>
+                            <div id="destinatarios_list" style="border: 1px solid #ddd; border-radius: 2px; max-height: 500px; overflow-y: auto;"></div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div> <!-- Fim da tab-destinatarios -->
+
+            <!-- ABA 3: GERENCIAR ITENS -->
+            <div id="tab-itens" class="tab-content" style="display: none;">
+                <div class="grid">
+                    <div class="card">
+                        <strong>Gerenciar Itens/Produtos</strong>
+                        <div class="small">Administre a lista de items automaticamente usada no autocomplete.</div>
+                        <div id="items_list"></div>
+                    </div>
+                </div>
+            </div> <!-- Fim da tab-itens -->
 
         <div class="preview-container" id="preview-container" style="display: none;">
             <div class="preview-documents" id="preview-documents"></div>

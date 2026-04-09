@@ -15,61 +15,82 @@ body {
     color: #222;
 }
 
+.tab-content {
+    padding: 0;
+}
+
+#app_content {
+    background: #fafafa;
+    min-height: 100vh;
+}
+
 .container {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 0 16px;
+    padding: 32px 16px;
 }
 
 h1 {
     color: var(--brand);
-    margin: 6px 0 12px;
-    font-size: 20px;
+    margin: 0 0 8px;
+    font-size: 24px;
     font-weight: 700;
-    letter-spacing: -0.3px;
+    letter-spacing: -0.5px;
 }
 
 .grid {
     display: grid;
     grid-template-columns: 1fr 380px;
-    gap: 16px;
+    gap: 24px;
     align-items: start;
 }
 
 .card {
     background: var(--paper);
-    padding: 12px;
+    padding: 24px;
     border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
     transition: box-shadow 0.3s ease, transform 0.3s ease;
+    border: 1px solid rgba(0, 0, 0, 0.04);
 }
 
 .card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
-    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 8px 24px rgba(0, 0, 0, 0.06);
+    transform: translateY(-2px);
+}
+
+.card strong {
+    display: block;
+    font-size: 16px;
+    color: #222;
+    margin-bottom: 8px;
 }
 
 fieldset {
     border: 1px solid var(--border-light);
-    border-radius: 8px;
-    padding: 12px;
-    margin-top: 12px;
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 16px;
     margin-bottom: 0;
-    background: rgba(255, 255, 255, 0.5);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.3) 100%);
 }
 
 legend {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--brand);
-    font-size: 13px;
-    padding: 0 6px;
+    font-size: 14px;
+    padding: 0 8px;
+    margin-left: -8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 label {
     display: block;
     font-size: 13px;
-    color: var(--muted);
-    margin-top: 8px;
+    color: #444;
+    margin-top: 12px;
+    font-weight: 600;
 }
 
 input[type=text],
@@ -78,14 +99,15 @@ input[type=number],
 textarea,
 select {
     width: 100%;
-    padding: 10px 12px;
+    padding: 11px 14px;
     margin-top: 6px;
     border: 1px solid var(--border-light);
     border-radius: 8px;
     font-size: 14px;
     box-sizing: border-box;
     background: #fff;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: all 0.2s ease;
+    color: #222;
 }
 
 input[type=text]:focus,
@@ -95,17 +117,27 @@ textarea:focus,
 select:focus {
     outline: none;
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px rgba(183, 15, 15, 0.1);
+    box-shadow: 0 0 0 3px rgba(183, 15, 15, 0.08);
+    background: #fff;
 }
 
 textarea {
-    min-height: 60px;
+    min-height: 80px;
     resize: vertical;
+    font-family: 'Courier New', monospace;
+}
+
+input[type=file] {
+    padding: 10px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
 }
 
 .row {
     display: flex;
-    gap: 8px;
+    gap: 12px;
 }
 
 .row .col {
@@ -113,8 +145,10 @@ textarea {
 }
 
 .small {
-    font-size: 12px;
-    color: var(--muted);
+    font-size: 13px;
+    color: #666;
+    margin-top: 8px;
+    line-height: 1.4;
 }
 
 code {
@@ -130,41 +164,26 @@ button {
     background: var(--brand);
     color: #fff;
     border: 0;
-    padding: 10px 14px;
+    padding: 11px 18px;
     border-radius: 8px;
     cursor: pointer;
-    margin-top: 10px;
+    margin-top: 12px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 4px rgba(183, 15, 15, 0.2);
+    box-shadow: 0 2px 4px rgba(183, 15, 15, 0.15);
+    letter-spacing: 0.3px;
 }
 
 button:hover {
     background: var(--brand-dark);
-    box-shadow: 0 4px 8px rgba(183, 15, 15, 0.3);
+    box-shadow: 0 4px 12px rgba(183, 15, 15, 0.25);
     transform: translateY(-1px);
 }
 
 button:active {
     transform: translateY(0);
-    box-shadow: 0 1px 2px rgba(183, 15, 15, 0.2);
-}
-
-button.secondary {
-    background: #5a5a5a;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-}
-
-button.secondary:hover {
-    background: #3a3a3a;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
-    transform: translateY(-1px);
-}
-
-button.secondary:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 1px 2px rgba(183, 15, 15, 0.15);
 }
 
 table.items-table {
@@ -199,9 +218,13 @@ table.items-table tbody tr:hover {
 
 .actions {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     flex-wrap: wrap;
-    margin-top: 8px;
+    margin-top: 16px;
+}
+
+.actions button {
+    margin-top: 0;
 }
 
 .preview-pages {
@@ -403,6 +426,10 @@ pre.email-box {
     .grid {
         grid-template-columns: 1fr;
     }
+    
+    .nav-center {
+        display: none;
+    }
 }
 
 /* ============ TELA DE LOGIN MODERNA ============ */
@@ -601,30 +628,70 @@ pre.email-box {
 
 /* ============ NAVBAR ============ */
 .top-nav {
-    background: #fff;
-    border-bottom: 1px solid var(--border-light);
+    background: linear-gradient(to right, #fff 0%, #fafafa 100%);
+    border-bottom: 2px solid var(--border-light);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 20px 30px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    padding: 0 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     position: sticky;
     top: 0;
     z-index: 100;
+    height: 70px;
 }
 
 .nav-brand {
     display: flex;
     align-items: center;
+    flex: 0 0 auto;
 }
 
 .nav-logo {
-    height: 32px;
+    height: 40px;
+}
+
+.nav-center {
+    display: flex;
+    gap: 0;
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.nav-tab {
+    padding: 0 20px;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    border-bottom: 3px solid transparent;
+    position: relative;
+}
+
+.nav-tab:hover {
+    color: #222;
+    background: rgba(183, 15, 15, 0.05);
+}
+
+.nav-tab.active {
+    color: var(--brand);
+    border-bottom-color: var(--brand);
 }
 
 .nav-links {
     display: flex;
     gap: 12px;
+    flex: 0 0 auto;
 }
 
 .nav-btn {
@@ -638,7 +705,7 @@ pre.email-box {
     background: #fff;
     transition: all 0.2s ease;
     box-shadow: none;
-    margin-top: 0;
+    margin: 0;
 }
 
 .nav-btn:hover {
@@ -652,42 +719,51 @@ pre.email-box {
 /* ============ BOTÕES PADRONIZADOS ============ */
 .btn-outline {
     background: #fff;
-    color: var(--muted);
+    color: #222;
     border: 1px solid var(--border-light);
-    padding: 8px 14px;
+    padding: 10px 16px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     transition: all 0.2s ease;
-    margin-top: 10px;
-    box-shadow: none;
+    margin-top: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .btn-outline:hover {
     background: #f5f5f5;
     color: #222;
     border-color: #aaa;
-    transform: none;
-    box-shadow: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
 
 .btn-accent {
     background: var(--brand);
     color: #fff;
     border: none;
-    padding: 8px 14px;
+    padding: 10px 16px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 13px;
     font-weight: 600;
     transition: all 0.2s ease;
-    margin-top: 10px;
-    box-shadow: none;
+    margin-top: 12px;
+    box-shadow: 0 2px 4px rgba(183, 15, 15, 0.15);
 }
 
 .btn-accent:hover {
     background: var(--brand-dark);
-    transform: none;
-    box-shadow: 0 2px 8px rgba(183, 15, 15, 0.2);
+    box-shadow: 0 4px 12px rgba(183, 15, 15, 0.25);
+    transform: translateY(-1px);
+}
+
+button.secondary {
+    background: #6c757d;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+button.secondary:hover {
+    background: #5a6268;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
