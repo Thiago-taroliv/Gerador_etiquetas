@@ -1,5 +1,5 @@
-export const SUPABASE_URL = 'https://fatcoklhhgjtlzgamsfe.supabase.co';
-export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZhdGNva2xoaGdqdGx6Z2Ftc2ZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMTY1NjgsImV4cCI6MjA4OTg5MjU2OH0.x_LPPE04qH_USsT62ZDPI4rbaknDcwQ0mIPlGB333kM';
+export const SUPABASE_URL = 'SUA_URL_AQUI';
+export const SUPABASE_ANON_KEY = 'SUA_CHAVE_ANONIMA_AQUI';
 
 export const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
