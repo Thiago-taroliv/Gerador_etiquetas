@@ -626,19 +626,19 @@ pre.email-box {
     }
 }
 
-/* ============ NAVBAR ============ */
+/* ============ NAVBAR REESTILIZADA ============ */
 .top-nav {
-    background: linear-gradient(to right, #fff 0%, #fafafa 100%);
-    border-bottom: 2px solid var(--border-light);
+    background: #fff;
+    border-bottom: 1px solid var(--border-light);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 30px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    padding: 0 24px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
     position: sticky;
     top: 0;
     z-index: 100;
-    height: 70px;
+    height: 56px; /* Altura reduzida */
 }
 
 .nav-brand {
@@ -648,12 +648,12 @@ pre.email-box {
 }
 
 .nav-logo {
-    height: 40px;
+    height: 32px; /* Logo um pouco menor */
 }
 
 .nav-center {
     display: flex;
-    gap: 0;
+    gap: 8px; /* Espaço entre os botões */
     flex: 1;
     justify-content: center;
     align-items: center;
@@ -663,41 +663,45 @@ pre.email-box {
 }
 
 .nav-tab {
-    padding: 0 20px;
-    height: 70px;
+    padding: 8px 16px; /* Padding interno menor */
+    height: 36px; /* Altura fixa menor */
     display: flex;
     align-items: center;
     border: none;
     background: transparent;
     color: var(--muted);
-    font-size: 14px;
+    font-size: 13.5px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.25s ease;
-    border-bottom: 3px solid transparent;
+    transition: all 0.2s ease;
+    border-radius: 20px; /* Formato de pílula */
+    margin: 0;
     position: relative;
+    border-bottom: none; /* Removendo a borda de baixo do estilo antigo */
 }
 
 .nav-tab:hover {
-    color: #222;
+    color: var(--brand);
     background: rgba(183, 15, 15, 0.05);
 }
 
 .nav-tab.active {
-    color: var(--brand);
-    border-bottom-color: var(--brand);
+    color: #fff !important;
+    background: var(--brand) !important; /* Cor sólida no fundo quando ativo */
+    box-shadow: 0 2px 8px rgba(183, 15, 15, 0.2);
 }
 
 .nav-links {
     display: flex;
     gap: 12px;
     flex: 0 0 auto;
+    align-items: center;
 }
 
 .nav-btn {
-    padding: 8px 18px;
+    padding: 6px 14px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid var(--border-light);
@@ -706,6 +710,9 @@ pre.email-box {
     transition: all 0.2s ease;
     box-shadow: none;
     margin: 0;
+    height: 32px;
+    display: flex;
+    align-items: center;
 }
 
 .nav-btn:hover {

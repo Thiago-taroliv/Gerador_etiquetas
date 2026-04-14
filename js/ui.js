@@ -149,7 +149,7 @@ export function collectData() {
         .map(card => {
             const desc = card.querySelector('.it-desc')?.value || '';
             const qty = card.querySelector('.it-qty')?.value || '1';
-            // Se modo multi, usar client declarado se existir, senão usar unit_name
+            // Se modo multi, puxar campo 'Client' preenchido no item; modo simples fica vazio
             const client = isMultiMode ? (card.querySelector('.it-client')?.value || '') : '';
             
             // Coletar IMEIs da seção
@@ -179,7 +179,7 @@ export function collectData() {
         sender_company: $('sender_company').value || '',
         sender_cnpj: $('sender_cnpj').value || '',
         sender_address: $('sender_address').value || '',
-        unit_name: $('unit_name').value || '',
+        unit_name: $('unit_name')?.value || '', // Cliente/Unidade (visível no modo simples)
         dest_name: $('dest_name').value || '',
         dest_doc: $('dest_doc').value || '',
         dest_addr1: $('dest_addr1').value || '',

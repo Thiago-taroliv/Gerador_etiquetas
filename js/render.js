@@ -40,13 +40,14 @@ export function renderRomaneio(data) {
     if (isMultiMode) {
         const grouped = {};
         data.items.forEach(item => {
-            const client = item.client || data.unit_name || 'Sem cliente';
+            // Multi: agrupa por cliente do item. Simples: usa dest_name
+            const client = item.client || data.dest_name || 'Sem cliente';
             if (!grouped[client]) grouped[client] = [];
             grouped[client].push(item);
         });
         itemGroups = Object.entries(grouped).map(([client, items]) => ({ client, items }));
     } else {
-        // Modo único: usar unit_name ou dest_name
+        // Modo único: usa o Cliente/Unidade preenchido no formulário
         const clientName = data.unit_name || data.dest_name || 'Cliente';
         itemGroups = [{ client: clientName, items: data.items }];
     }
@@ -231,7 +232,16 @@ export function renderEmailPreview(data) {
     const emailBox = document.createElement('div');
     emailBox.className = 'page';
     const itemLines = data.items.map(it => `${it.qty} x ${it.desc}`).join('\n');
-    const unitDisplay = data.unit_name || '[unidade não preenchida]';
+    const isMultiMode = data.client_mode === 'multi';
+    let unitDisplay;
+    if (isMultiMode) {
+        // Multi: extrai lista única de clientes dos itens
+        const clientes = [...new Set((data.items || []).map(it => it.client).filter(Boolean))];
+        unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes não preenchidos]';
+    } else {
+        // Simples: usa o campo Cliente/Unidade
+        unitDisplay = data.unit_name || data.dest_name || '[destinatário não preenchido]';
+    }
     const refType = data.reference_type || 'ticket';
     const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
     const ref = data.reference ? data.reference : (refType === 'none' ? 'N/A' : '[preencha a referência]');

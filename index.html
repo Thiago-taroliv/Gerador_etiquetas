@@ -18,14 +18,14 @@
                 <h1>Acesso Restrito</h1>
                 <p>Autenticação Segura</p>
             </div>
-            
+
             <div class="login-body">
                 <label>E-mail</label>
                 <input id="login_email" type="email" placeholder="seu@email.com" />
-                
+
                 <label>Senha</label>
                 <input id="login_password" type="password" placeholder="••••••••" />
-                
+
                 <button onclick="handleLogin()" class="btn-login" id="btn_login_submit">Entrar no Sistema</button>
                 <div id="login_error" class="login-error" style="display: none;">Login ou senha incorretos.</div>
             </div>
@@ -34,7 +34,7 @@
 
     <!-- APP PRINCIPAL (Oculto até logar) -->
     <div id="app_content" style="display: none;">
-        
+
         <!-- NAVBAR -->
         <nav class="top-nav">
             <div class="nav-brand">
@@ -44,6 +44,7 @@
                 <button class="nav-tab active" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
                 <button class="nav-tab" onclick="switchTab('tab-destinatarios')">Gerenciar Destinatários</button>
                 <button class="nav-tab" onclick="switchTab('tab-itens')">Gerenciar Itens</button>
+                <button class="nav-tab" onclick="switchTab('tab-historico')">Histórico</button>
             </div>
             <div class="nav-links">
                 <button class="nav-btn" onclick="handleLogout()">Sair</button>
@@ -53,187 +54,179 @@
         <div class="container">
             <!-- ABA 1: ROMANEIO (ATUAL) -->
             <div id="tab-romaneio" class="tab-content" style="display: block;">
-        <div class="grid">
-            <div class="card">
-                <strong>Formulário (mínimo de envio)</strong>
-                <div class="small">Carregue um arquivo JSON com registros simples ou use o seletor para preencher.</div>
+                <div class="grid">
+                    <div class="card">
+                        <strong>Formulário (mínimo de envio)</strong>
+                        <div class="small">Carregue um arquivo JSON com registros simples ou use o seletor para
+                            preencher.</div>
 
-                <!-- SEÇÃO: REMETENTE -->
-                <fieldset>
-                    <legend>Remetente</legend>
+                        <!-- SEÇÃO: REMETENTE -->
+                        <fieldset>
+                            <legend>Remetente</legend>
 
-                    <label>Selecionar remetente</label>
-                    <select id="sender_select">
-                        <option value="ranor">Ranor Rastreamento</option>
-                        <option value="nortrack">NORTRACK OPERAÇÕES LTDA</option>
-                        <option value="custom">Personalizado</option>
-                    </select>
-
-                    <label>Empresa</label>
-                    <input id="sender_company" type="text" readonly>
-
-                    <label>CNPJ</label>
-                    <input id="sender_cnpj" type="text" readonly>
-
-                    <label>Endereço</label>
-                    <input id="sender_address" type="text" readonly>
-                </fieldset>
-
-                <!-- SEÇÃO: BASE DE ENVIO -->
-                <fieldset>
-                    <legend>Base de Envio (JSON)</legend>
-
-                    <label>Carregar / Backup de arquivo</label>
-                    <div style="display:flex;gap:8px;align-items:center;">
-                        <input id="file_input" type="file" accept=".json">
-                        <button class="btn-outline" onclick="loadJsonFile()">Importar JSON</button>
-                        <button class="btn-accent" onclick="exportToJSON()">Exportar Backup</button>
-                    </div>
-                    <div class="small" style="margin-top:6px">Formato: array com chaves:
-                        <code>destinatario,cpf_cnpj,endereco_linha1,endereco_linha2,contato</code>
-                    </div>
-
-                    <label>Selecionar registro</label>
-                    <select id="client_select">
-                        <option value="">— nenhum —</option>
-                    </select>
-                </fieldset>
-
-                <!-- SEÇÃO: UNIDADE -->
-                <fieldset>
-                    <legend>Unidade</legend>
-
-                    <label>Unidade (instalação/manutenção)</label>
-                    <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
-                </fieldset>
-
-                <!-- SEÇÃO: DESTINATÁRIO -->
-                <fieldset>
-                    <legend>Destinatário</legend>
-
-                    <label>Nome / Razão Social</label>
-                    <input id="dest_name" type="text" placeholder="">
-
-                    <div class="row">
-                        <div class="col">
-                            <label>CPF / CNPJ</label>
-                            <input id="dest_doc" type="text" placeholder="">
-                        </div>
-                        <div class="col">
-                            <label>Contato (opcional)</label>
-                            <input id="dest_phone" type="text" placeholder="">
-                        </div>
-                    </div>
-
-                    <label>Endereço linha 1</label>
-                    <input id="dest_addr1" type="text" placeholder="">
-
-                    <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
-                    <input id="dest_addr2" type="text" placeholder="">
-
-                    <div style="text-align: right; margin-top: 12px;">
-                        <button type="button" class="btn-accent" onclick="salvarDestinatarioAtual()" style="font-size: 12px; padding: 6px 14px;">Salvar na Nuvem</button>
-                    </div>
-                </fieldset>
-
-                <!-- SEÇÃO: MODE CLIENTE -->
-                <fieldset>
-                    <legend>Modo de Entrega</legend>
-                    <div style="display:flex;gap:20px;">
-                        <label style="display:flex;align-items:center;gap:8px;margin:0;">
-                            <input type="radio" id="client_mode_single" name="client_mode" value="single" checked onchange="toggleClientMode()">
-                            <span>Um cliente (romaneio simples)</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;margin:0;">
-                            <input type="radio" id="client_mode_multi" name="client_mode" value="multi" onchange="toggleClientMode()">
-                            <span>Múltiplos clientes (romaneio agrupado)</span>
-                        </label>
-                    </div>
-                </fieldset>
-
-                <!-- SEÇÃO: ITENS -->
-                <fieldset>
-                    <legend>Itens (descrição e quantidade)</legend>
-
-                    <div id="items_container" style="display: flex; flex-direction: column; gap: 12px;"></div>
-                    <div class="actions" style="margin-top: 12px;">
-                        <button onclick="addItem()">Adicionar item</button>
-                        <button class="secondary" onclick="clearItems()">Limpar itens</button>
-                    </div>
-                </fieldset>
-
-                <!-- SEÇÃO: DADOS ADICIONAIS -->
-                <fieldset>
-                    <legend>Dados Adicionais</legend>
-
-                    <div class="row">
-                        <div class="col">
-                            <label>Volumes (nº de etiquetas)</label>
-                            <input id="total_vol" type="number" value="1" min="1">
-                        </div>
-                        <div class="col">
-                            <label>Tipo de Referência</label>
-                            <select id="reference_type" onchange="toggleReferenceInput()">
-                                <option value="ticket">Ticket</option>
-                                <option value="os">OS</option>
-                                <option value="none">Nenhum (Fornecedor)</option>
+                            <label>Selecionar remetente</label>
+                            <select id="sender_select">
+                                <option value="ranor">Ranor Rastreamento</option>
+                                <option value="nortrack">NORTRACK OPERAÇÕES LTDA</option>
+                                <option value="custom">Personalizado</option>
                             </select>
+
+                            <label>Empresa</label>
+                            <input id="sender_company" type="text" readonly>
+
+                            <label>CNPJ</label>
+                            <input id="sender_cnpj" type="text" readonly>
+
+                            <label>Endereço</label>
+                            <input id="sender_address" type="text" readonly>
+                        </fieldset>
+
+                        <!-- SEÇÃO: DESTINATÁRIO -->
+                        <fieldset>
+                            <legend>Destinatário</legend>
+
+                            <!-- Seletor compacto do cadastro -->
+                            <label>Selecionar do cadastro</label>
+                            <select id="client_select">
+                                <option value="">— nenhum —</option>
+                            </select>
+
+                            <div style="border-top: 1px solid #eee; margin: 14px 0 2px;"></div>
+
+                            <label>Nome / Razão Social</label>
+                            <input id="dest_name" type="text" placeholder="">
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>CPF / CNPJ</label>
+                                    <input id="dest_doc" type="text" placeholder="">
+                                </div>
+                                <div class="col">
+                                    <label>Contato (opcional)</label>
+                                    <input id="dest_phone" type="text" placeholder="">
+                                </div>
+                            </div>
+
+                            <label>Endereço linha 1</label>
+                            <input id="dest_addr1" type="text" placeholder="">
+
+                            <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
+                            <input id="dest_addr2" type="text" placeholder="">
+
+                            <div style="text-align: right; margin-top: 12px;">
+                                <button type="button" class="btn-accent" onclick="salvarDestinatarioAtual()"
+                                    style="font-size: 12px; padding: 6px 14px;">Salvar na Nuvem</button>
+                            </div>
+                        </fieldset>
+
+                        <!-- SEÇÃO: MODE CLIENTE -->
+                        <fieldset>
+                            <legend>Modo de Entrega</legend>
+                            <div style="display:flex;gap:20px;">
+                                <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                                    <input type="radio" id="client_mode_single" name="client_mode" value="single"
+                                        checked onchange="toggleClientMode()">
+                                    <span>Um cliente (romaneio simples)</span>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                                    <input type="radio" id="client_mode_multi" name="client_mode" value="multi"
+                                        onchange="toggleClientMode()">
+                                    <span>Múltiplos clientes (romaneio agrupado)</span>
+                                </label>
+                            </div>
+
+                            <!-- Campo de unidade: visível apenas no modo simples -->
+                            <div id="unit_field_wrapper" style="margin-top:14px;">
+                                <label>Cliente / Unidade <span style="font-weight:400;color:#888;font-size:12px;">(local de instalação)</span></label>
+                                <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
+                            </div>
+                        </fieldset>
+
+                        <!-- SEÇÃO: ITENS -->
+                        <fieldset>
+                            <legend>Itens (descrição e quantidade)</legend>
+
+                            <div id="items_container" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                            <div class="actions" style="margin-top: 12px;">
+                                <button onclick="addItem()">Adicionar item</button>
+                                <button class="secondary" onclick="clearItems()">Limpar itens</button>
+                            </div>
+                        </fieldset>
+
+                        <!-- SEÇÃO: DADOS ADICIONAIS -->
+                        <fieldset>
+                            <legend>Dados Adicionais</legend>
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Volumes (nº de etiquetas)</label>
+                                    <input id="total_vol" type="number" value="1" min="1">
+                                </div>
+                                <div class="col">
+                                    <label>Tipo de Referência</label>
+                                    <select id="reference_type" onchange="toggleReferenceInput()">
+                                        <option value="ticket">Ticket</option>
+                                        <option value="os">OS</option>
+                                        <option value="none">Nenhum (Fornecedor)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <label>Número da Referência</label>
+                            <input id="reference" type="text" placeholder="Ex: 465">
+
+                            <label>Transportadora</label>
+                            <input id="carrier" type="text" value="Jadlog">
+
+                            <label>Recebedor/Responsável (assinatura)</label>
+                            <input id="receiver" type="text" value="">
+                        </fieldset>
+
+                        <!-- SEÇÃO: AÇÕES -->
+                        <fieldset style="margin-top: 12px;">
+                            <legend>Geração de Documentos</legend>
+
+                            <label>Selecione os documentos a gerar:</label>
+                            <select id="doc-selector">
+                                <option value="">— selecione —</option>
+                                <option value="labels">Apenas Etiqueta</option>
+                                <option value="romaneio">Apenas Romaneio</option>
+                                <option value="both">Etiqueta + Romaneio</option>
+                            </select>
+
+                            <div class="actions" style="gap: 12px; margin-top: 12px;">
+                                <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
+                                <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
+                            </div>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend>E-mail</legend>
+
+                            <div class="actions" style="gap: 12px;">
+                                <button class="secondary" onclick="copyEmailBody()">Copiar Corpo do E-mail</button>
+                                <button id="btnEnviar">Enviar E-mail</button>
+                            </div>
+                        </fieldset>
+
+                        <!-- Importando o Supabase diretamente pra dentro do seu frontend -->
+                        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+                        <script type="module" src="js/app.js"></script>
+                    </div>
+
+                    <div class="card no-print">
+                        <strong>Ajuda / notas</strong>
+                        <div class="small" style="margin-top:8px">
+                            • Carregue um JSON e selecione um registro para preencher o destinatário.<br><br>
+                            • No preview, escolha quais documentos deseja gerar (etiqueta, romaneio e/ou
+                            e-mail).<br><br>
+                            • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
+                            • Para imprimir sem cortes: abra preview em nova aba → imprimir com escala 100% e margens
+                            nenhuma.
                         </div>
                     </div>
-
-                    <label>Número da Referência</label>
-                    <input id="reference" type="text" placeholder="Ex: 465">
-
-                    <label>Transportadora</label>
-                    <input id="carrier" type="text" value="Jadlog">
-
-                    <label>Recebedor/Responsável (assinatura)</label>
-                    <input id="receiver" type="text" value="">
-                </fieldset>
-
-                <!-- SEÇÃO: AÇÕES -->
-                <fieldset style="margin-top: 12px;">
-                    <legend>Geração de Documentos</legend>
-
-                    <label>Selecione os documentos a gerar:</label>
-                    <select id="doc-selector">
-                        <option value="">— selecione —</option>
-                        <option value="labels">Apenas Etiqueta</option>
-                        <option value="romaneio">Apenas Romaneio</option>
-                        <option value="both">Etiqueta + Romaneio</option>
-                    </select>
-
-                    <div class="actions" style="gap: 12px; margin-top: 12px;">
-                        <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
-                        <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
-                    </div>
-                </fieldset>
-
-                <fieldset>
-                    <legend>E-mail</legend>
-
-                    <div class="actions" style="gap: 12px;">
-                        <button class="secondary" onclick="copyEmailBody()">Copiar Corpo do E-mail</button>
-                        <button id="btnEnviar">Enviar E-mail</button>
-                    </div>
-                </fieldset>
-
-                <!-- Importando o Supabase diretamente pra dentro do seu frontend -->
-                <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-                <script type="module" src="js/app.js"></script>
-            </div>
-
-            <div class="card no-print">
-                <strong>Ajuda / notas</strong>
-                <div class="small" style="margin-top:8px">
-                    • Carregue um JSON e selecione um registro para preencher o destinatário.<br><br>
-                    • No preview, escolha quais documentos deseja gerar (etiqueta, romaneio e/ou e-mail).<br><br>
-                    • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
-                    • Para imprimir sem cortes: abra preview em nova aba → imprimir com escala 100% e margens nenhuma.
                 </div>
-            </div>
-        </div>
             </div> <!-- Fim da tab-romaneio -->
 
             <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
@@ -242,13 +235,13 @@
                     <div class="card">
                         <strong>Gerenciar Destinatários</strong>
                         <div class="small">Adicione, edite e delete registros de destinatários no banco de dados.</div>
-                        
+
                         <fieldset>
                             <legend>Novo Destinatário</legend>
-                            
+
                             <label>Nome / Razão Social</label>
                             <input id="new_dest_name" type="text" placeholder="Ex: João Silva">
-                            
+
                             <div class="row">
                                 <div class="col">
                                     <label>CPF / CNPJ</label>
@@ -259,21 +252,44 @@
                                     <input id="new_dest_phone" type="text" placeholder="">
                                 </div>
                             </div>
-                            
+
                             <label>Endereço linha 1</label>
                             <input id="new_dest_addr1" type="text" placeholder="">
-                            
+
                             <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
                             <input id="new_dest_addr2" type="text" placeholder="">
-                            
+
                             <div style="margin-top: 12px;">
                                 <button onclick="saveNewDestinatario()">Salvar Novo Destinatário</button>
                             </div>
                         </fieldset>
-                        
+
                         <fieldset>
                             <legend>Destinatários Cadastrados</legend>
-                            <div id="destinatarios_list" style="border: 1px solid #ddd; border-radius: 2px; max-height: 500px; overflow-y: auto;"></div>
+                            <input
+                                id="dest_search"
+                                type="text"
+                                placeholder="🔍 Pesquisar por nome, CNPJ ou endereço..."
+                                oninput="filtrarDestinatarios(this.value)"
+                                style="margin-top:12px;"
+                            >
+                            <div id="destinatarios_list"
+                                style="border: 1px solid #ddd; border-radius: 8px; max-height: 500px; overflow-y: auto; margin-top:10px;">
+                            </div>
+                        </fieldset>
+
+                        <fieldset>
+                            <legend>Importar / Exportar JSON</legend>
+                            <div class="small" style="margin-bottom:10px;">Importe um arquivo JSON para popular o cadastro, ou exporte um backup da base atual.</div>
+                            <label>Carregar arquivo</label>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+                                <input id="file_input" type="file" accept=".json">
+                                <button class="btn-outline" onclick="loadJsonFile()">Importar JSON</button>
+                                <button class="btn-accent" onclick="exportToJSON()">Exportar Backup</button>
+                            </div>
+                            <div class="small" style="margin-top:8px;">Formato esperado: array com chaves:
+                                <code>destinatario,cpf_cnpj,endereco_linha1,endereco_linha2,contato</code>
+                            </div>
                         </fieldset>
                     </div>
                 </div>
@@ -289,13 +305,81 @@
                     </div>
                 </div>
             </div> <!-- Fim da tab-itens -->
+            <!-- ABA 4: HISTÓRICO DE ENVIOS -->
+            <div id="tab-historico" class="tab-content" style="display: none;">
+                <div class="grid">
+                    <div class="card">
+                        <div
+                            style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <div>
+                                <strong>Histórico de Envios</strong>
+                                <div class="small">Confira os últimos 50 documentos e e-mails gerados.</div>
+                            </div>
+                            <button class="btn-outline" onclick="loadHistoricoView()">🔄 Atualizar</button>
+                        </div>
 
-        <div class="preview-container" id="preview-container" style="display: none;">
-            <div class="preview-documents" id="preview-documents"></div>
-            <div class="preview-email" id="preview-email"></div>
-        </div>
+                        <div id="historico_list" style="border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
+                            <!-- A lista será carregada aqui via JS -->
+                            <div style="padding:40px; text-align:center; color:#999;">Carregando histórico...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="preview-container" id="preview-container" style="display: none;">
+                <div class="preview-documents" id="preview-documents"></div>
+                <div class="preview-email" id="preview-email"></div>
+            </div>
         </div>
     </div> <!-- Fim do #app_content -->
+
+    <!-- MODAL DE EDIÇÃO DE DESTINATÁRIO -->
+    <div id="modal-edit-dest" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:#fff; border-radius:16px; padding:32px; width:100%; max-width:480px; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.25s ease;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <strong style="font-size:16px;">✏️ Editar Destinatário</strong>
+                <button onclick="fecharModalEdit()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none;">×</button>
+            </div>
+
+            <label>Nome / Razão Social</label>
+            <input id="modal_dest_name" type="text" placeholder="Ex: João Silva">
+
+            <div class="row" style="margin-top:12px;">
+                <div class="col">
+                    <label>CPF / CNPJ</label>
+                    <input id="modal_dest_doc" type="text" placeholder="">
+                </div>
+                <div class="col">
+                    <label>Contato</label>
+                    <input id="modal_dest_phone" type="text" placeholder="">
+                </div>
+            </div>
+
+            <label>Endereço linha 1</label>
+            <input id="modal_dest_addr1" type="text" placeholder="">
+
+            <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
+            <input id="modal_dest_addr2" type="text" placeholder="">
+
+            <div style="display:flex; gap:10px; margin-top:20px; justify-content:flex-end;">
+                <button onclick="fecharModalEdit()" style="background:#f0f0f0; color:#444; box-shadow:none;">Cancelar</button>
+                <button onclick="salvarModalEdit()">Salvar Alterações</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- MODAL DE DETALHE DO HISTORICO -->
+    <div id="modal-historico-detalhe" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:#fff; border-radius:16px; padding:32px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.25s ease;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <strong style="font-size:16px;">Detalhes do Envio</strong>
+                <button onclick="fecharDetalheHistorico()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none;">&times;</button>
+            </div>
+            <div id="modal-historico-body"></div>
+        </div>
+    </div>
+
 </body>
 
 </html>

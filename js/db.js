@@ -16,7 +16,7 @@ export function popularSelectDestinatarios(arr) {
     sel.innerHTML = '<option value="">— nenhum —</option>';
     arr.forEach((c, idx) => {
         const opt = document.createElement('option');
-        opt.value = idx; 
+        opt.value = idx;
         opt.textContent = c.nome || ('Sem nome');
         sel.appendChild(opt);
     });
@@ -24,7 +24,7 @@ export function popularSelectDestinatarios(arr) {
 
 export async function salvarDestinatarioAtual() {
     const nome = $('dest_name').value.trim();
-    if(!nome) {
+    if (!nome) {
         alert("Preencha pelo menos o Nome para poder salvar no Banco.");
         return;
     }
@@ -36,11 +36,11 @@ export async function salvarDestinatarioAtual() {
         contato: $('dest_phone').value.trim()
     };
     const { error } = await supabaseClient.from('destinatarios').insert([novoRegistro]);
-    
-    if(error) alert("Erro ao salvar: " + error.message);
+
+    if (error) alert("Erro ao salvar: " + error.message);
     else {
         alert("Cliente salvo com sucesso na nuvem!");
-        carregarDestinatarios(); 
+        carregarDestinatarios();
     }
 }
 
@@ -52,7 +52,7 @@ export async function loadJsonFile() {
         try {
             const jsonCarregado = JSON.parse(e.target.result);
             if (!Array.isArray(jsonCarregado)) { alert('O JSON importado deve ser um Array de objetos.'); return; }
-            
+
             const registrosParaBanco = jsonCarregado.map(r => ({
                 nome: r.destinatario || r.nome_cliente || r.name || r.nome || '',
                 cpf_cnpj: r.cpf_cnpj || r.cpf || r.cnpj || '',
@@ -65,7 +65,7 @@ export async function loadJsonFile() {
             if (error) alert('Erro do Supabase ao importar: ' + error.message);
             else {
                 alert(`Sucesso! ${registrosParaBanco.length} contatos foram importados.`);
-                carregarDestinatarios(); 
+                carregarDestinatarios();
             }
         } catch (err) { alert('Erro ao processar JSON: ' + err.message); }
     };
@@ -92,13 +92,65 @@ export async function exportToJSON() {
 }
 
 export async function clearBase() {
-    if(!confirm('CUIDADO EXTREMO: Tem certeza que deseja APAGAR TODOS os registros de destinatários? Não esqueça de gerar um backup antes (Exportar JSON)!')) return;
-    
+    if (!confirm('CUIDADO EXTREMO: Tem certeza que deseja APAGAR TODOS os registros de destinatários? Não esqueça de gerar um backup antes (Exportar JSON)!')) return;
+
     const { error } = await supabaseClient.from('destinatarios').delete().neq('id', 0);
-        
-    if(error) alert('Erro ao apagar: ' + error.message);
+
+    if (error) alert('Erro ao apagar: ' + error.message);
     else {
         alert('Todos os dados fictícios (ou antigos) foram apagados.');
         carregarDestinatarios();
     }
+}
+// --- FUNÇÕES DO HISTÓRICO ---
+
+export async function salvarNoHistorico(dados) {
+    const registro = {
+        remetente: dados.sender_company,
+        destinatario: dados.dest_name,
+        unidade: dados.unit_name || dados.dest_name,
+        referencia: dados.reference,
+        tipo_doc: dados.docType || 'não informado',
+        itens: dados.items,
+        transportadora: dados.carrier,
+        // Snapshot completo para regeração futura
+        dados_completos: dados,
+        // Status inicial: nada foi feito ainda
+        status: { email: false, etiqueta: false, romaneio: false }
+    };
+
+    const { error } = await supabaseClient.from('historico').insert([registro]);
+
+    if (error) {
+        console.error('Erro ao salvar no histórico:', error.message);
+    } else {
+        console.log('✅ Registro salvo no histórico com sucesso.');
+    }
+}
+
+export async function carregarHistorico() {
+    const { data, error } = await supabaseClient
+        .from('historico')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+    if (error) {
+        console.error('Erro ao buscar histórico:', error.message);
+        return [];
+    }
+    return data || [];
+}
+
+export async function atualizarStatusHistorico(id, novoStatus) {
+    const { error } = await supabaseClient
+        .from('historico')
+        .update({ status: novoStatus })
+        .eq('id', id);
+
+    if (error) {
+        console.error('Erro ao atualizar status:', error.message);
+        return false;
+    }
+    return true;
 }
