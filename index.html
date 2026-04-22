@@ -42,9 +42,10 @@
             </div>
             <div class="nav-center">
                 <button class="nav-tab active" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
-                <button class="nav-tab" onclick="switchTab('tab-destinatarios')">Gerenciar Destinatários</button>
-                <button class="nav-tab" onclick="switchTab('tab-itens')">Gerenciar Itens</button>
-                <button class="nav-tab" onclick="switchTab('tab-historico')">Histórico</button>
+                
+                
+                <button class="nav-tab" onclick="switchTab('tab-dados')">Gerenciar Dados</button>
+                <button class="nav-tab" onclick="switchTab('tab-envios')">Envios</button>
             </div>
             <div class="nav-links">
                 <button class="nav-btn" onclick="handleLogout()">Sair</button>
@@ -196,6 +197,7 @@
 
                             <div class="actions" style="gap: 12px; margin-top: 12px;">
                                 <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
+                                <button class="secondary" type="button" onclick="salvarRascunhoAtual()">Salvar Rascunho</button>
                                 <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
                             </div>
                         </fieldset>
@@ -230,7 +232,17 @@
             </div> <!-- Fim da tab-romaneio -->
 
             <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
-            <div id="tab-destinatarios" class="tab-content" style="display: none;">
+            <!-- ABA: GERENCIAR DADOS -->
+            <div id="tab-dados" class="tab-content" style="display: none;">
+                
+                <!-- SUB-NAV -->
+                <div class="sub-nav">
+                    <button class="sub-tab active" id="btn-sub-destinatarios" onclick="switchSubTab('sub-destinatarios')">Destinatários</button>
+                    <button class="sub-tab" id="btn-sub-itens" onclick="switchSubTab('sub-itens')">Itens / Produtos</button>
+                </div>
+
+            <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
+            <div id="sub-destinatarios" style="display: none;">
                 <div class="grid">
                     <div class="card">
                         <strong>Gerenciar Destinatários</strong>
@@ -293,10 +305,10 @@
                         </fieldset>
                     </div>
                 </div>
-            </div> <!-- Fim da tab-destinatarios -->
+                            </div> <!-- Fim de sub-destinatarios -->
 
-            <!-- ABA 3: GERENCIAR ITENS -->
-            <div id="tab-itens" class="tab-content" style="display: none;">
+                <!-- SUB-ABA: ITENS -->
+                <div id="sub-itens" style="display: none;">
                 <div class="grid">
                     <div class="card">
                         <strong>Gerenciar Itens/Produtos</strong>
@@ -304,9 +316,38 @@
                         <div id="items_list"></div>
                     </div>
                 </div>
-            </div> <!-- Fim da tab-itens -->
+                </div> <!-- Fim de sub-itens -->
+            </div> <!-- Fim de tab-dados -->
+            <!-- ABA: ENVIOS (Unificada) -->
+            <div id="tab-envios" class="tab-content" style="display: none;">
+                
+                <!-- SUB-NAV -->
+                <div class="sub-nav">
+                    <button class="sub-tab active" id="btn-sub-andamento" onclick="switchSubTab('sub-andamento')">Em Andamento (Rascunhos)</button>
+                    <button class="sub-tab" id="btn-sub-historico" onclick="switchSubTab('sub-historico')">Histórico Definitivo</button>
+                </div>
+                
+                <!-- SUB-ABA: ANDAMENTO -->
+                <div id="sub-andamento" style="display: block;">
+                <div class="grid">
+                    <div class="card">
+                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <div>
+                                <strong>Pedidos em Andamento (Rascunhos)</strong>
+                                <div class="small">Rascunhos salvos para edição futura. Estes pedidos não estão no histórico final.</div>
+                            </div>
+                            <button class="btn-outline" onclick="carregarViewAndamento()">🔄 Atualizar</button>
+                        </div>
+
+                        <div id="andamento_list" style="border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
+                            <div style="padding:40px; text-align:center; color:#999;">Carregando pedidos em andamento...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <!-- ABA 4: HISTÓRICO DE ENVIOS -->
-            <div id="tab-historico" class="tab-content" style="display: none;">
+            <div id="sub-historico" style="display: none;">
                 <div class="grid">
                     <div class="card">
                         <div
@@ -324,12 +365,10 @@
                         </div>
                     </div>
                 </div>
-            </div>
+                </div> <!-- Fim de sub-historico -->
+            </div> <!-- Fim de tab-envios -->
 
-            <div class="preview-container" id="preview-container" style="display: none;">
-                <div class="preview-documents" id="preview-documents"></div>
-                <div class="preview-email" id="preview-email"></div>
-            </div>
+            <!-- preview-container movido para modal -->
         </div>
     </div> <!-- Fim do #app_content -->
 
@@ -377,6 +416,21 @@
                 <button onclick="fecharDetalheHistorico()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none;">&times;</button>
             </div>
             <div id="modal-historico-body"></div>
+        </div>
+    </div>
+
+
+    <!-- MODAL DE PREVIEW -->
+    <div id="modal-preview" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9998; justify-content:center; align-items:flex-start; padding:20px; overflow-y:auto;">
+        <div style="background:#fff; border-radius:16px; width:100%; max-width:960px; margin:0 auto; box-shadow:0 20px 60px rgba(0,0,0,0.3); animation:slideUp 0.25s ease; overflow:hidden;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:20px 28px; border-bottom:1px solid #eee; background:#fafafa; border-radius:16px 16px 0 0;">
+                <strong style="font-size:16px; color:#222;">&#128196; Pr&#233;-visualiza&#231;&#227;o do Documento</strong>
+                <button onclick="fecharModalPreview()" style="background:none; border:none; font-size:24px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none; line-height:1;">&times;</button>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 380px; gap:0;">
+                <div id="preview-documents" style="padding:20px; border-right:1px solid #eee; overflow-y:auto; max-height:85vh;"></div>
+                <div id="preview-email" style="padding:20px; overflow-y:auto; max-height:85vh;"></div>
+            </div>
         </div>
     </div>
 

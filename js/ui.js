@@ -193,3 +193,116 @@ export function collectData() {
         items: items
     };
 }
+
+export function preencherFormulario(dados) {
+    if (!dados) return;
+
+    // 1. Remetente
+    // Encontrar se o remetente é um dos fixos (ranor, nortrack) ou customizado
+    let senderKey = 'custom';
+    if(dados.sender_cnpj === SENDERS['ranor'].cnpj) senderKey = 'ranor';
+    if(dados.sender_cnpj === SENDERS['nortrack'].cnpj) senderKey = 'nortrack';
+    
+    $('sender_select').value = senderKey;
+    $('sender_company').value = dados.sender_company || '';
+    $('sender_cnpj').value = dados.sender_cnpj || '';
+    $('sender_address').value = dados.sender_address || '';
+    
+    if(senderKey === 'custom') {
+        $('sender_company').readOnly = false;
+        $('sender_cnpj').readOnly = false;
+        $('sender_address').readOnly = false;
+    }
+
+    // 2. Destinatário
+    $('dest_name').value = dados.dest_name || '';
+    $('dest_doc').value = dados.dest_doc || '';
+    $('dest_addr1').value = dados.dest_addr1 || '';
+    $('dest_addr2').value = dados.dest_addr2 || '';
+
+    // 3. Modo de Entrega (Single / Multi)
+    const isMultiMode = dados.client_mode === 'multi';
+    if(isMultiMode) {
+        document.getElementById('client_mode_multi').checked = true;
+    } else {
+        document.getElementById('client_mode_single').checked = true;
+    }
+    
+    if($('unit_name')) {
+        $('unit_name').value = dados.unit_name || '';
+    }
+
+    // 4. Limpar itens atuais e recriar
+    const container = $('items_container');
+    container.innerHTML = '';
+    
+    if (dados.items && dados.items.length > 0) {
+        // Toggle Client Mode primeiro para preparar a UI
+        try { window.toggleClientMode(); } catch(e){}
+
+        dados.items.forEach(it => {
+            // Reutiliza a função addItem para garantir os listeners (autocomplete)
+            // IMPORTANTE: precisamos chamar "addItem()" que insere na UI, depois buscar o ultimo inserido e preencher
+            window.addItem(); 
+            const cards = container.querySelectorAll('.item-card');
+            const lastCard = cards[cards.length - 1];
+
+            if(lastCard) {
+                const descInput = lastCard.querySelector('.it-desc');
+                if(descInput) descInput.value = it.desc || '';
+                
+                const qtyInput = lastCard.querySelector('.it-qty');
+                if(qtyInput) qtyInput.value = it.qty || 1;
+                
+                if(isMultiMode) {
+                    const clientInput = lastCard.querySelector('.it-client');
+                    if(clientInput) clientInput.value = it.client || '';
+                }
+
+                // Restaurar IMEIs (se existirem)
+                if(it.imeis && it.imeis.length > 0) {
+                    const imeiSection = lastCard.querySelector('.it-imei-section');
+                    if(imeiSection) {
+                        imeiSection.style.display = 'block'; // forçar exibição
+                        
+                        // Forçar readonly e cor
+                        qtyInput.readOnly = true;
+                        qtyInput.style.backgroundColor = '#e8f4f8';
+
+                        const imeiList = lastCard.querySelector('.it-imei-list');
+                        imeisHtml = '';
+                        it.imeis.forEach(imeiObj => {
+                            let valA, labelHtml;
+                            if(imeiObj.tipo === 'kit') {
+                                valA = imeiObj.rastreador + '|' + imeiObj.teclado;
+                                labelHtml = '<div>Rastreador: <strong>'+escapeHtml(imeiObj.rastreador)+'</strong> | Teclado: <strong>'+escapeHtml(imeiObj.teclado)+'</strong></div>';
+                            } else {
+                                valA = imeiObj.imei;
+                                labelHtml = '<div>IMEI: <strong>'+escapeHtml(imeiObj.imei)+'</strong></div>';
+                            }
+                            imeisHtml += '<div class="imei-item" data-imei="'+valA+'" style="padding:4px;margin:2px 0;background:#f5f5f5;border-left:2px solid #333;font-size:13px;font-family:monospace;">'+labelHtml+'</div>';
+                        });
+                        if(imeiList) imeiList.innerHTML = imeisHtml;
+                    }
+                }
+            }
+        });
+    } else {
+        // Se vazio, adiciona pelo menos 1
+        window.addItem();
+    }
+
+    // 5. Dados Adicionais
+    const refTypeElem = $('reference_type');
+    if(refTypeElem) refTypeElem.value = dados.reference_type || 'ticket';
+    
+    $('reference').value = String(dados.reference || ''); 
+    $('total_vol').value = dados.total_vol || 1;
+    $('carrier').value = dados.carrier || 'Jadlog';
+    $('receiver').value = dados.receiver || '';
+    
+    // Atualiza status do campo de referencia
+    try { window.toggleReferenceInput(); } catch(e){}
+
+    alert('Rascunho carregado com sucesso!');
+}

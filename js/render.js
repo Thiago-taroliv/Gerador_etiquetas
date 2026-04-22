@@ -53,40 +53,34 @@ export function renderRomaneio(data) {
     }
     
     const pages = [];
-    const itemsPerPagePerClient = 5;
+    const MAX_ITEMS_PER_PAGE = 10; // itens totais por página (independente de cliente)
     let currentPage = null;
-    let currentPageClientCount = 0;
-    let showGlobalHeader = true; // Flag para header global e "Descrição das Mercadorias"
+    let itemsInCurrentPage = 0;
+    let showGlobalHeader = true;
     
     itemGroups.forEach((group, groupIdx) => {
         const clientName = group.client;
         const items = group.items;
-        const clientTotalPages = Math.ceil(items.length / itemsPerPagePerClient);
         
-        for (let clientPageNum = 0; clientPageNum < clientTotalPages; clientPageNum++) {
-            const startIdx = clientPageNum * itemsPerPagePerClient;
-            const endIdx = Math.min(startIdx + itemsPerPagePerClient, items.length);
-            const pageItems = items.slice(startIdx, endIdx);
+        // Para cada item do grupo, adicionar à página atual ou criar nova
+        // Mas o cabeçalho do cliente só aparece uma vez por grupo
+        let isFirstPageOfThisClient = true;
+        let clientPageItems = []; // buffer de itens da página atual para este cliente
+        
+        const flushClientPage = (isLast) => {
+            if (clientPageItems.length === 0) return;
             
-            // Criar nova página se necessário
-            if (currentPage === null || currentPageClientCount >= 2) {
-                if (currentPage !== null) {
-                    pages.push(currentPage);
-                }
+            // Se não tem página aberta, cria uma
+            if (currentPage === null) {
                 currentPage = document.createElement('div');
-                currentPage.className = 'page';
                 currentPage.style.position = 'relative';
-                currentPage.innerHTML = '';
-                currentPageClientCount = 0;
+                itemsInCurrentPage = 0;
             }
             
-            // Construir conteúdo do cliente
             let rows = '';
-            pageItems.forEach(it => {
+            clientPageItems.forEach(it => {
                 let imeiHTML = '';
-                
                 if (it.imeis && it.imeis.length > 0) {
-                    // Renderizar IMEIs em 2 colunas
                     imeiHTML = '<div style="margin-top:6px;border-top:1px solid #ddd;padding-top:4px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">';
                     it.imeis.forEach((imeiItem) => {
                         const imeiText = imeiItem.tipo === 'kit'
@@ -96,24 +90,13 @@ export function renderRomaneio(data) {
                     });
                     imeiHTML += '</div>';
                 }
-                
                 rows += `<tr style="border-bottom:1px solid #f0f0f0;">
                     <td style="padding:8px;">${escapeHtml(it.desc)}${imeiHTML}</td>
                     <td style="width:12%;text-align:center;padding:8px;font-size:14px;"><strong>${escapeHtml(it.qty)}</strong></td>
                 </tr>`;
             });
             
-            // Preencher linhas vazias para este cliente
-            if (pageItems.length < itemsPerPagePerClient) {
-                for (let i = pageItems.length; i < itemsPerPagePerClient; i++) {
-                    rows += '<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px;"></td><td style="padding:8px;"></td></tr>';
-                }
-            }
-            
-            // Cabeçalho global e tabela aparecem apenas uma vez
             let globalHeaderHTML = '';
-            let tableHeaderHTML = '';
-            
             if (showGlobalHeader) {
                 globalHeaderHTML = `
                     <div style="font-size:28px;color:var(--brand);font-weight:700;margin-bottom:12px;">Romaneio de Entrega</div>
@@ -143,12 +126,17 @@ export function renderRomaneio(data) {
                 showGlobalHeader = false;
             }
             
+            // Cabeçalho do cliente aparece só na primeira página do grupo
+            const clientHeaderHTML = isFirstPageOfThisClient ? `
+                <div style="margin-bottom:8px;padding:6px 10px;background:#f5f5f5;border-left:3px solid var(--brand);">
+                    <strong>Cliente:</strong> ${escapeHtml(clientName)}
+                </div>
+            ` : '';
+            
             const clientSection = `
-                <div style="margin-bottom:16px;${currentPageClientCount > 0 ? 'border-top:2px solid #ddd;padding-top:12px;' : ''}">
+                <div style="margin-bottom:16px;${itemsInCurrentPage > 0 ? 'border-top:2px solid #ddd;padding-top:12px;' : ''}">
                     ${globalHeaderHTML}
-                    <div style="margin-bottom:8px;padding:6px 10px;background:#f5f5f5;border-left:3px solid var(--brand);">
-                        <strong>Cliente:</strong> ${escapeHtml(clientName)}
-                    </div>
+                    ${clientHeaderHTML}
                     <table style="width:100%;border-collapse:collapse;margin-top:8px;border:1px solid #ddd;margin-bottom:12px;">
                         <thead style="background:#f6f6f6;border-bottom:2px solid var(--brand);">
                             <tr>
@@ -162,8 +150,25 @@ export function renderRomaneio(data) {
             `;
             
             currentPage.innerHTML += clientSection;
-            currentPageClientCount++;
-        }
+            itemsInCurrentPage += clientPageItems.length;
+            isFirstPageOfThisClient = false;
+            clientPageItems = [];
+        };
+        
+        items.forEach((item, itemIdx) => {
+            // Se a página atual já está cheia, fechar e abrir nova
+            if (currentPage !== null && itemsInCurrentPage >= MAX_ITEMS_PER_PAGE) {
+                flushClientPage(false);
+                pages.push(currentPage);
+                currentPage = null;
+                itemsInCurrentPage = 0;
+                // Não é mais a primeira página deste cliente, mas mostra cabeçalho de continuação
+            }
+            clientPageItems.push(item);
+        });
+        
+        // Flush itens restantes do cliente
+        flushClientPage(true);
     });
     
     // Adicionar última página com rodapé e assinatura

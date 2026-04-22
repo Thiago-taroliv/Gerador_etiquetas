@@ -154,3 +154,85 @@ export async function atualizarStatusHistorico(id, novoStatus) {
     }
     return true;
 }
+
+// --- FUNÇÕES DE PEDIDOS EM ANDAMENTO (RASCUNHOS) ---
+
+export async function salvarPendente(dados, draftId = null) {
+    const registro = {
+        destinatario: dados.dest_name || 'Sem Destinatário',
+        unidade: dados.unit_name || dados.dest_name || '',
+        referencia: dados.reference || '',
+        dados_completos: dados
+    };
+
+    let result;
+    if (draftId) {
+        // Atualiza rascunho existente
+        result = await supabaseClient.from('pedidos_pendentes').update(registro).eq('id', draftId).select();
+    } else {
+        // Cria um novo rascunho
+        result = await supabaseClient.from('pedidos_pendentes').insert([registro]).select();
+    }
+
+    const { data, error } = result;
+
+    if (error) {
+        console.error('Erro ao salvar rascunho:', error.message);
+        alert('Erro ao salvar rascunho: ' + error.message);
+        return null;
+    } else {
+        alert('Rascunho salvo com sucesso!');
+        return data[0]; // Retorna o registro salvo (com ID)
+    }
+}
+
+export async function carregarPendentes() {
+    const { data, error } = await supabaseClient
+        .from('pedidos_pendentes')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Erro ao buscar rascunhos:', error.message);
+        return [];
+    }
+    return data || [];
+}
+
+export async function deletarPendente(id) {
+    if (!confirm('Você tem certeza que deseja excluir ESTE RASCUNHO?')) return false;
+
+    const { error } = await supabaseClient.from('pedidos_pendentes').delete().eq('id', id);
+
+    if (error) {
+        console.error('Erro ao deletar rascunho:', error.message);
+        alert('Erro ao deletar rascunho: ' + error.message);
+        return false;
+    }
+    return true;
+}
+
+export async function concluirPendente(id) {
+    // 1. Busca os dados do rascunho
+    const { data: rascunho, error: errBusca } = await supabaseClient
+        .from('pedidos_pendentes')
+        .select('*')
+        .eq('id', id)
+        .single();
+        
+    if (errBusca || !rascunho) {
+        alert('Erro ao encontrar o rascunho para concluir.');
+        return false;
+    }
+
+    // 2. Salva no histórico
+    const dadosFormulario = rascunho.dados_completos;
+    await salvarNoHistorico(dadosFormulario);
+
+    // 3. Deleta o rascunho
+    const { error: errDel } = await supabaseClient.from('pedidos_pendentes').delete().eq('id', id);
+    if(errDel) console.error("Erro ao remover rascunho concluido: ", errDel);
+
+    alert('Pedido concluído e enviado para o Histórico!');
+    return true;
+}

@@ -1,11 +1,11 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, clearBase, salvarDestinatarioAtual, exportToJSON, salvarNoHistorico, carregarHistorico, atualizarStatusHistorico } from './db.js';
-import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems } from './ui.js';
+import { loadJsonFile, clearBase, salvarDestinatarioAtual, exportToJSON, salvarNoHistorico, carregarHistorico, atualizarStatusHistorico , salvarPendente, carregarPendentes, deletarPendente, concluirPendente} from './db.js';
+import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems , preencherFormulario} from './ui.js';
 import { composeDocuments, renderEmailPreview } from './render.js';
 import { initializeItems, getItems, renderItemsCRUD, addItem as addItemToDB } from './items.js';
 
-// Anexa todas as funções engatilhadas pelo HTML ao escopo Global (window)
+// Anexa todas as funÃ§Ãµes engatilhadas pelo HTML ao escopo Global (window)
 window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
 window.loadJsonFile = loadJsonFile;
@@ -18,14 +18,18 @@ window.addItem = addItem;
 window.removeItem = removeItem;
 window.clearItems = clearItems;
 
-// Funções de abas
+// FunÃ§Ãµes de abas
 window.switchTab = function (tabName) {
+    // Fechar modal de preview ao trocar de aba
+    const modalPreview = document.getElementById('modal-preview');
+    if (modalPreview) modalPreview.style.display = 'none';
+
     // Ocultar todas as abas
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.style.display = 'none';
     });
 
-    // Resetar estilos dos botões
+    // Resetar estilos dos botÃµes
     document.querySelectorAll('.nav-tab').forEach(btn => {
         btn.classList.remove('active');
     });
@@ -34,14 +38,18 @@ window.switchTab = function (tabName) {
     const selectedTab = document.getElementById(tabName);
     if (selectedTab) selectedTab.style.display = 'block';
 
-    // Destacar botão ativo (se o evento existir)
+    // Destacar botÃ£o ativo (se o evento existir)
     if (window.event && window.event.target) {
         window.event.target.classList.add('active');
     }
 
-    // Carregar dados específicos da aba (ESCALÁVEL: Fácil adicionar novas abas aqui)
-    if (tabName === 'tab-destinatarios') {
-        loadDestinatariosList();
+    // Carregar dados especÃ­ficos da aba (ESCALÃVEL: FÃ¡cil adicionar novas abas aqui)
+            if (tabName === 'tab-envios') {
+        // Por padrão, abre os Rascunhos.
+        switchSubTab('sub-andamento');
+    } else if (tabName === 'tab-dados') {
+        // Por padrão, abre os Destinatários.
+        switchSubTab('sub-destinatarios');
     } else if (tabName === 'tab-itens') {
         renderItemsCRUD('items_list');
     } else if (tabName === 'tab-historico') {
@@ -50,7 +58,7 @@ window.switchTab = function (tabName) {
 };
 
 
-// Carregar lista de destinatários
+// Carregar lista de destinatÃ¡rios
 window.loadDestinatariosList = function () {
     const destinatariosSupabase = window.__destinatariosSupabase || [];
     const container = document.getElementById('destinatarios_list');
@@ -91,7 +99,7 @@ window.editDestinatario = function (idx) {
     $('modal_dest_addr2').value = d.endereco_linha2 || '';
     $('modal_dest_phone').value = d.contato || '';
 
-    // Guarda o ID para saber que é uma edição e não uma inserção
+    // Guarda o ID para saber que Ã© uma ediÃ§Ã£o e nÃ£o uma inserÃ§Ã£o
     window.__editingDestId = d.id;
 
     // Exibe o modal
@@ -112,14 +120,14 @@ window.salvarModalEdit = async function () {
     const phone = $('modal_dest_phone').value.trim();
 
     if (!nome || !addr1) {
-        alert('Preencha pelo menos o Nome e o Endereço (Linha 1).');
+        alert('Preencha pelo menos o Nome e o EndereÃ§o (Linha 1).');
         return;
     }
 
     const id = window.__editingDestId;
     if (!id) return;
 
-    // Usa o cliente Supabase configurado (não a biblioteca global)
+    // Usa o cliente Supabase configurado (nÃ£o a biblioteca global)
     const { supabaseClient } = await import('./config.js');
     const { error } = await supabaseClient
         .from('destinatarios')
@@ -139,7 +147,7 @@ window.salvarModalEdit = async function () {
     loadDestinatariosList();
 };
 
-// Pesquisa em tempo real na lista de destinatários
+// Pesquisa em tempo real na lista de destinatÃ¡rios
 window.filtrarDestinatarios = function (termo) {
     const todos = window.__destinatariosSupabase || [];
     const lower = termo.toLowerCase();
@@ -151,7 +159,7 @@ window.filtrarDestinatarios = function (termo) {
     renderListaDestinatarios(filtrados);
 };
 
-// Rende a lista de destinatários (aceita array filtrado ou completo)
+// Rende a lista de destinatÃ¡rios (aceita array filtrado ou completo)
 function renderListaDestinatarios(arr) {
     const container = document.getElementById('destinatarios_list');
     if (!arr || arr.length === 0) {
@@ -165,8 +173,8 @@ function renderListaDestinatarios(arr) {
             <div style="padding:14px 16px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <strong style="font-size:14px;">${dest.nome}</strong><br>
-                    ${dest.cpf_cnpj ? `<span style="font-size:12px;color:#666;">📄 ${dest.cpf_cnpj}</span><br>` : ''}
-                    ${dest.contato ? `<span style="font-size:12px;color:#2a7ae2;">📞 ${dest.contato}</span><br>` : ''}
+                    ${dest.cpf_cnpj ? `<span style="font-size:12px;color:#666;">ðŸ“„ ${dest.cpf_cnpj}</span><br>` : ''}
+                    ${dest.contato ? `<span style="font-size:12px;color:#2a7ae2;">ðŸ“ž ${dest.contato}</span><br>` : ''}
                     <span style="font-size:12px;color:#888;">${dest.endereco_linha1 || ''} ${dest.endereco_linha2 ? '&mdash; ' + dest.endereco_linha2 : ''}</span>
                 </div>
                 <div style="display:flex; gap:6px; flex-shrink:0; margin-left:12px;">
@@ -181,7 +189,7 @@ function renderListaDestinatarios(arr) {
 
 window.loadHistoricoView = async function () {
     const container = document.getElementById('historico_list');
-    container.innerHTML = '<div style="padding:20px;text-align:center;">↻ Carregando...</div>';
+    container.innerHTML = '<div style="padding:20px;text-align:center;">â†» Carregando...</div>';
 
     const historico = await carregarHistorico();
     window.__historicoCache = historico; // Cache para uso no modal
@@ -196,15 +204,10 @@ window.loadHistoricoView = async function () {
     html += '<th style="padding:10px; text-align:left;">Data</th>';
     html += '<th style="padding:10px; text-align:left;">Destinatário / Unidade</th>';
     html += '<th style="padding:10px; text-align:left;">Ref.</th>';
-    html += '<th style="padding:10px; text-align:center; width:110px;">Status</th>';
     html += '</tr></thead><tbody>';
 
     historico.forEach(reg => {
         const data = new Date(reg.created_at).toLocaleString('pt-BR');
-        const st = reg.status || {};
-        const emailIcon    = st.email    ? '📧' : '<span style="opacity:0.2;">📧</span>';
-        const romaneioIcon = st.romaneio ? '📋' : '<span style="opacity:0.2;">📋</span>';
-        const etiquetaIcon = st.etiqueta ? '🏷️' : '<span style="opacity:0.2;">🏷️</span>';
 
         html += `<tr
             onclick="abrirDetalheHistorico('${reg.id}')"
@@ -212,12 +215,11 @@ window.loadHistoricoView = async function () {
             onmouseover="this.style.background='#fdf5f5'"
             onmouseout="this.style.background=''">
             <td style="padding:10px; white-space:nowrap; font-size:12px; color:#666;">${data}</td>
-            <td style="padding:10px;">
+            <td style="padding:12px 10px;">
                 <strong>${reg.destinatario || ''}</strong>
                 ${reg.unidade && reg.unidade !== reg.destinatario ? `<br><small style="color:#888;">${reg.unidade}</small>` : ''}
             </td>
-            <td style="padding:10px; color:#b70f0f; font-weight:600;">${reg.referencia || '—'}</td>
-            <td style="padding:10px; text-align:center; font-size:16px; letter-spacing:2px;">${emailIcon} ${romaneioIcon} ${etiquetaIcon}</td>
+            <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || '—'}</td>
         </tr>`;
     });
 
@@ -232,7 +234,7 @@ window.abrirDetalheHistorico = function (id) {
 
     window.__detalheHistoricoAtual = reg;
     const st = reg.status || { email: false, etiqueta: false, romaneio: false };
-    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${it.qty} × ${it.desc}</li>`).join('');
+    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${it.qty} Ã— ${it.desc}</li>`).join('');
     const dataFormatada = new Date(reg.created_at).toLocaleString('pt-BR');
 
     function statusItem(campo, label, feito, tipo) {
@@ -247,7 +249,7 @@ window.abrirDetalheHistorico = function (id) {
                 <div style="display:flex; align-items:center; gap:10px;">
                     <div onclick="toggleStatusHistorico('${id}', '${campo}')"
                          style="width:24px; height:24px; border-radius:50%; background:${cor}; color:${textCor}; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:700; transition:all 0.2s; flex-shrink:0; user-select:none;">
-                        ${feito ? '✓' : ''}
+                        ${feito ? 'âœ“' : ''}
                     </div>
                     <span style="font-size:13px; color:#333; ${riscado}">${label}</span>
                 </div>
@@ -259,7 +261,7 @@ window.abrirDetalheHistorico = function (id) {
         <div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #f0f0f0;">
             <div style="font-size:12px; color:#999; margin-bottom:6px;">${dataFormatada}</div>
             <div style="font-size:18px; font-weight:700; color:#222;">${reg.destinatario || ''}</div>
-            ${reg.unidade && reg.unidade !== reg.destinatario ? `<div style="font-size:13px; color:#555; margin-top:2px;">📍 ${reg.unidade}</div>` : ''}
+            ${reg.unidade && reg.unidade !== reg.destinatario ? `<div style="font-size:13px; color:#555; margin-top:2px;">ðŸ“ ${reg.unidade}</div>` : ''}
             ${reg.referencia ? `<div style="font-size:13px; color:#b70f0f; margin-top:4px; font-weight:600;">Ref: ${reg.referencia}</div>` : ''}
             ${reg.transportadora ? `<div style="font-size:12px; color:#888; margin-top:2px;">Transportadora: ${reg.transportadora}</div>` : ''}
         </div>
@@ -272,9 +274,9 @@ window.abrirDetalheHistorico = function (id) {
         <div>
             <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Status das Ações</div>
             <div style="display:flex; flex-direction:column; gap:8px;">
-                ${statusItem('email',    '📧 E-mail enviado',       st.email,    'email')}
-                ${statusItem('romaneio', '📋 Romaneio impresso',    st.romaneio, 'romaneio')}
-                ${statusItem('etiqueta', '🏷️ Etiqueta impressa',    st.etiqueta, 'etiqueta')}
+                ${statusItem('email',    'ðŸ“§ E-mail enviado',       st.email,    'email')}
+                ${statusItem('romaneio', 'ðŸ“‹ Romaneio impresso',    st.romaneio, 'romaneio')}
+                ${statusItem('etiqueta', 'ðŸ·ï¸ Etiqueta impressa',    st.etiqueta, 'etiqueta')}
             </div>
         </div>
     `;
@@ -305,7 +307,7 @@ window.toggleStatusHistorico = async function (id, campo) {
 window.gerarDoHistorico = function (id, tipo) {
     const reg = window.__detalheHistoricoAtual;
     if (!reg || !reg.dados_completos) {
-        alert('Snapshot de dados não disponível para este registro antigo. Gere um novo documento pelo formulário.');
+        alert('Snapshot de dados nÃ£o disponÃ­vel para este registro antigo. Gere um novo documento pelo formulÃ¡rio.');
         return;
     }
     const dados = reg.dados_completos;
@@ -318,11 +320,11 @@ window.gerarDoHistorico = function (id, tipo) {
     const baseHref = location.origin + location.pathname;
     const fullHtml = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><base href="${baseHref}"><title>Documentos para Impressão</title>${linksHtml}<style>body{margin:0;padding:0;background:#f3f3f3;}.page{page-break-before:always;break-before:page;}.page:first-child{page-break-before:avoid;break-before:avoid;}@media print{body{background:#fff;}.page{margin:0;box-shadow:none;page-break-after:always;}}</style></head><body><div style="padding:16px;">${documentsHtml}</div></body></html>`;
     const win = window.open('', '_blank');
-    if (!win) { alert('Bloqueador de popups ativo — permita e tente novamente.'); return; }
+    if (!win) { alert('Bloqueador de popups ativo â€” permita e tente novamente.'); return; }
     win.document.open(); win.document.write(fullHtml); win.document.close(); win.focus();
 };
 
-// Carregar e exibir lista de destinatários
+// Carregar e exibir lista de destinatÃ¡rios
 window.loadDestinatariosList = function () {
     const destinatariosSupabase = window.__destinatariosSupabase || [];
     // Respeita o filtro de pesquisa ativo
@@ -334,7 +336,7 @@ window.loadDestinatariosList = function () {
     }
 };
 
-// Deletar destinatário com confirmação e chamada ao Supabase
+// Deletar destinatÃ¡rio com confirmaÃ§Ã£o e chamada ao Supabase
 window.deleteDestinatario = async function (idx) {
     const dests = window.__destinatariosSupabase || [];
     const d = dests[idx];
@@ -356,6 +358,114 @@ window.deleteDestinatario = async function (idx) {
     await carregarDestinatarios();
     loadDestinatariosList();
 };
+
+
+// --- LÃ“GICA DE PEDIDOS EM ANDAMENTO ---
+window.AppState = AppState;
+AppState.currentDraftId = null;
+
+window.salvarRascunhoAtual = async function() {
+    // Coleta todos os dados do form
+    const dados = collectData();
+    if (dados.items.length === 0) { alert('Adicione pelo menos um item antes de salvar o rascunho.'); return; }
+    
+    const draftId = AppState.currentDraftId; // se existir, vai atualizar, se nao, cria novo
+    
+    // Chama o DB
+    const salvo = await salvarPendente(dados, draftId);
+    
+    if (salvo) {
+        // Guarda o ID que voltou do supabase
+        AppState.currentDraftId = salvo.id;
+    }
+};
+
+window.carregarViewAndamento = async function() {
+    const container = document.getElementById('andamento_list');
+    container.innerHTML = '<div style="padding:20px;text-align:center;">â†» Carregando Rascunhos...</div>';
+
+    const rascunhos = await carregarPendentes();
+    window.__rascunhosCache = rascunhos;
+
+    if (rascunhos.length === 0) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Nenhum pedido em andamento.</div>';
+        return;
+    }
+
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
+    html += '<thead style="background:#f5f5f5; border-bottom:2px solid #ddd;"><tr>';
+    html += '<th style="padding:10px; text-align:left;">Data Criação</th>';
+    html += '<th style="padding:10px; text-align:left;">Destinatário / Unidade</th>';
+    html += '<th style="padding:10px; text-align:left;">Ref.</th>';
+    html += '<th style="padding:10px; text-align:center; width:170px;">Ações</th>';
+    html += '</tr></thead><tbody>';
+
+    rascunhos.forEach(reg => {
+        const data = new Date(reg.created_at).toLocaleString('pt-BR');
+        
+        let destLabel = reg.destinatario || 'Sem Destinatário';
+        if (reg.unidade && reg.unidade !== reg.destinatario) {
+            destLabel += '<br><small style="color:#888;">' + escapeHtml(reg.unidade) + '</small>';
+        }
+
+        html += `<tr
+            style="border-bottom:1px solid #eee; transition:background 0.15s;"
+            onmouseover="this.style.background='#eee'"
+            onmouseout="this.style.background=''">
+            <td style="padding:10px; white-space:nowrap; font-size:12px; color:#666;">${data}</td>
+            <td style="padding:10px;"><strong>${destLabel}</strong></td>
+            <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || 'â€”'}</td>
+            <td style="padding:10px; text-align:center;">
+                <div style="display:flex; justify-content:center; gap:6px;">
+                    <button onclick="editarRascunho('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#007bff; border-radius:4px; color:white;">✏️ Editar</button>
+                    <button onclick="excluirRascunhoUI('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#dc3545; border-radius:4px; color:white;">🗑️ Excluir</button>
+                    <button onclick="concluirRascunhoUI('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#28a745; border-radius:4px; color:white;">✅ Concluir</button>
+                </div>
+            </td>
+        </tr>`;
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+};
+
+window.editarRascunho = function(id) {
+    const rascunho = (window.__rascunhosCache || []).find(r => r.id === id);
+    if(rascunho) {
+        // Preenche o formulÃ¡rio
+        preencherFormulario(rascunho.dados_completos);
+        
+        // Seta o ID atual
+        AppState.currentDraftId = id;
+        
+        // Vai para a aba do romaneio
+        window.switchTab('tab-romaneio');
+    }
+};
+
+window.excluirRascunhoUI = async function(id) {
+    const ok = await deletarPendente(id);
+    if(ok) {
+        if(AppState.currentDraftId === id) AppState.currentDraftId = null;
+        carregarViewAndamento();
+    }
+};
+
+window.concluirRascunhoUI = async function(id) {
+    if(!confirm("Concluir Rascunho?\n\nEle serÃ¡ transferido para o HistÃ³rico DEFINITIVO e apagado daqui. As informaÃ§Ãµes atuais do banco serÃ£o salvas.")) return;
+    
+    // Certifique-se de que se o usuÃ¡rio clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
+    if (AppState.currentDraftId === id) {
+       await salvarRascunhoAtual(); // ForÃ§a update do que ta na tela antes de fechar
+    }
+
+    const ok = await concluirPendente(id);
+    if(ok) {
+        if(AppState.currentDraftId === id) AppState.currentDraftId = null; // reseta a UI ativa se fomos nÃ³s
+        carregarViewAndamento();
+    }
+};
+
 
 // Inicializar ao carregar
 (async function init() {
@@ -382,7 +492,7 @@ function generatePreview() {
     previewEmail.innerHTML = '';
     previewEmail.appendChild(emailElement);
 
-    $('preview-container').style.display = 'grid';
+    abrirModalPreview();
 }
 
 function generateNewTab() {
@@ -419,17 +529,15 @@ function generateNewTab() {
 </html>`;
 
     const win = window.open('', '_blank');
-    if (!win) { alert('Não foi possível abrir nova aba — verifique o bloqueador de popups.'); return; }
+    if (!win) { alert('Não foi possível abrir nova aba â€” verifique o bloqueador de popups.'); return; }
     const doc = win.document;
     doc.open();
     doc.write(fullHtml);
     doc.close();
     try { win.focus(); } catch (e) { }
 
-    salvarNoHistorico({
-        ...AppState.formData,
-        docType: $('doc-selector').value
-    });
+    // salvarNoHistorico removido
+
 }
 
 function copyEmailBody() {
@@ -443,19 +551,19 @@ function buildEmailBodyFromData(d) {
     const isMultiMode = d.client_mode === 'multi';
     let unitDisplay;
     if (isMultiMode) {
-        // Multi: lista todos os clientes únicos dos itens
+        // Multi: lista todos os clientes Ãºnicos dos itens
         const clientes = [...new Set((d.items || []).map(it => it.client).filter(Boolean))];
-        unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes não preenchidos]';
+        unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes nÃ£o preenchidos]';
     } else {
         // Simples: usa o campo Cliente/Unidade
-        unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatário não preenchido]';
+        unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatÃ¡rio nÃ£o preenchido]';
     }
     const refType = d.reference_type || 'ticket';
     const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
+    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referÃªncia]');
     const itemsLines = (Array.isArray(d.items) && d.items.length) ? d.items.map(it => `${it.qty} x ${it.desc}`).join('\n') : '- (sem itens informados) -';
 
-    let emailText = `Olá financeiro,\n\n`;
+    let emailText = `OlÃ¡ financeiro,\n\n`;
     if (refType === 'none') {
         emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} (envio para fornecedor).\n\n`;
     } else {
@@ -464,12 +572,12 @@ function buildEmailBodyFromData(d) {
 
     const lines = [
         emailText,
-        'Serão:', `${itemsLines}`, '',
-        'Segue os dados para emissão:',
+        'SerÃ£o:', `${itemsLines}`, '',
+        'Segue os dados para emissÃ£o:',
         `CNPJ: ${d.dest_doc || ''}`,
-        `Nome/Razão Social: ${d.dest_name || ''}`,
-        `Endereço: ${[d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ')}`,
-        `Provável envio por: ${d.carrier || ''}`, ''
+        `Nome/RazÃ£o Social: ${d.dest_name || ''}`,
+        `EndereÃ§o: ${[d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ')}`,
+        `ProvÃ¡vel envio por: ${d.carrier || ''}`, ''
     ];
     return lines.join('\n');
 }
@@ -487,7 +595,7 @@ function enviarEmailViaMailtoUsingData() {
     }
     const refType = d.reference_type || 'ticket';
     const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
+    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referÃªncia]');
     const assuntoBase = 'Nota fiscal para envio';
     let assunto = assuntoBase;
     if (refType !== 'none' && d.reference && d.reference.trim()) {
@@ -515,7 +623,7 @@ function toggleClientMode() {
     const items = document.querySelectorAll('.item-card');
     const isMulti = document.querySelector('input[name="client_mode"]:checked')?.value === 'multi';
 
-    // Mostrar/ocultar campo de Cliente/Unidade (só no modo simples)
+    // Mostrar/ocultar campo de Cliente/Unidade (sÃ³ no modo simples)
     const unitWrapper = document.getElementById('unit_field_wrapper');
     if (unitWrapper) {
         unitWrapper.style.display = isMulti ? 'none' : 'block';
@@ -547,7 +655,7 @@ function toggleIMEISection(btn) {
     section.style.display = isVisible ? 'none' : 'block';
 }
 
-// Função para selecionar item do autocomplete
+// FunÃ§Ã£o para selecionar item do autocomplete
 window.selectItemSuggestion = function (element) {
     const card = element.closest('.item-card');
     const input = card.querySelector('.it-desc');
@@ -565,7 +673,7 @@ function procesarIMEIs(btn) {
 
     const imeiText = textarea.value.trim();
     if (!imeiText) {
-        alert('Cole os números/IMEIs primeiro.');
+        alert('Cole os nÃºmeros/IMEIs primeiro.');
         return;
     }
 
@@ -593,7 +701,7 @@ function procesarIMEIs(btn) {
     }
 
     if (imeis.length === 0) {
-        alert('Nenhum número válido encontrado.');
+        alert('Nenhum nÃºmero vÃ¡lido encontrado.');
         return;
     }
 
@@ -621,7 +729,7 @@ function procesarIMEIs(btn) {
     // Limpar textarea
     textarea.value = '';
 
-    alert(`${imeis.length} número(s) processado(s)!`);
+    alert(`${imeis.length} nÃºmero(s) processado(s)!`);
 }
 
 function escapeHtml(text) {
@@ -653,17 +761,87 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Inicialização Visual
+    // InicializaÃ§Ã£o Visual
     $('sender_select').value = 'ranor';
     onSenderChange();
     toggleReferenceInput();
-    addItem(); // Adicionar um item padrão
+    addItem(); // Adicionar um item padrÃ£o
 
     // Auth pipeline init (Dispara checagem do Supabase e carrega BD se logado)
     checkSession();
+
+    // Fechar modal de preview com Escape
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const mp = document.getElementById('modal-preview');
+            if (mp && mp.style.display !== 'none') { mp.style.display = 'none'; }
+        }
+    });
+
+    // Fechar modal de preview ao clicar no overlay (fora do card)
+    document.getElementById('modal-preview')?.addEventListener('click', function(e) {
+        if (e.target === this) this.style.display = 'none';
+    });
 });
 window.loadJsonFile = loadJsonFile;
 window.clearBase = clearBase;
 window.exportToJSON = exportToJSON;
 window.salvarDestinatarioAtual = salvarDestinatarioAtual;
 window.loadHistoricoView = loadHistoricoView;
+
+
+window.switchSubTab = function(subTabName) {
+    // 1. Esconder TODAS as sub-abas conhecidas
+    const idsToHide = ['sub-andamento', 'sub-historico', 'sub-destinatarios', 'sub-itens'];
+    idsToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    
+    // 2. Localizar o container da aba atual para desmarcar APENAS os botoes irmãos
+    // Para não remover o active das sub-abas que não estamos vendo
+    const targetEl = document.getElementById(subTabName);
+    if(targetEl) {
+        // Obter o pai ".tab-content"
+        const parentTab = targetEl.closest('.tab-content');
+        if (parentTab) {
+            parentTab.querySelectorAll('.sub-tab').forEach(btn => btn.classList.remove('active'));
+        }
+    }
+    
+    // 3. Mostrar a aba certa e ativar botão
+    if (targetEl) targetEl.style.display = 'block';
+    const atvBtn = document.getElementById('btn-' + subTabName);
+    if(atvBtn) atvBtn.classList.add('active');
+    
+    // 4. Carregar seus dados
+    if(subTabName === 'sub-andamento') {
+        carregarViewAndamento();
+    } else if (subTabName === 'sub-historico') {
+        loadHistoricoView();
+    } else if (subTabName === 'sub-destinatarios') {
+        window.loadDestinatariosList();
+    } else if (subTabName === 'sub-itens') {
+        // importar/chamar renderItemsCRUD da forma certa, já ta no switchTab antigo
+        window.switchTabToItens(); 
+    }
+};
+
+window.switchTabToItens = function() {
+    import('./items.js').then(m => {
+        m.renderItemsCRUD('items_list');
+    }).catch(e => console.error(e));
+};
+
+
+
+
+window.abrirModalPreview = function() {
+    const modal = document.getElementById('modal-preview');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.fecharModalPreview = function() {
+    const modal = document.getElementById('modal-preview');
+    if (modal) modal.style.display = 'none';
+};
