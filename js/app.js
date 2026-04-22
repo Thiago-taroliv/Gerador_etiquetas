@@ -5,7 +5,7 @@ import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clear
 import { composeDocuments, renderEmailPreview } from './render.js';
 import { initializeItems, getItems, renderItemsCRUD, addItem as addItemToDB } from './items.js';
 
-// Anexa todas as funÃ§Ãµes engatilhadas pelo HTML ao escopo Global (window)
+// Anexa todas as funções engatilhadas pelo HTML ao escopo Global (window)
 window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
 window.loadJsonFile = loadJsonFile;
@@ -18,7 +18,7 @@ window.addItem = addItem;
 window.removeItem = removeItem;
 window.clearItems = clearItems;
 
-// FunÃ§Ãµes de abas
+// Funções de abas
 window.switchTab = function (tabName) {
     // Fechar modal de preview ao trocar de aba
     const modalPreview = document.getElementById('modal-preview');
@@ -29,7 +29,7 @@ window.switchTab = function (tabName) {
         tab.style.display = 'none';
     });
 
-    // Resetar estilos dos botÃµes
+    // Resetar estilos dos botões
     document.querySelectorAll('.nav-tab').forEach(btn => {
         btn.classList.remove('active');
     });
@@ -38,12 +38,12 @@ window.switchTab = function (tabName) {
     const selectedTab = document.getElementById(tabName);
     if (selectedTab) selectedTab.style.display = 'block';
 
-    // Destacar botÃ£o ativo (se o evento existir)
+    // Destacar botão ativo (se o evento existir)
     if (window.event && window.event.target) {
         window.event.target.classList.add('active');
     }
 
-    // Carregar dados especÃ­ficos da aba (ESCALÃVEL: FÃ¡cil adicionar novas abas aqui)
+    // Carregar dados específicos da aba (ESCALÁVEL: Fácil adicionar novas abas aqui)
             if (tabName === 'tab-envios') {
         // Por padrão, abre os Rascunhos.
         switchSubTab('sub-andamento');
@@ -58,7 +58,7 @@ window.switchTab = function (tabName) {
 };
 
 
-// Carregar lista de destinatÃ¡rios
+// Carregar lista de destinatários
 window.loadDestinatariosList = function () {
     const destinatariosSupabase = window.__destinatariosSupabase || [];
     const container = document.getElementById('destinatarios_list');
@@ -99,7 +99,7 @@ window.editDestinatario = function (idx) {
     $('modal_dest_addr2').value = d.endereco_linha2 || '';
     $('modal_dest_phone').value = d.contato || '';
 
-    // Guarda o ID para saber que Ã© uma ediÃ§Ã£o e nÃ£o uma inserÃ§Ã£o
+    // Guarda o ID para saber que é uma edição e não uma inserção
     window.__editingDestId = d.id;
 
     // Exibe o modal
@@ -120,14 +120,14 @@ window.salvarModalEdit = async function () {
     const phone = $('modal_dest_phone').value.trim();
 
     if (!nome || !addr1) {
-        alert('Preencha pelo menos o Nome e o EndereÃ§o (Linha 1).');
+        alert('Preencha pelo menos o Nome e o Endereço (Linha 1).');
         return;
     }
 
     const id = window.__editingDestId;
     if (!id) return;
 
-    // Usa o cliente Supabase configurado (nÃ£o a biblioteca global)
+    // Usa o cliente Supabase configurado (não a biblioteca global)
     const { supabaseClient } = await import('./config.js');
     const { error } = await supabaseClient
         .from('destinatarios')
@@ -147,7 +147,7 @@ window.salvarModalEdit = async function () {
     loadDestinatariosList();
 };
 
-// Pesquisa em tempo real na lista de destinatÃ¡rios
+// Pesquisa em tempo real na lista de destinatários
 window.filtrarDestinatarios = function (termo) {
     const todos = window.__destinatariosSupabase || [];
     const lower = termo.toLowerCase();
@@ -159,7 +159,7 @@ window.filtrarDestinatarios = function (termo) {
     renderListaDestinatarios(filtrados);
 };
 
-// Rende a lista de destinatÃ¡rios (aceita array filtrado ou completo)
+// Rende a lista de destinatários (aceita array filtrado ou completo)
 function renderListaDestinatarios(arr) {
     const container = document.getElementById('destinatarios_list');
     if (!arr || arr.length === 0) {
@@ -234,7 +234,7 @@ window.abrirDetalheHistorico = function (id) {
 
     window.__detalheHistoricoAtual = reg;
     const st = reg.status || { email: false, etiqueta: false, romaneio: false };
-    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${it.qty} Ã— ${it.desc}</li>`).join('');
+    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${it.qty} × ${it.desc}</li>`).join('');
     const dataFormatada = new Date(reg.created_at).toLocaleString('pt-BR');
 
     function statusItem(campo, label, feito, tipo) {
@@ -307,7 +307,7 @@ window.toggleStatusHistorico = async function (id, campo) {
 window.gerarDoHistorico = function (id, tipo) {
     const reg = window.__detalheHistoricoAtual;
     if (!reg || !reg.dados_completos) {
-        alert('Snapshot de dados nÃ£o disponÃ­vel para este registro antigo. Gere um novo documento pelo formulÃ¡rio.');
+        alert('Snapshot de dados não disponível para este registro antigo. Gere um novo documento pelo formulário.');
         return;
     }
     const dados = reg.dados_completos;
@@ -320,11 +320,11 @@ window.gerarDoHistorico = function (id, tipo) {
     const baseHref = location.origin + location.pathname;
     const fullHtml = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><base href="${baseHref}"><title>Documentos para Impressão</title>${linksHtml}<style>body{margin:0;padding:0;background:#f3f3f3;}.page{page-break-before:always;break-before:page;}.page:first-child{page-break-before:avoid;break-before:avoid;}@media print{body{background:#fff;}.page{margin:0;box-shadow:none;page-break-after:always;}}</style></head><body><div style="padding:16px;">${documentsHtml}</div></body></html>`;
     const win = window.open('', '_blank');
-    if (!win) { alert('Bloqueador de popups ativo â€” permita e tente novamente.'); return; }
+    if (!win) { alert('Bloqueador de popups ativo – permita e tente novamente.'); return; }
     win.document.open(); win.document.write(fullHtml); win.document.close(); win.focus();
 };
 
-// Carregar e exibir lista de destinatÃ¡rios
+// Carregar e exibir lista de destinatários
 window.loadDestinatariosList = function () {
     const destinatariosSupabase = window.__destinatariosSupabase || [];
     // Respeita o filtro de pesquisa ativo
@@ -336,7 +336,7 @@ window.loadDestinatariosList = function () {
     }
 };
 
-// Deletar destinatÃ¡rio com confirmaÃ§Ã£o e chamada ao Supabase
+// Deletar destinatário com confirmação e chamada ao Supabase
 window.deleteDestinatario = async function (idx) {
     const dests = window.__destinatariosSupabase || [];
     const d = dests[idx];
@@ -360,7 +360,7 @@ window.deleteDestinatario = async function (idx) {
 };
 
 
-// --- LÃ“GICA DE PEDIDOS EM ANDAMENTO ---
+// --- LÓGICA DE PEDIDOS EM ANDAMENTO ---
 window.AppState = AppState;
 AppState.currentDraftId = null;
 
@@ -414,7 +414,7 @@ window.carregarViewAndamento = async function() {
             onmouseout="this.style.background=''">
             <td style="padding:10px; white-space:nowrap; font-size:12px; color:#666;">${data}</td>
             <td style="padding:10px;"><strong>${destLabel}</strong></td>
-            <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || 'â€”'}</td>
+            <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || '–'}</td>
             <td style="padding:10px; text-align:center;">
                 <div style="display:flex; justify-content:center; gap:6px;">
                     <button onclick="editarRascunho('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#007bff; border-radius:4px; color:white;">✏️ Editar</button>
@@ -432,7 +432,7 @@ window.carregarViewAndamento = async function() {
 window.editarRascunho = function(id) {
     const rascunho = (window.__rascunhosCache || []).find(r => r.id === id);
     if(rascunho) {
-        // Preenche o formulÃ¡rio
+        // Preenche o formulário
         preencherFormulario(rascunho.dados_completos);
         
         // Seta o ID atual
@@ -452,16 +452,16 @@ window.excluirRascunhoUI = async function(id) {
 };
 
 window.concluirRascunhoUI = async function(id) {
-    if(!confirm("Concluir Rascunho?\n\nEle serÃ¡ transferido para o HistÃ³rico DEFINITIVO e apagado daqui. As informaÃ§Ãµes atuais do banco serÃ£o salvas.")) return;
+    if(!confirm("Concluir Rascunho?\n\nEle será transferido para o Histórico DEFINITIVO e apagado daqui. As informações atuais do banco serão salvas.")) return;
     
-    // Certifique-se de que se o usuÃ¡rio clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
+    // Certifique-se de que se o usuário clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
     if (AppState.currentDraftId === id) {
-       await salvarRascunhoAtual(); // ForÃ§a update do que ta na tela antes de fechar
+       await salvarRascunhoAtual(); // Força update do que ta na tela antes de fechar
     }
 
     const ok = await concluirPendente(id);
     if(ok) {
-        if(AppState.currentDraftId === id) AppState.currentDraftId = null; // reseta a UI ativa se fomos nÃ³s
+        if(AppState.currentDraftId === id) AppState.currentDraftId = null; // reseta a UI ativa se fomos nós
         carregarViewAndamento();
     }
 };
@@ -529,7 +529,7 @@ function generateNewTab() {
 </html>`;
 
     const win = window.open('', '_blank');
-    if (!win) { alert('Não foi possível abrir nova aba â€” verifique o bloqueador de popups.'); return; }
+    if (!win) { alert('Não foi possível abrir nova aba – verifique o bloqueador de popups.'); return; }
     const doc = win.document;
     doc.open();
     doc.write(fullHtml);
@@ -551,19 +551,19 @@ function buildEmailBodyFromData(d) {
     const isMultiMode = d.client_mode === 'multi';
     let unitDisplay;
     if (isMultiMode) {
-        // Multi: lista todos os clientes Ãºnicos dos itens
+        // Multi: lista todos os clientes únicos dos itens
         const clientes = [...new Set((d.items || []).map(it => it.client).filter(Boolean))];
-        unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes nÃ£o preenchidos]';
+        unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes não preenchidos]';
     } else {
         // Simples: usa o campo Cliente/Unidade
-        unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatÃ¡rio nÃ£o preenchido]';
+        unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatário não preenchido]';
     }
     const refType = d.reference_type || 'ticket';
     const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referÃªncia]');
+    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
     const itemsLines = (Array.isArray(d.items) && d.items.length) ? d.items.map(it => `${it.qty} x ${it.desc}`).join('\n') : '- (sem itens informados) -';
 
-    let emailText = `OlÃ¡ financeiro,\n\n`;
+    let emailText = `Olá financeiro,\n\n`;
     if (refType === 'none') {
         emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} (envio para fornecedor).\n\n`;
     } else {
@@ -572,12 +572,12 @@ function buildEmailBodyFromData(d) {
 
     const lines = [
         emailText,
-        'SerÃ£o:', `${itemsLines}`, '',
-        'Segue os dados para emissÃ£o:',
+        'Serão:', `${itemsLines}`, '',
+        'Segue os dados para emissão:',
         `CNPJ: ${d.dest_doc || ''}`,
-        `Nome/RazÃ£o Social: ${d.dest_name || ''}`,
-        `EndereÃ§o: ${[d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ')}`,
-        `ProvÃ¡vel envio por: ${d.carrier || ''}`, ''
+        `Nome/Razão Social: ${d.dest_name || ''}`,
+        `Endereço: ${[d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ')}`,
+        `Provável envio por: ${d.carrier || ''}`, ''
     ];
     return lines.join('\n');
 }
@@ -595,7 +595,7 @@ function enviarEmailViaMailtoUsingData() {
     }
     const refType = d.reference_type || 'ticket';
     const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referÃªncia]');
+    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
     const assuntoBase = 'Nota fiscal para envio';
     let assunto = assuntoBase;
     if (refType !== 'none' && d.reference && d.reference.trim()) {
@@ -623,7 +623,7 @@ function toggleClientMode() {
     const items = document.querySelectorAll('.item-card');
     const isMulti = document.querySelector('input[name="client_mode"]:checked')?.value === 'multi';
 
-    // Mostrar/ocultar campo de Cliente/Unidade (sÃ³ no modo simples)
+    // Mostrar/ocultar campo de Cliente/Unidade (só no modo simples)
     const unitWrapper = document.getElementById('unit_field_wrapper');
     if (unitWrapper) {
         unitWrapper.style.display = isMulti ? 'none' : 'block';
@@ -655,7 +655,7 @@ function toggleIMEISection(btn) {
     section.style.display = isVisible ? 'none' : 'block';
 }
 
-// FunÃ§Ã£o para selecionar item do autocomplete
+// Função para selecionar item do autocomplete
 window.selectItemSuggestion = function (element) {
     const card = element.closest('.item-card');
     const input = card.querySelector('.it-desc');
@@ -673,7 +673,7 @@ function procesarIMEIs(btn) {
 
     const imeiText = textarea.value.trim();
     if (!imeiText) {
-        alert('Cole os nÃºmeros/IMEIs primeiro.');
+        alert('Cole os números/IMEIs primeiro.');
         return;
     }
 
@@ -701,7 +701,7 @@ function procesarIMEIs(btn) {
     }
 
     if (imeis.length === 0) {
-        alert('Nenhum nÃºmero vÃ¡lido encontrado.');
+        alert('Nenhum número válido encontrado.');
         return;
     }
 
@@ -729,7 +729,7 @@ function procesarIMEIs(btn) {
     // Limpar textarea
     textarea.value = '';
 
-    alert(`${imeis.length} nÃºmero(s) processado(s)!`);
+    alert(`${imeis.length} número(s) processado(s)!`);
 }
 
 function escapeHtml(text) {
@@ -761,11 +761,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // InicializaÃ§Ã£o Visual
+    // Inicialização Visual
     $('sender_select').value = 'ranor';
     onSenderChange();
     toggleReferenceInput();
-    addItem(); // Adicionar um item padrÃ£o
+    addItem(); // Adicionar um item padrão
 
     // Auth pipeline init (Dispara checagem do Supabase e carrega BD se logado)
     checkSession();

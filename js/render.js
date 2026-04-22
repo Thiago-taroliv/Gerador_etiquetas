@@ -180,6 +180,9 @@ export function renderRomaneio(data) {
                     Recebimento
                 </div>
                 <div style="margin-top:12px;font-size:12px;">
+                    <div style="margin-top:8px;">
+                    <strong>Total de Volumes (CAIXAS):</strong> ${escapeHtml(String(data.total_vol))}  
+                    </div>
                     <strong>Data (chegada/assinatura):</strong> _____/_____/_______<br>
                     <strong>Recebedor/Responsável:</strong> ${escapeHtml(data.receiver)}<br><br>
                     <div style="margin-top:20px;border-top:2px solid #333;width:70%;padding-top:8px;">
@@ -190,7 +193,7 @@ export function renderRomaneio(data) {
                     </div>
                 </div>
             </footer>
-            <div style="margin-top:8px;"><strong>Total de Volumes (CAIXAS):</strong> ${escapeHtml(String(data.total_vol))}</div>
+            
         `;
         
         currentPage.innerHTML += footer;
