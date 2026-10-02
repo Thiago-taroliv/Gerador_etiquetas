@@ -1,9 +1,8 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, clearBase, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, atualizarStatusHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente } from './db.js';
+import { loadJsonFile, clearBase, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente } from './db.js';
 import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
-import { renderItemsCRUD } from './items.js';
 import { toast } from './toast.js';
 
 // E-mails do financeiro que recebem o pedido de nota fiscal
@@ -159,23 +158,25 @@ window.filtrarDestinatarios = function (termo) {
 function renderListaDestinatarios(arr) {
     const container = document.getElementById('destinatarios_list');
     if (!arr || arr.length === 0) {
-        container.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">Nenhum destinatário encontrado.</div>';
+        container.innerHTML = '<div class="empty-state">Nenhum destinatário encontrado.</div>';
         return;
     }
     let html = '';
     arr.forEach((dest) => {
         const idx = (window.__destinatariosSupabase || []).indexOf(dest);
         html += `
-            <div style="padding:14px 16px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
+            <div class="list-row">
                 <div>
-                    <strong style="font-size:14px;">${escapeHtml(dest.nome)}</strong><br>
-                    ${dest.cpf_cnpj ? `<span style="font-size:12px;color:#666;">${escapeHtml(dest.cpf_cnpj)}</span><br>` : ''}
-                    ${dest.contato ? `<span style="font-size:12px;color:#2a7ae2;">${escapeHtml(dest.contato)}</span><br>` : ''}
-                    <span style="font-size:12px;color:#888;">${escapeHtml(dest.endereco_linha1)} ${dest.endereco_linha2 ? '&mdash; ' + escapeHtml(dest.endereco_linha2) : ''}</span>
+                    <div class="list-title">${escapeHtml(dest.nome)}</div>
+                    <div class="list-meta">
+                        ${dest.cpf_cnpj ? `${escapeHtml(dest.cpf_cnpj)}<br>` : ''}
+                        ${dest.contato ? `<span class="contato">${escapeHtml(dest.contato)}</span><br>` : ''}
+                        ${escapeHtml(dest.endereco_linha1)} ${dest.endereco_linha2 ? '&mdash; ' + escapeHtml(dest.endereco_linha2) : ''}
+                    </div>
                 </div>
-                <div style="display:flex; gap:6px; flex-shrink:0; margin-left:12px;">
-                    <button onclick="editDestinatario(${idx})" style="padding:6px 12px; background:#1a73e8; color:#fff; border:0; border-radius:6px; cursor:pointer; font-size:12px; margin:0; box-shadow:none;">Editar</button>
-                    <button onclick="deleteDestinatario(${idx})" style="padding:6px 12px; background:#e53935; color:#fff; border:0; border-radius:6px; cursor:pointer; font-size:12px; margin:0; box-shadow:none;">Deletar</button>
+                <div class="btn-group">
+                    <button class="btn-sm btn-neutral" onclick="editDestinatario(${idx})">Editar</button>
+                    <button class="btn-sm btn-danger" onclick="deleteDestinatario(${idx})">Deletar</button>
                 </div>
             </div>
         `;
@@ -185,9 +186,23 @@ function renderListaDestinatarios(arr) {
 
 window.loadHistoricoView = async function () {
     const container = document.getElementById('historico_list');
-    container.innerHTML = '<div style="padding:20px;text-align:center;">Carregando...</div>';
+    container.innerHTML = '<div class="empty-state">Carregando...</div>';
 
-    window.__historicoCache = await carregarHistorico(); // Cache para uso no modal e no filtro
+    const pagina = await carregarHistorico(0);
+    window.__historicoCache = pagina; // Cache para uso no modal e no filtro
+    window.__historicoPagina = 0;
+    window.__historicoTemMais = pagina.length === HISTORICO_POR_PAGINA;
+    renderHistoricoLista();
+};
+
+// Busca os próximos 50 envios e acrescenta à lista
+window.carregarMaisHistorico = async function (btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Carregando...'; }
+    const proxima = (window.__historicoPagina || 0) + 1;
+    const pagina = await carregarHistorico(proxima);
+    window.__historicoCache = (window.__historicoCache || []).concat(pagina);
+    window.__historicoPagina = proxima;
+    window.__historicoTemMais = pagina.length === HISTORICO_POR_PAGINA;
     renderHistoricoLista();
 };
 
@@ -198,7 +213,7 @@ window.renderHistoricoLista = function () {
     const termo = ($('historico_search')?.value || '').trim().toLowerCase();
 
     if (historico.length === 0) {
-        container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Nenhum envio encontrado no histórico.</div>';
+        container.innerHTML = '<div class="empty-state">Nenhum envio encontrado no histórico.</div>';
         return;
     }
 
@@ -207,36 +222,28 @@ window.renderHistoricoLista = function () {
         : historico;
 
     if (filtrados.length === 0) {
-        container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Nenhum envio corresponde ao filtro.</div>';
+        container.innerHTML = '<div class="empty-state">Nenhum envio corresponde ao filtro.</div>';
         return;
     }
 
     const selo = (feito, label) => `<span class="status-badge${feito ? ' done' : ''}">${label}</span>`;
 
-    let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
-    html += '<thead style="background:#f5f5f5; border-bottom:2px solid #ddd;"><tr>';
-    html += '<th style="padding:10px; text-align:left;">Data</th>';
-    html += '<th style="padding:10px; text-align:left;">Destinatário / Unidade</th>';
-    html += '<th style="padding:10px; text-align:left;">Ref.</th>';
-    html += '<th style="padding:10px; text-align:left;">Status</th>';
+    let html = '<table class="data-table"><thead><tr>';
+    html += '<th>Data</th><th>Destinatário / Unidade</th><th>Ref.</th><th>Status</th>';
     html += '</tr></thead><tbody>';
 
     filtrados.forEach(reg => {
         const data = new Date(reg.created_at).toLocaleString('pt-BR');
         const st = reg.status || {};
 
-        html += `<tr
-            onclick="abrirDetalheHistorico('${reg.id}')"
-            style="border-bottom:1px solid #eee; cursor:pointer; transition:background 0.15s;"
-            onmouseover="this.style.background='#fdf5f5'"
-            onmouseout="this.style.background=''">
-            <td style="padding:10px; white-space:nowrap; font-size:12px; color:#666;">${data}</td>
-            <td style="padding:12px 10px;">
+        html += `<tr class="clickable" onclick="abrirDetalheHistorico('${reg.id}')">
+            <td class="col-date">${data}</td>
+            <td>
                 <strong>${escapeHtml(reg.destinatario)}</strong>
-                ${reg.unidade && reg.unidade !== reg.destinatario ? `<br><small style="color:#888;">${escapeHtml(reg.unidade)}</small>` : ''}
+                ${reg.unidade && reg.unidade !== reg.destinatario ? `<br><small>${escapeHtml(reg.unidade)}</small>` : ''}
             </td>
-            <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || '—'}</td>
-            <td style="padding:10px;">
+            <td class="col-ref">${escapeHtml(reg.referencia) || '—'}</td>
+            <td>
                 <div class="status-badges">
                     ${selo(st.email, 'E-mail')}${selo(st.romaneio, 'Romaneio')}${selo(st.etiqueta, 'Etiqueta')}
                 </div>
@@ -245,6 +252,12 @@ window.renderHistoricoLista = function () {
     });
 
     html += '</tbody></table>';
+    html += `<div class="empty-state" style="padding:14px;">
+        ${termo ? `${filtrados.length} de ${historico.length} envios carregados &middot; ` : ''}
+        ${window.__historicoTemMais
+            ? '<button class="btn-sm btn-neutral" onclick="carregarMaisHistorico(this)">Carregar mais antigos</button>'
+            : `${historico.length} envio(s) no total`}
+    </div>`;
     container.innerHTML = html;
 };
 
@@ -423,44 +436,37 @@ window.novoEnvio = function() {
 
 window.carregarViewAndamento = async function() {
     const container = document.getElementById('andamento_list');
-    container.innerHTML = '<div style="padding:20px;text-align:center;">Carregando rascunhos...</div>';
+    container.innerHTML = '<div class="empty-state">Carregando rascunhos...</div>';
 
     const rascunhos = await carregarPendentes();
     window.__rascunhosCache = rascunhos;
 
     if (rascunhos.length === 0) {
-        container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Nenhum pedido em andamento.</div>';
+        container.innerHTML = '<div class="empty-state">Nenhum pedido em andamento.</div>';
         return;
     }
 
-    let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
-    html += '<thead style="background:#f5f5f5; border-bottom:2px solid #ddd;"><tr>';
-    html += '<th style="padding:10px; text-align:left;">Data Criação</th>';
-    html += '<th style="padding:10px; text-align:left;">Destinatário / Unidade</th>';
-    html += '<th style="padding:10px; text-align:left;">Ref.</th>';
-    html += '<th style="padding:10px; text-align:center; width:170px;">Ações</th>';
+    let html = '<table class="data-table"><thead><tr>';
+    html += '<th>Data Criação</th><th>Destinatário / Unidade</th><th>Ref.</th><th style="text-align:center;">Ações</th>';
     html += '</tr></thead><tbody>';
 
     rascunhos.forEach(reg => {
         const data = new Date(reg.created_at).toLocaleString('pt-BR');
 
-        let destLabel = escapeHtml(reg.destinatario || 'Sem Destinatário');
+        let destLabel = `<strong>${escapeHtml(reg.destinatario || 'Sem Destinatário')}</strong>`;
         if (reg.unidade && reg.unidade !== reg.destinatario) {
-            destLabel += '<br><small style="color:#888;">' + escapeHtml(reg.unidade) + '</small>';
+            destLabel += '<br><small>' + escapeHtml(reg.unidade) + '</small>';
         }
 
-        html += `<tr
-            style="border-bottom:1px solid #eee; transition:background 0.15s;"
-            onmouseover="this.style.background='#eee'"
-            onmouseout="this.style.background=''">
-            <td style="padding:10px; white-space:nowrap; font-size:12px; color:#666;">${data}</td>
-            <td style="padding:10px;"><strong>${destLabel}</strong></td>
-            <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || '–'}</td>
-            <td style="padding:10px; text-align:center;">
-                <div style="display:flex; justify-content:center; gap:6px;">
-                    <button onclick="editarRascunho('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#007bff; border-radius:4px; color:white;">✏️ Editar</button>
-                    <button onclick="excluirRascunhoUI('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#dc3545; border-radius:4px; color:white;">🗑️ Excluir</button>
-                    <button onclick="concluirRascunhoUI('${reg.id}')" style="padding:4px 8px; font-size:11px; margin:0; box-shadow:none; background:#28a745; border-radius:4px; color:white;">✅ Concluir</button>
+        html += `<tr>
+            <td class="col-date">${data}</td>
+            <td>${destLabel}</td>
+            <td class="col-ref">${escapeHtml(reg.referencia) || '–'}</td>
+            <td>
+                <div class="btn-group" style="justify-content:center;">
+                    <button class="btn-sm btn-neutral" onclick="editarRascunho('${reg.id}')">Editar</button>
+                    <button class="btn-sm btn-danger" onclick="excluirRascunhoUI('${reg.id}')">Excluir</button>
+                    <button class="btn-sm btn-success" onclick="concluirRascunhoUI('${reg.id}')">Concluir</button>
                 </div>
             </td>
         </tr>`;
@@ -642,9 +648,9 @@ function toggleClientMode() {
             // Adicionar campo de cliente no item
             const descDiv = card.querySelector('div:first-child');
             const clientFieldHTML = `
-                <div style="margin-bottom: 8px;">
-                    <label style="font-size: 12px;">Cliente:</label>
-                    <input class="it-client" type="text" placeholder="Ex: Martin Brower" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:2px; font-size:12px;">
+                <div class="item-client">
+                    <label>Cliente:</label>
+                    <input class="it-client" type="text" placeholder="Ex: Martin Brower">
                 </div>
             `;
             descDiv.insertAdjacentHTML('afterend', clientFieldHTML);
@@ -729,11 +735,10 @@ function procesarIMEIs(btn) {
 
     // Renderizar lista de IMEIs SEM status e SEM emojis
     imeiList.innerHTML = '';
-    imeis.forEach((item, idx) => {
+    imeis.forEach((item) => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'imei-item';
         itemDiv.dataset.imei = item.tipo === 'kit' ? `${item.rastreador}|${item.teclado}` : item.imei;
-        itemDiv.style.cssText = 'padding:4px;margin:2px 0;background:#f5f5f5;border-left:2px solid #333;font-size:13px;font-family:monospace;';
 
         if (item.tipo === 'kit') {
             itemDiv.innerHTML = `<div>Rastreador: <strong>${escapeHtml(item.rastreador)}</strong> | Teclado: <strong>${escapeHtml(item.teclado)}</strong></div>`;

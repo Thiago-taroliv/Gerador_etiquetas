@@ -931,3 +931,161 @@ button.secondary:hover {
     .container { padding: 16px; }
     .row { flex-direction: column; gap: 0; }
 }
+
+/* ============ COMPONENTES REUTILIZÁVEIS ============ */
+
+/* Botões pequenos (ações em listas e tabelas) */
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+    margin: 0;
+    border-radius: 6px;
+    box-shadow: none;
+    white-space: nowrap;
+}
+.btn-sm:hover { transform: none; box-shadow: none; }
+.btn-neutral { background: #fff; color: #333; border: 1px solid var(--border-light); box-shadow: none; }
+.btn-neutral:hover { background: #f5f5f5; color: #222; border-color: #bbb; }
+.btn-danger { background: #d93025; }
+.btn-danger:hover { background: #b3261e; }
+.btn-success { background: #1e8e3e; }
+.btn-success:hover { background: #17732f; }
+.btn-group { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* Estado vazio / carregando */
+.empty-state { padding: 40px 20px; text-align: center; color: #999; font-size: 13px; }
+
+/* Listas (destinatários, itens) */
+.list-box {
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    max-height: 500px;
+    overflow-y: auto;
+    margin-top: 10px;
+    background: #fff;
+}
+.list-row {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+.list-row:last-child { border-bottom: 0; }
+.list-row:hover { background: #fafafa; }
+.list-title { font-size: 14px; font-weight: 700; color: #222; }
+.list-meta { font-size: 12px; color: #888; line-height: 1.5; }
+.list-meta .contato { color: #2a7ae2; }
+
+/* Tabelas (rascunhos, histórico) */
+.table-wrap {
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    overflow-x: auto;
+    background: #fff;
+}
+.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+    background: #f7f7f8;
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border-light);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #666;
+    white-space: nowrap;
+}
+.data-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+.data-table tbody tr:last-child td { border-bottom: 0; }
+.data-table tbody tr:hover { background: #fdf5f5; }
+.data-table tr.clickable { cursor: pointer; }
+.data-table .col-date { white-space: nowrap; font-size: 12px; color: #666; }
+.data-table .col-ref { color: var(--brand); font-weight: 600; }
+.data-table small { color: #888; }
+
+/* Card de item no formulário */
+.item-card {
+    border: 1px solid var(--border-light);
+    padding: 12px;
+    border-radius: 8px;
+    background: #fafafa;
+}
+.item-card label { font-size: 12px; margin-top: 0; }
+.item-card input[type=text],
+.item-card input[type=number] { padding: 7px 10px; font-size: 13px; margin-top: 4px; }
+.item-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: flex-end; }
+.item-row .it-desc-wrap { flex: 1; position: relative; }
+.item-row .it-qty-wrap { width: 80px; }
+.item-row .it-remove { padding: 8px 11px; }
+.item-client { margin-bottom: 8px; }
+.autocomplete-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 0 0 8px 8px;
+    z-index: 100;
+    max-height: 200px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.imei-toggle { width: 100%; }
+.it-imei-section {
+    margin-top: 8px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+}
+.it-imei-section textarea { min-height: 80px; font-size: 12px; margin-top: 4px; }
+.imei-actions { display: flex; gap: 6px; margin-top: 8px; }
+.imei-actions .btn-success { flex: 1; }
+.it-imei-list { margin-top: 8px; }
+.imei-item {
+    padding: 4px 8px;
+    margin: 2px 0;
+    background: #f5f5f5;
+    border-left: 3px solid #333;
+    font-size: 13px;
+    font-family: monospace;
+}
+
+/* Modais (edição de destinatário, detalhe do histórico) */
+.modal-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    animation: slideUp 0.25s ease;
+    box-sizing: border-box;
+}
+.modal-card.wide { max-width: 520px; }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.modal-header strong { font-size: 16px; margin: 0; }
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    color: #888;
+    margin: 0;
+    padding: 0 4px;
+    box-shadow: none;
+}
+.modal-close:hover { background: none; color: #222; transform: none; box-shadow: none; }
+.modal-actions { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+.modal-actions button { margin: 0; }
+
+@media (max-width: 600px) {
+    .modal-card { padding: 20px; }
+    .list-row { flex-direction: column; align-items: flex-start; }
+}

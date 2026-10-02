@@ -39,62 +39,57 @@ export function onClientSelect() {
 export function addItem() {
     const container = $('items_container');
     const itemIdx = container.children.length;
-    
+
     const itemCard = document.createElement('div');
     itemCard.className = 'item-card';
-    itemCard.style.cssText = 'border: 1px solid #ddd; padding: 12px; border-radius: 4px; background: #fafafa;';
     itemCard.dataset.itemIdx = itemIdx;
-    
+
     const multiMode = document.querySelector('input[name="client_mode"]:checked')?.value === 'multi';
-    
+
     let clientFieldHTML = '';
     if (multiMode) {
         clientFieldHTML = `
-            <div style="margin-bottom: 8px;">
-                <label style="font-size: 12px;">Cliente:</label>
-                <input class="it-client" type="text" placeholder="Ex: Martin Brower" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:2px; font-size:12px;">
+            <div class="item-client">
+                <label>Cliente:</label>
+                <input class="it-client" type="text" placeholder="Ex: Martin Brower">
             </div>
         `;
     }
-    
+
     itemCard.innerHTML = `
-        <div style="display:flex;gap:12px;margin-bottom:8px;align-items:flex-start;">
-            <div style="flex:1;position:relative;">
-                <label style="font-size:12px;">Descrição:</label>
-                <input class="it-desc" type="text" value="" placeholder="Começe a digitar..." style="width:100%; padding:4px; border:1px solid #ccc; border-radius:2px; font-size:12px;">
-                <div class="autocomplete-suggestions" style="position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #ccc;border-top:0;border-radius:0 0 2px 2px;display:none;z-index:100;max-height:200px;overflow-y:auto;box-shadow:0 4px 6px rgba(0,0,0,0.1);"></div>
+        <div class="item-row">
+            <div class="it-desc-wrap">
+                <label>Descrição:</label>
+                <input class="it-desc" type="text" value="" placeholder="Comece a digitar...">
+                <div class="autocomplete-suggestions" style="display:none;"></div>
             </div>
-            <div style="width:70px;">
-                <label style="font-size:12px;">Qtd:</label>
-                <input class="it-qty" type="number" value="1" min="1" style="width:100%; padding:4px; border:1px solid #ccc; border-radius:2px;">
+            <div class="it-qty-wrap">
+                <label>Qtd:</label>
+                <input class="it-qty" type="number" value="1" min="1">
             </div>
-            <button type="button" class="it-remove" onclick="removeItem(this)" style="align-self:flex-end; padding:4px 8px; background:#f44; color:#fff; border:0; border-radius:2px; cursor:pointer;">✕</button>
+            <button type="button" class="it-remove btn-sm btn-danger" onclick="removeItem(this)" title="Remover item">✕</button>
         </div>
         ${clientFieldHTML}
-        <div style="cursor:pointer;padding:6px;background:#007bff;color:#fff;border-radius:2px;font-size:12px;text-align:center;" onclick="toggleIMEISection(this)">
-            + Adicionar IMEIs
-        </div>
-        <div class="it-imei-section" style="display:none;margin-top:8px;padding:8px;background:#fff;border:1px solid #007bff;border-radius:2px;">
-            <div style="margin-bottom:8px;">
-                <label style="font-size:12px;font-weight:bold;">IMEIs/Números Identificadores:</label>
-                <div class="small" style="font-size:11px;color:#666;margin-bottom:6px;">Cole em massa (um por linha ou TAB para kits):</div>
-                <textarea class="it-imei-input" placeholder="Cole aqui..." style="width:100%;height:80px;padding:6px;font-family:monospace;font-size:11px;border:1px solid #ccc;border-radius:2px;"></textarea>
+        <button type="button" class="btn-sm btn-neutral imei-toggle" onclick="toggleIMEISection(this)">+ Adicionar IMEIs</button>
+        <div class="it-imei-section" style="display:none;">
+            <label style="font-weight:600;">IMEIs/Números Identificadores:</label>
+            <div class="small" style="margin-top:2px;">Cole em massa (um por linha ou TAB para kits):</div>
+            <textarea class="it-imei-input" placeholder="Cole aqui..."></textarea>
+            <div class="imei-actions">
+                <button type="button" class="btn-sm btn-success" onclick="procesarIMEIs(this)">Processar IMEIs</button>
+                <button type="button" class="btn-sm btn-neutral" onclick="limparIMEIs(this)">Limpar IMEIs</button>
             </div>
-            <div style="display:flex;gap:6px;">
-                <button type="button" onclick="procesarIMEIs(this)" style="flex:1;margin:0;padding:6px;background:#28a745;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:12px;box-shadow:none;">Processar IMEIs</button>
-                <button type="button" onclick="limparIMEIs(this)" style="margin:0;padding:6px 10px;background:#6c757d;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:12px;box-shadow:none;">Limpar IMEIs</button>
-            </div>
-            <div class="it-imei-list" style="margin-top:8px;"></div>
+            <div class="it-imei-list"></div>
         </div>
     `;
-    
+
     container.appendChild(itemCard);
-    
+
     // Adicionar event listeners para autocomplete
     // Busca dentro do próprio card (IDs globais colidiam após remover itens)
     const descInput = itemCard.querySelector('.it-desc');
     const suggestionsDiv = itemCard.querySelector('.autocomplete-suggestions');
-    
+
     // Índice da sugestão destacada pelas setas (-1 = nenhuma)
     let activeIdx = -1;
     const sugestoes = () => suggestionsDiv.querySelectorAll('.ac-item');
@@ -157,7 +152,7 @@ export function addItem() {
             activeIdx = -1;
         }
     });
-    
+
     descInput.addEventListener('blur', function() {
         setTimeout(() => {
             suggestionsDiv.style.display = 'none';
@@ -175,18 +170,18 @@ export function clearItems() {
 
 export function collectData() {
     const isMultiMode = document.querySelector('input[name="client_mode"]:checked')?.value === 'multi';
-    
+
     const items = Array.from(document.querySelectorAll('.item-card'))
         .map(card => {
             const desc = card.querySelector('.it-desc')?.value || '';
             const qty = card.querySelector('.it-qty')?.value || '1';
             // Se modo multi, puxar campo 'Client' preenchido no item; modo simples fica vazio
             const client = isMultiMode ? (card.querySelector('.it-client')?.value || '') : '';
-            
+
             // Coletar IMEIs da seção
             const imeiList = card.querySelector('.it-imei-list');
             const imeis = [];
-            
+
             if (imeiList) {
                 imeiList.querySelectorAll('.imei-item').forEach(item => {
                     const imeiValue = item.dataset.imei;
@@ -201,11 +196,11 @@ export function collectData() {
                     }
                 });
             }
-            
+
             return { desc, qty, client, imeis };
         })
         .filter(it => it.desc.trim() !== '');
-    
+
     return {
         sender_company: $('sender_company').value || '',
         sender_cnpj: $('sender_cnpj').value || '',
@@ -235,12 +230,12 @@ export function preencherFormulario(dados) {
     let senderKey = 'custom';
     if(dados.sender_cnpj === SENDERS['ranor'].cnpj) senderKey = 'ranor';
     if(dados.sender_cnpj === SENDERS['nortrack'].cnpj) senderKey = 'nortrack';
-    
+
     $('sender_select').value = senderKey;
     $('sender_company').value = dados.sender_company || '';
     $('sender_cnpj').value = dados.sender_cnpj || '';
     $('sender_address').value = dados.sender_address || '';
-    
+
     if(senderKey === 'custom') {
         $('sender_company').readOnly = false;
         $('sender_cnpj').readOnly = false;
@@ -261,7 +256,7 @@ export function preencherFormulario(dados) {
     } else {
         document.getElementById('client_mode_single').checked = true;
     }
-    
+
     if($('unit_name')) {
         $('unit_name').value = dados.unit_name || '';
     }
@@ -269,7 +264,7 @@ export function preencherFormulario(dados) {
     // 4. Limpar itens atuais e recriar
     const container = $('items_container');
     container.innerHTML = '';
-    
+
     if (dados.items && dados.items.length > 0) {
         // Toggle Client Mode primeiro para preparar a UI
         try { window.toggleClientMode(); } catch(e){}
@@ -277,17 +272,17 @@ export function preencherFormulario(dados) {
         dados.items.forEach(it => {
             // Reutiliza a função addItem para garantir os listeners (autocomplete)
             // IMPORTANTE: precisamos chamar "addItem()" que insere na UI, depois buscar o ultimo inserido e preencher
-            window.addItem(); 
+            window.addItem();
             const cards = container.querySelectorAll('.item-card');
             const lastCard = cards[cards.length - 1];
 
             if(lastCard) {
                 const descInput = lastCard.querySelector('.it-desc');
                 if(descInput) descInput.value = it.desc || '';
-                
+
                 const qtyInput = lastCard.querySelector('.it-qty');
                 if(qtyInput) qtyInput.value = it.qty || 1;
-                
+
                 if(isMultiMode) {
                     const clientInput = lastCard.querySelector('.it-client');
                     if(clientInput) clientInput.value = it.client || '';
@@ -298,7 +293,7 @@ export function preencherFormulario(dados) {
                     const imeiSection = lastCard.querySelector('.it-imei-section');
                     if(imeiSection) {
                         imeiSection.style.display = 'block'; // forçar exibição
-                        
+
                         // Forçar readonly e cor
                         qtyInput.readOnly = true;
                         qtyInput.style.backgroundColor = '#e8f4f8';
@@ -314,7 +309,7 @@ export function preencherFormulario(dados) {
                                 valA = imeiObj.imei;
                                 labelHtml = '<div>IMEI: <strong>'+escapeHtml(imeiObj.imei)+'</strong></div>';
                             }
-                            imeisHtml += '<div class="imei-item" data-imei="'+escapeHtml(valA)+'" style="padding:4px;margin:2px 0;background:#f5f5f5;border-left:2px solid #333;font-size:13px;font-family:monospace;">'+labelHtml+'</div>';
+                            imeisHtml += '<div class="imei-item" data-imei="'+escapeHtml(valA)+'">'+labelHtml+'</div>';
                         });
                         if(imeiList) imeiList.innerHTML = imeisHtml;
                     }

@@ -162,7 +162,7 @@
                         <fieldset>
                             <legend>Itens (descrição e quantidade)</legend>
 
-                            <div id="items_container" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                            <div id="items_container" style="display:flex; flex-direction:column; gap:10px;"></div>
                             <div class="actions" style="margin-top: 12px;">
                                 <button onclick="addItem()">Adicionar item</button>
                                 <button class="secondary" onclick="clearItems()">Limpar itens</button>
@@ -253,7 +253,7 @@
             <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
             <!-- ABA: GERENCIAR DADOS -->
             <div id="tab-dados" class="tab-content" style="display: none;">
-                
+
                 <!-- SUB-NAV -->
                 <div class="sub-nav">
                     <button class="sub-tab active" id="btn-sub-destinatarios" onclick="switchSubTab('sub-destinatarios')">Destinatários</button>
@@ -311,8 +311,7 @@
                                 oninput="filtrarDestinatarios(this.value)"
                                 style="margin-top:12px;"
                             >
-                            <div id="destinatarios_list"
-                                style="border: 1px solid #ddd; border-radius: 8px; max-height: 500px; overflow-y: auto; margin-top:10px;">
+                            <div id="destinatarios_list" class="list-box">
                             </div>
                         </fieldset>
 
@@ -346,13 +345,13 @@
             </div> <!-- Fim de tab-dados -->
             <!-- ABA: ENVIOS (Unificada) -->
             <div id="tab-envios" class="tab-content" style="display: none;">
-                
+
                 <!-- SUB-NAV -->
                 <div class="sub-nav">
                     <button class="sub-tab active" id="btn-sub-andamento" onclick="switchSubTab('sub-andamento')">Em Andamento (Rascunhos)</button>
                     <button class="sub-tab" id="btn-sub-historico" onclick="switchSubTab('sub-historico')">Histórico Definitivo</button>
                 </div>
-                
+
                 <!-- SUB-ABA: ANDAMENTO -->
                 <div id="sub-andamento" style="display: block;">
                 <div class="grid">
@@ -365,13 +364,13 @@
                             <button class="btn-outline" onclick="carregarViewAndamento()">🔄 Atualizar</button>
                         </div>
 
-                        <div id="andamento_list" style="border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
-                            <div style="padding:40px; text-align:center; color:#999;">Carregando pedidos em andamento...</div>
+                        <div id="andamento_list" class="table-wrap">
+                            <div class="empty-state">Carregando pedidos em andamento...</div>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             <!-- ABA 4: HISTÓRICO DE ENVIOS -->
             <div id="sub-historico" style="display: none;">
                 <div class="grid">
@@ -380,7 +379,7 @@
                             style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                             <div>
                                 <strong>Histórico de Envios</strong>
-                                <div class="small">Confira os últimos 50 documentos e e-mails gerados.</div>
+                                <div class="small">Envios concluídos, do mais recente ao mais antigo. Clique em um envio para ver detalhes e status.</div>
                             </div>
                             <button class="btn-outline" onclick="loadHistoricoView()">🔄 Atualizar</button>
                         </div>
@@ -388,9 +387,9 @@
                         <input id="historico_search" type="text" placeholder="Filtrar por destinatário, unidade ou referência..."
                             oninput="renderHistoricoLista()" style="margin:0 0 12px;">
 
-                        <div id="historico_list" style="border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
+                        <div id="historico_list" class="table-wrap">
                             <!-- A lista será carregada aqui via JS -->
-                            <div style="padding:40px; text-align:center; color:#999;">Carregando histórico...</div>
+                            <div class="empty-state">Carregando histórico...</div>
                         </div>
                     </div>
                 </div>
@@ -403,10 +402,10 @@
 
     <!-- MODAL DE EDIÇÃO DE DESTINATÁRIO -->
     <div id="modal-edit-dest" class="modal-overlay">
-        <div style="background:#fff; border-radius:16px; padding:32px; width:100%; max-width:480px; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.25s ease;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <strong style="font-size:16px;">✏️ Editar Destinatário</strong>
-                <button onclick="fecharModalEdit()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none;">×</button>
+        <div class="modal-card">
+            <div class="modal-header">
+                <strong>Editar Destinatário</strong>
+                <button class="modal-close" onclick="fecharModalEdit()" title="Fechar">&times;</button>
             </div>
 
             <label>Nome / Razão Social</label>
@@ -429,8 +428,8 @@
             <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
             <input id="modal_dest_addr2" type="text" placeholder="">
 
-            <div style="display:flex; gap:10px; margin-top:20px; justify-content:flex-end;">
-                <button onclick="fecharModalEdit()" style="background:#f0f0f0; color:#444; box-shadow:none;">Cancelar</button>
+            <div class="modal-actions">
+                <button class="btn-neutral" onclick="fecharModalEdit()">Cancelar</button>
                 <button onclick="salvarModalEdit()">Salvar Alterações</button>
             </div>
         </div>
@@ -439,10 +438,10 @@
 
     <!-- MODAL DE DETALHE DO HISTORICO -->
     <div id="modal-historico-detalhe" class="modal-overlay">
-        <div style="background:#fff; border-radius:16px; padding:32px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.25s ease;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                <strong style="font-size:16px;">Detalhes do Envio</strong>
-                <button onclick="fecharDetalheHistorico()" style="background:none; border:none; font-size:22px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none;">&times;</button>
+        <div class="modal-card wide">
+            <div class="modal-header">
+                <strong>Detalhes do Envio</strong>
+                <button class="modal-close" onclick="fecharDetalheHistorico()" title="Fechar">&times;</button>
             </div>
             <div id="modal-historico-body"></div>
         </div>
@@ -454,7 +453,7 @@
         <div style="background:#fff; border-radius:16px; width:100%; max-width:960px; margin:0 auto; box-shadow:0 20px 60px rgba(0,0,0,0.3); animation:slideUp 0.25s ease; overflow:hidden;">
             <div style="display:flex; justify-content:space-between; align-items:center; padding:20px 28px; border-bottom:1px solid #eee; background:#fafafa; border-radius:16px 16px 0 0;">
                 <strong style="font-size:16px; color:#222;">&#128196; Pr&#233;-visualiza&#231;&#227;o do Documento</strong>
-                <button onclick="fecharModalPreview()" style="background:none; border:none; font-size:24px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none; line-height:1;">&times;</button>
+                <button class="modal-close" onclick="fecharModalPreview()" title="Fechar (Esc)">&times;</button>
             </div>
             <div class="preview-grid">
                 <div id="preview-documents"></div>

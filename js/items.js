@@ -59,12 +59,12 @@ export function getItems() {
 // Adicionar novo item (salvar no banco)
 export async function addItem(nome) {
     if (!nome || nome.trim() === '') return false;
-    
+
     const upperName = nome.toUpperCase().trim();
-    
+
     // Evitar duplicatas local
     if (cachedItems.includes(upperName)) return false;
-    
+
     const { error } = await supabaseClient
         .from('items')
         .insert([{ nome: upperName }]);
@@ -73,18 +73,18 @@ export async function addItem(nome) {
         console.error('Erro ao adicionar item:', error.message);
         return false;
     }
-    
+
     // Adicionar ao cache local
     cachedItems.push(upperName);
     cachedItems.sort();
-    
+
     return true;
 }
 
 // Deletar item
 export async function deleteItem(nome) {
     const upperName = nome.toUpperCase().trim();
-    
+
     const { error } = await supabaseClient
         .from('items')
         .delete()
@@ -94,17 +94,17 @@ export async function deleteItem(nome) {
         console.error('Erro ao deletar item:', error.message);
         return false;
     }
-    
+
     // Remover do cache
     cachedItems = cachedItems.filter(item => item !== upperName);
-    
+
     return true;
 }
 
 // Buscar items por substring para autocomplete
 export function searchItems(query) {
     if (!query || query.trim() === '') return [];
-    
+
     const q = query.toUpperCase().trim();
     return cachedItems.filter(item => item.includes(q));
 }
@@ -112,10 +112,10 @@ export function searchItems(query) {
 // Renderizar dropdown de autocomplete
 export function renderItemsDropdown(container, query, onSelect) {
     container.innerHTML = '';
-    
+
     const results = searchItems(query);
     const limitedResults = results.slice(0, 8); // Limitar a 8 sugestões
-    
+
     if (limitedResults.length === 0) {
         const noResults = document.createElement('div');
         noResults.style.cssText = 'padding:8px;color:#999;font-size:12px;';
@@ -123,7 +123,7 @@ export function renderItemsDropdown(container, query, onSelect) {
         container.appendChild(noResults);
         return;
     }
-    
+
     limitedResults.forEach(item => {
         const div = document.createElement('div');
         div.style.cssText = 'padding:8px;cursor:pointer;background:#fff;border-bottom:1px solid #eee;font-size:12px;';
@@ -139,33 +139,33 @@ export function renderItemsDropdown(container, query, onSelect) {
 export function renderItemsCRUD(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
-    
+
     const items = getItems();
-    
+
     let html = `
-        <div style="margin-bottom:16px;">
-            <h3 style="color:var(--brand);margin-bottom:12px;">Gerenciar Itens/Produtos</h3>
-            <div style="margin-bottom:12px;display:flex;gap:8px;">
-                <input type="text" id="new_item_input" placeholder="Digite novo item..." style="flex:1;padding:8px;border:1px solid #ccc;border-radius:2px;font-size:12px;">
-                <button onclick="window.addNewItem_global()" style="padding:8px 16px;background:var(--brand);color:#fff;border:0;border-radius:2px;cursor:pointer;">+ Adicionar</button>
-            </div>
-            <div style="border:1px solid #ddd;border-radius:2px;max-height:400px;overflow-y:auto;">
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;">
+            <input type="text" id="new_item_input" placeholder="Digite novo item..."
+                onkeydown="if(event.key==='Enter') window.addNewItem_global()">
+            <button onclick="window.addNewItem_global()" style="margin:0;white-space:nowrap;">+ Adicionar</button>
+        </div>
+        <div class="small">${items.length} item(ns) cadastrado(s)</div>
+        <div class="list-box">
     `;
-    
+
     if (items.length === 0) {
-        html += '<div style="padding:16px;text-align:center;color:#999;">Nenhum item cadastrado</div>';
+        html += '<div class="empty-state">Nenhum item cadastrado</div>';
     } else {
         items.forEach(item => {
             html += `
-                <div style="padding:8px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+                <div class="list-row" style="padding:8px 16px;">
                     <span style="font-size:13px;">${escapeHtml(item)}</span>
-                    <button data-item="${escapeHtml(item)}" onclick="window.deleteItem_global(this.dataset.item)" style="padding:4px 8px;background:#f44;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:11px;">Deletar</button>
+                    <button class="btn-sm btn-danger" data-item="${escapeHtml(item)}" onclick="window.deleteItem_global(this.dataset.item)">Deletar</button>
                 </div>
             `;
         });
     }
-    
-    html += '</div></div>';
+
+    html += '</div>';
     container.innerHTML = html;
 }
 
@@ -173,13 +173,13 @@ export function renderItemsCRUD(containerId) {
 window.addNewItem_global = async function() {
     const input = document.getElementById('new_item_input');
     if (!input) return;
-    
+
     const nome = input.value.trim();
     if (!nome) {
         alert('Digite o nome do item');
         return;
     }
-    
+
     const success = await addItem(nome);
     if (success) {
         input.value = '';
@@ -195,7 +195,7 @@ window.addNewItem_global = async function() {
 // Função global para deletar item
 window.deleteItem_global = async function(nome) {
     if (!confirm(`Deletar "${nome}"?`)) return;
-    
+
     const success = await deleteItem(nome);
     if (success) {
         // Renderizar novamente

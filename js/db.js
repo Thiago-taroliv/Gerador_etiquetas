@@ -186,12 +186,16 @@ export async function salvarNoHistorico(dados) {
     return true;
 }
 
-export async function carregarHistorico() {
+export const HISTORICO_POR_PAGINA = 50;
+
+// pagina 0 = 50 mais recentes, pagina 1 = os 50 seguintes, ...
+export async function carregarHistorico(pagina = 0) {
+    const inicio = pagina * HISTORICO_POR_PAGINA;
     const { data, error } = await supabaseClient
         .from('historico')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(inicio, inicio + HISTORICO_POR_PAGINA - 1);
 
     if (error) {
         console.error('Erro ao buscar histórico:', error.message);
