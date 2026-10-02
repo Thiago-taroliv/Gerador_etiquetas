@@ -5,7 +5,8 @@ import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clear
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
-import { gerarLinhasPlanilha, copiarLinhasPlanilha } from './planilha.js';
+import { gerarLinhasPlanilha } from './planilha.js';
+import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto } from './planilhaPreview.js';
 
 // E-mails do financeiro que recebem o pedido de nota fiscal
 const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
@@ -316,7 +317,7 @@ window.abrirDetalheHistorico = function (id) {
         </div>
 
         <div class="modal-actions">
-            <button class="btn-neutral" onclick="copiarPlanilhaDoHistorico('${id}')">Copiar linhas p/ Planilha</button>
+            <button class="btn-neutral" onclick="copiarPlanilhaDoHistorico('${id}')">Linhas p/ Planilha</button>
         </div>
     `;
 
@@ -551,20 +552,24 @@ window.concluirRascunhoUI = async function(id) {
 
 
 // --- PLANILHA DE CONTROLE ---
-async function copiarLinhas(dados, dataEnvio) {
+// Os botões abrem um preview editável; a cópia acontece no botão "Copiar linhas" do modal
+window.fecharPreviewPlanilha = () => fecharPreviewPlanilha();
+window.alternarGrupoPlanilha = alternarGrupoPlanilha;
+window.adicionarLinhaPlanilha = adicionarLinhaPlanilha;
+window.restaurarPlanilha = restaurarPlanilha;
+window.confirmarCopiaPlanilha = confirmarCopiaPlanilha;
+
+function abrirLinhas(dados, dataEnvio, titulo) {
     const linhas = gerarLinhasPlanilha(dados, dataEnvio);
     if (linhas.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return; }
-    try {
-        await copiarLinhasPlanilha(linhas);
-        toast(`${linhas.length} linha(s) copiada(s). Na planilha, clique na coluna OS/Ticket da 1ª linha vazia e cole (Ctrl+V).`, 'success', 6000);
-    } catch (e) {
-        alert('Não foi possível copiar: ' + e.message);
-    }
+    abrirPreviewPlanilha(linhas, titulo);
 }
 
-// Botão "Copiar p/ Planilha" do formulário
+// Botão "Linhas p/ Planilha" do formulário
 window.copiarParaPlanilha = function () {
-    copiarLinhas(collectData());
+    const d = collectData();
+    const ref = d.reference_type !== 'none' && d.reference ? ` · ${d.reference_type === 'os' ? 'OS' : 'Ticket'} ${d.reference}` : '';
+    abrirLinhas(d, undefined, `Linhas para a planilha${ref}`);
 };
 
 // Botão no detalhe do histórico (data de envio = data do registro)
@@ -574,7 +579,8 @@ window.copiarPlanilhaDoHistorico = function (id) {
         toast('Este registro antigo não tem os dados completos para gerar as linhas.', 'warning');
         return;
     }
-    copiarLinhas(reg.dados_completos, new Date(reg.created_at).toLocaleDateString('pt-BR'));
+    abrirLinhas(reg.dados_completos, new Date(reg.created_at).toLocaleDateString('pt-BR'),
+        `Linhas para a planilha · ${reg.destinatario || ''}`);
 };
 
 // Confere os dados mínimos antes de gerar documentos ou e-mail.
@@ -872,6 +878,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const aberto = (id) => $(id)?.style.display === 'flex';
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
+        // Fecha só o modal de cima (o da planilha pode estar aberto sobre o do histórico)
+        if (previewPlanilhaAberto()) { fecharPreviewPlanilha(); return; }
         if (aberto('modal-preview')) fecharModalPreview();
         if (aberto('modal-edit-dest')) fecharModalEdit();
         if (aberto('modal-historico-detalhe')) fecharDetalheHistorico();

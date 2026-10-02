@@ -208,6 +208,8 @@
                                         <option value="">—</option>
                                         <option value="INS">INS</option>
                                         <option value="COR">COR</option>
+                                        <option value="MAN">MAN</option>
+                                        <option value="FOR">FOR</option>
                                     </select>
                                 </div>
                             </div>
@@ -229,7 +231,7 @@
                                 <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
                                 <button class="secondary" type="button" onclick="salvarRascunhoAtual()">Salvar Rascunho</button>
                                 <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
-                                <button class="secondary" type="button" onclick="copiarParaPlanilha()" title="Copia as linhas no padrão da planilha de controle para colar no Excel">Copiar p/ Planilha</button>
+                                <button class="secondary" type="button" onclick="copiarParaPlanilha()" title="Abre as linhas no padrão da planilha de controle para conferir, editar e copiar">Linhas p/ Planilha</button>
                                 <button class="secondary" type="button" onclick="novoEnvio()">Novo Envio</button>
                             </div>
                         </fieldset>
@@ -258,9 +260,10 @@
                             cadastra o item.<br><br>
                             • "Salvar Rascunho" guarda o envio na aba Envios para continuar depois. Use "Novo Envio"
                             para começar outro sem sobrescrever o rascunho aberto.<br><br>
-                            • "Copiar p/ Planilha" gera uma linha por equipamento no padrão da planilha de
-                            controle. Na planilha, clique na coluna OS/Ticket da primeira linha vazia e cole
-                            (Ctrl+V); depois complete a parte de configuração.<br><br>
+                            • "Linhas p/ Planilha" abre uma tabela no padrão da planilha de controle para
+                            conferir e editar antes de copiar. Colar uma lista numa célula preenche para baixo.
+                            Depois, na planilha, clique na coluna OS/Ticket da primeira linha vazia e cole
+                            (Ctrl+V).<br><br>
                             • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
                             • Para imprimir sem cortes: "Gerar em Nova Aba" → imprimir com escala 100% e margens
                             nenhuma.
@@ -466,6 +469,45 @@
         </div>
     </div>
 
+
+    <!-- MODAL DE LINHAS PARA A PLANILHA (preview editável) -->
+    <div id="modal-planilha" class="modal-overlay">
+        <div class="modal-card planilha-card">
+            <div class="modal-header">
+                <div>
+                    <strong id="planilha_titulo">Linhas para a planilha</strong>
+                    <div class="small" id="planilha_resumo" style="margin-top:2px;"></div>
+                </div>
+                <button class="modal-close" onclick="fecharPreviewPlanilha()" title="Fechar (Esc)">&times;</button>
+            </div>
+
+            <div class="planilha-toolbar">
+                <div class="planilha-grupos">
+                    <span class="small" style="margin:0;">Mostrar:</span>
+                    <label class="chip g-dados"><input type="checkbox" checked onchange="alternarGrupoPlanilha('dados', this.checked)"> Dados</label>
+                    <label class="chip g-config"><input type="checkbox" checked onchange="alternarGrupoPlanilha('config', this.checked)"> Configuração</label>
+                    <label class="chip g-envio"><input type="checkbox" checked onchange="alternarGrupoPlanilha('envio', this.checked)"> Envio</label>
+                </div>
+                <div class="planilha-dicas small">
+                    <b>Enter</b>/<b>↑↓</b> navega na coluna &middot; colar uma lista numa célula preenche para baixo &middot;
+                    <b>⇣</b> no cabeçalho repete o valor da 1ª linha
+                </div>
+                <button type="button" class="btn-sm btn-neutral" onclick="adicionarLinhaPlanilha()">+ Linha</button>
+            </div>
+
+            <div class="planilha-wrap">
+                <table id="planilha_tabela" class="planilha-table"></table>
+            </div>
+            <datalist id="planilha_tipos"></datalist>
+
+            <div class="modal-actions">
+                <button class="btn-neutral" onclick="restaurarPlanilha()">Restaurar original</button>
+                <span style="flex:1;"></span>
+                <button class="btn-neutral" onclick="fecharPreviewPlanilha()">Cancelar</button>
+                <button onclick="confirmarCopiaPlanilha()">Copiar linhas</button>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL DE PREVIEW -->
     <div id="modal-preview" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:9998; justify-content:center; align-items:flex-start; padding:20px; overflow-y:auto;">
