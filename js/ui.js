@@ -212,6 +212,8 @@ export function collectData() {
         dest_addr2: $('dest_addr2').value || '',
         dest_phone: $('dest_phone').value || '',
         doc_type: $('doc-selector')?.value || '',
+        planilha_cliente: $('planilha_cliente')?.value.trim() || '',
+        planilha_tipo: $('planilha_tipo')?.value || '',
         total_vol: Math.max(1, parseInt($('total_vol').value || 1)),
         reference: $('reference').value || '',
         reference_type: $('reference_type')?.value || 'ticket',
@@ -332,6 +334,8 @@ export function preencherFormulario(dados) {
     $('carrier').value = dados.carrier || 'Jadlog';
     $('receiver').value = dados.receiver || '';
     if ($('doc-selector')) $('doc-selector').value = dados.doc_type || '';
+    if ($('planilha_cliente')) $('planilha_cliente').value = dados.planilha_cliente || '';
+    if ($('planilha_tipo')) $('planilha_tipo').value = dados.planilha_tipo || '';
 }
 
 // Volta o formulário ao estado inicial (novo envio)
@@ -341,7 +345,7 @@ export function limparFormulario() {
 
     window.filtrarSeletorDestinatarios?.(''); // tira o filtro do seletor
     $('dest_doc').style.borderColor = '';
-    ['client_search', 'dest_cep', 'dest_name', 'dest_doc', 'dest_phone', 'dest_addr1', 'dest_addr2', 'unit_name', 'receiver'].forEach(id => {
+    ['client_search', 'dest_cep', 'dest_name', 'dest_doc', 'dest_phone', 'dest_addr1', 'dest_addr2', 'unit_name', 'receiver', 'planilha_cliente', 'planilha_tipo'].forEach(id => {
         if ($(id)) $(id).value = '';
     });
 

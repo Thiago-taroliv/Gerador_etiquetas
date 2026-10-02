@@ -5,6 +5,7 @@ import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clear
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
+import { gerarLinhasPlanilha, copiarLinhasPlanilha } from './planilha.js';
 
 // E-mails do financeiro que recebem o pedido de nota fiscal
 const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
@@ -313,6 +314,10 @@ window.abrirDetalheHistorico = function (id) {
                 ${statusItem('etiqueta', 'Etiqueta impressa',    st.etiqueta, 'etiqueta')}
             </div>
         </div>
+
+        <div class="modal-actions">
+            <button class="btn-neutral" onclick="copiarPlanilhaDoHistorico('${id}')">Copiar linhas p/ Planilha</button>
+        </div>
     `;
 
     document.getElementById('modal-historico-detalhe').style.display = 'flex';
@@ -544,6 +549,33 @@ window.concluirRascunhoUI = async function(id) {
     }
 };
 
+
+// --- PLANILHA DE CONTROLE ---
+async function copiarLinhas(dados, dataEnvio) {
+    const linhas = gerarLinhasPlanilha(dados, dataEnvio);
+    if (linhas.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return; }
+    try {
+        await copiarLinhasPlanilha(linhas);
+        toast(`${linhas.length} linha(s) copiada(s). Na planilha, clique na coluna OS/Ticket da 1ª linha vazia e cole (Ctrl+V).`, 'success', 6000);
+    } catch (e) {
+        alert('Não foi possível copiar: ' + e.message);
+    }
+}
+
+// Botão "Copiar p/ Planilha" do formulário
+window.copiarParaPlanilha = function () {
+    copiarLinhas(collectData());
+};
+
+// Botão no detalhe do histórico (data de envio = data do registro)
+window.copiarPlanilhaDoHistorico = function (id) {
+    const reg = (window.__historicoCache || []).find(r => String(r.id) === String(id));
+    if (!reg || !reg.dados_completos) {
+        toast('Este registro antigo não tem os dados completos para gerar as linhas.', 'warning');
+        return;
+    }
+    copiarLinhas(reg.dados_completos, new Date(reg.created_at).toLocaleDateString('pt-BR'));
+};
 
 // Confere os dados mínimos antes de gerar documentos ou e-mail.
 // Erros bloqueiam; avisos perguntam se quer continuar.

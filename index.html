@@ -196,6 +196,21 @@
 
                             <label>Recebedor/Responsável (assinatura)</label>
                             <input id="receiver" type="text" value="">
+
+                            <div class="row">
+                                <div class="col">
+                                    <label>Cliente <span style="font-weight:400;color:#888;font-size:12px;">(planilha)</span></label>
+                                    <input id="planilha_cliente" type="text" placeholder="Ex: VAMOS">
+                                </div>
+                                <div class="col">
+                                    <label>Tipo <span style="font-weight:400;color:#888;font-size:12px;">(planilha)</span></label>
+                                    <select id="planilha_tipo">
+                                        <option value="">—</option>
+                                        <option value="INS">INS</option>
+                                        <option value="COR">COR</option>
+                                    </select>
+                                </div>
+                            </div>
                         </fieldset>
 
                         <!-- SEÇÃO: AÇÕES -->
@@ -214,6 +229,7 @@
                                 <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
                                 <button class="secondary" type="button" onclick="salvarRascunhoAtual()">Salvar Rascunho</button>
                                 <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
+                                <button class="secondary" type="button" onclick="copiarParaPlanilha()" title="Copia as linhas no padrão da planilha de controle para colar no Excel">Copiar p/ Planilha</button>
                                 <button class="secondary" type="button" onclick="novoEnvio()">Novo Envio</button>
                             </div>
                         </fieldset>
@@ -242,6 +258,9 @@
                             cadastra o item.<br><br>
                             • "Salvar Rascunho" guarda o envio na aba Envios para continuar depois. Use "Novo Envio"
                             para começar outro sem sobrescrever o rascunho aberto.<br><br>
+                            • "Copiar p/ Planilha" gera uma linha por equipamento no padrão da planilha de
+                            controle. Na planilha, clique na coluna OS/Ticket da primeira linha vazia e cole
+                            (Ctrl+V); depois complete a parte de configuração.<br><br>
                             • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
                             • Para imprimir sem cortes: "Gerar em Nova Aba" → imprimir com escala 100% e margens
                             nenhuma.
