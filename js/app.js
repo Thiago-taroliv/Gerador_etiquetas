@@ -1,9 +1,13 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, clearBase, salvarDestinatarioAtual, exportToJSON, salvarNoHistorico, carregarHistorico, atualizarStatusHistorico , salvarPendente, carregarPendentes, deletarPendente, concluirPendente} from './db.js';
-import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems , preencherFormulario} from './ui.js';
-import { composeDocuments, renderEmailPreview } from './render.js';
-import { initializeItems, getItems, renderItemsCRUD, addItem as addItemToDB } from './items.js';
+import { loadJsonFile, clearBase, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, atualizarStatusHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente } from './db.js';
+import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
+import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
+import { renderItemsCRUD } from './items.js';
+import { toast } from './toast.js';
+
+// E-mails do financeiro que recebem o pedido de nota fiscal
+const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
 
 // Anexa todas as funções engatilhadas pelo HTML ao escopo Global (window)
 window.handleLogin = handleLogin;
@@ -17,6 +21,12 @@ window.onClientSelect = onClientSelect;
 window.addItem = addItem;
 window.removeItem = removeItem;
 window.clearItems = clearItems;
+window.buscarCep = buscarCep;
+
+// Filtro do seletor "Selecionar do cadastro" na aba de romaneio
+window.filtrarSeletorDestinatarios = function (termo) {
+    popularSelectDestinatarios(window.__destinatariosSupabase || [], termo);
+};
 
 // Funções de abas
 window.switchTab = function (tabName) {
@@ -38,54 +48,20 @@ window.switchTab = function (tabName) {
     const selectedTab = document.getElementById(tabName);
     if (selectedTab) selectedTab.style.display = 'block';
 
-    // Destacar botão ativo (se o evento existir)
-    if (window.event && window.event.target) {
-        window.event.target.classList.add('active');
-    }
+    // Destacar botão da aba (funciona também quando chamado via código)
+    const activeBtn = document.querySelector(`.nav-tab[data-tab="${tabName}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
 
     // Carregar dados específicos da aba (ESCALÁVEL: Fácil adicionar novas abas aqui)
-            if (tabName === 'tab-envios') {
+    if (tabName === 'tab-envios') {
         // Por padrão, abre os Rascunhos.
         switchSubTab('sub-andamento');
     } else if (tabName === 'tab-dados') {
         // Por padrão, abre os Destinatários.
         switchSubTab('sub-destinatarios');
-    } else if (tabName === 'tab-itens') {
-        renderItemsCRUD('items_list');
-    } else if (tabName === 'tab-historico') {
-        loadHistoricoView();
     }
 };
 
-
-// Carregar lista de destinatários
-window.loadDestinatariosList = function () {
-    const destinatariosSupabase = window.__destinatariosSupabase || [];
-    const container = document.getElementById('destinatarios_list');
-
-    if (destinatariosSupabase.length === 0) {
-        container.innerHTML = '<div style="padding:16px;text-align:center;color:#999;">Nenhum destinatário cadastrado</div>';
-        return;
-    }
-
-    let html = '';
-    destinatariosSupabase.forEach((dest, idx) => {
-        html += `
-            <div style="padding:12px;border-bottom:1px solid #eee;">
-                <strong>${dest.nome}</strong><br>
-                <small>${dest.cpf_cnpj}</small><br>
-                <small>${dest.endereco_linha1}</small><br>
-                <small>${dest.endereco_linha2}</small><br>
-                <div style="margin-top:8px;">
-                    <button onclick="editDestinatario(${idx})" style="padding:4px 8px;background:#007bff;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:11px;margin-right:4px;">Editar</button>
-                    <button onclick="deleteDestinatario(${idx})" style="padding:4px 8px;background:#f44;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:11px;">Deletar</button>
-                </div>
-            </div>
-        `;
-    });
-
-    container.innerHTML = html;
-};
 
 window.editDestinatario = function (idx) {
     const dests = window.__destinatariosSupabase || [];
@@ -120,7 +96,7 @@ window.salvarModalEdit = async function () {
     const phone = $('modal_dest_phone').value.trim();
 
     if (!nome || !addr1) {
-        alert('Preencha pelo menos o Nome e o Endereço (Linha 1).');
+        toast('Preencha pelo menos o Nome e o Endereço (Linha 1).', 'warning');
         return;
     }
 
@@ -145,6 +121,26 @@ window.salvarModalEdit = async function () {
     const { carregarDestinatarios } = await import('./db.js');
     await carregarDestinatarios();
     loadDestinatariosList();
+    toast('Destinatário atualizado.');
+};
+
+// Botão "Salvar Novo Destinatário" da aba Gerenciar Dados
+window.saveNewDestinatario = async function () {
+    const nome = $('new_dest_name').value.trim();
+    if (!nome) { toast('Preencha pelo menos o Nome.', 'warning'); return; }
+
+    const ok = await salvarOuAtualizarDestinatario({
+        nome,
+        cpf_cnpj: $('new_dest_doc').value.trim(),
+        endereco_linha1: $('new_dest_addr1').value.trim(),
+        endereco_linha2: $('new_dest_addr2').value.trim(),
+        contato: $('new_dest_phone').value.trim()
+    });
+    if (ok) {
+        ['new_dest_name', 'new_dest_doc', 'new_dest_phone', 'new_dest_cep', 'new_dest_addr1', 'new_dest_addr2']
+            .forEach(id => { if ($(id)) $(id).value = ''; });
+        loadDestinatariosList();
+    }
 };
 
 // Pesquisa em tempo real na lista de destinatários
@@ -172,10 +168,10 @@ function renderListaDestinatarios(arr) {
         html += `
             <div style="padding:14px 16px; border-bottom:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                    <strong style="font-size:14px;">${dest.nome}</strong><br>
-                    ${dest.cpf_cnpj ? `<span style="font-size:12px;color:#666;">ðŸ“„ ${dest.cpf_cnpj}</span><br>` : ''}
-                    ${dest.contato ? `<span style="font-size:12px;color:#2a7ae2;">ðŸ“ž ${dest.contato}</span><br>` : ''}
-                    <span style="font-size:12px;color:#888;">${dest.endereco_linha1 || ''} ${dest.endereco_linha2 ? '&mdash; ' + dest.endereco_linha2 : ''}</span>
+                    <strong style="font-size:14px;">${escapeHtml(dest.nome)}</strong><br>
+                    ${dest.cpf_cnpj ? `<span style="font-size:12px;color:#666;">${escapeHtml(dest.cpf_cnpj)}</span><br>` : ''}
+                    ${dest.contato ? `<span style="font-size:12px;color:#2a7ae2;">${escapeHtml(dest.contato)}</span><br>` : ''}
+                    <span style="font-size:12px;color:#888;">${escapeHtml(dest.endereco_linha1)} ${dest.endereco_linha2 ? '&mdash; ' + escapeHtml(dest.endereco_linha2) : ''}</span>
                 </div>
                 <div style="display:flex; gap:6px; flex-shrink:0; margin-left:12px;">
                     <button onclick="editDestinatario(${idx})" style="padding:6px 12px; background:#1a73e8; color:#fff; border:0; border-radius:6px; cursor:pointer; font-size:12px; margin:0; box-shadow:none;">Editar</button>
@@ -189,25 +185,45 @@ function renderListaDestinatarios(arr) {
 
 window.loadHistoricoView = async function () {
     const container = document.getElementById('historico_list');
-    container.innerHTML = '<div style="padding:20px;text-align:center;">â†» Carregando...</div>';
+    container.innerHTML = '<div style="padding:20px;text-align:center;">Carregando...</div>';
 
-    const historico = await carregarHistorico();
-    window.__historicoCache = historico; // Cache para uso no modal
+    window.__historicoCache = await carregarHistorico(); // Cache para uso no modal e no filtro
+    renderHistoricoLista();
+};
+
+// Desenha a tabela do histórico aplicando o filtro digitado
+window.renderHistoricoLista = function () {
+    const container = document.getElementById('historico_list');
+    const historico = window.__historicoCache || [];
+    const termo = ($('historico_search')?.value || '').trim().toLowerCase();
 
     if (historico.length === 0) {
         container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Nenhum envio encontrado no histórico.</div>';
         return;
     }
 
+    const filtrados = termo
+        ? historico.filter(r => [r.destinatario, r.unidade, r.referencia].join(' ').toLowerCase().includes(termo))
+        : historico;
+
+    if (filtrados.length === 0) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;color:#999;">Nenhum envio corresponde ao filtro.</div>';
+        return;
+    }
+
+    const selo = (feito, label) => `<span class="status-badge${feito ? ' done' : ''}">${label}</span>`;
+
     let html = '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
     html += '<thead style="background:#f5f5f5; border-bottom:2px solid #ddd;"><tr>';
     html += '<th style="padding:10px; text-align:left;">Data</th>';
     html += '<th style="padding:10px; text-align:left;">Destinatário / Unidade</th>';
     html += '<th style="padding:10px; text-align:left;">Ref.</th>';
+    html += '<th style="padding:10px; text-align:left;">Status</th>';
     html += '</tr></thead><tbody>';
 
-    historico.forEach(reg => {
+    filtrados.forEach(reg => {
         const data = new Date(reg.created_at).toLocaleString('pt-BR');
+        const st = reg.status || {};
 
         html += `<tr
             onclick="abrirDetalheHistorico('${reg.id}')"
@@ -216,10 +232,15 @@ window.loadHistoricoView = async function () {
             onmouseout="this.style.background=''">
             <td style="padding:10px; white-space:nowrap; font-size:12px; color:#666;">${data}</td>
             <td style="padding:12px 10px;">
-                <strong>${reg.destinatario || ''}</strong>
-                ${reg.unidade && reg.unidade !== reg.destinatario ? `<br><small style="color:#888;">${reg.unidade}</small>` : ''}
+                <strong>${escapeHtml(reg.destinatario)}</strong>
+                ${reg.unidade && reg.unidade !== reg.destinatario ? `<br><small style="color:#888;">${escapeHtml(reg.unidade)}</small>` : ''}
             </td>
             <td style="padding:10px; color:#b70f0f; font-weight:600;">${escapeHtml(reg.referencia) || '—'}</td>
+            <td style="padding:10px;">
+                <div class="status-badges">
+                    ${selo(st.email, 'E-mail')}${selo(st.romaneio, 'Romaneio')}${selo(st.etiqueta, 'Etiqueta')}
+                </div>
+            </td>
         </tr>`;
     });
 
@@ -234,7 +255,7 @@ window.abrirDetalheHistorico = function (id) {
 
     window.__detalheHistoricoAtual = reg;
     const st = reg.status || { email: false, etiqueta: false, romaneio: false };
-    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${it.qty} × ${it.desc}</li>`).join('');
+    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${escapeHtml(it.qty)} × ${escapeHtml(it.desc)}</li>`).join('');
     const dataFormatada = new Date(reg.created_at).toLocaleString('pt-BR');
 
     function statusItem(campo, label, feito, tipo) {
@@ -249,7 +270,7 @@ window.abrirDetalheHistorico = function (id) {
                 <div style="display:flex; align-items:center; gap:10px;">
                     <div onclick="toggleStatusHistorico('${id}', '${campo}')"
                          style="width:24px; height:24px; border-radius:50%; background:${cor}; color:${textCor}; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:700; transition:all 0.2s; flex-shrink:0; user-select:none;">
-                        ${feito ? 'âœ“' : ''}
+                        ${feito ? '&#10003;' : ''}
                     </div>
                     <span style="font-size:13px; color:#333; ${riscado}">${label}</span>
                 </div>
@@ -260,10 +281,10 @@ window.abrirDetalheHistorico = function (id) {
     document.getElementById('modal-historico-body').innerHTML = `
         <div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #f0f0f0;">
             <div style="font-size:12px; color:#999; margin-bottom:6px;">${dataFormatada}</div>
-            <div style="font-size:18px; font-weight:700; color:#222;">${reg.destinatario || ''}</div>
-            ${reg.unidade && reg.unidade !== reg.destinatario ? `<div style="font-size:13px; color:#555; margin-top:2px;">ðŸ“ ${reg.unidade}</div>` : ''}
-            ${reg.referencia ? `<div style="font-size:13px; color:#b70f0f; margin-top:4px; font-weight:600;">Ref: ${reg.referencia}</div>` : ''}
-            ${reg.transportadora ? `<div style="font-size:12px; color:#888; margin-top:2px;">Transportadora: ${reg.transportadora}</div>` : ''}
+            <div style="font-size:18px; font-weight:700; color:#222;">${escapeHtml(reg.destinatario)}</div>
+            ${reg.unidade && reg.unidade !== reg.destinatario ? `<div style="font-size:13px; color:#555; margin-top:2px;">Unidade: ${escapeHtml(reg.unidade)}</div>` : ''}
+            ${reg.referencia ? `<div style="font-size:13px; color:#b70f0f; margin-top:4px; font-weight:600;">Ref: ${escapeHtml(reg.referencia)}</div>` : ''}
+            ${reg.transportadora ? `<div style="font-size:12px; color:#888; margin-top:2px;">Transportadora: ${escapeHtml(reg.transportadora)}</div>` : ''}
         </div>
 
         <div style="margin-bottom:20px;">
@@ -274,9 +295,9 @@ window.abrirDetalheHistorico = function (id) {
         <div>
             <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Status das Ações</div>
             <div style="display:flex; flex-direction:column; gap:8px;">
-                ${statusItem('email',    'ðŸ“§ E-mail enviado',       st.email,    'email')}
-                ${statusItem('romaneio', 'ðŸ“‹ Romaneio impresso',    st.romaneio, 'romaneio')}
-                ${statusItem('etiqueta', 'ðŸ·ï¸ Etiqueta impressa',    st.etiqueta, 'etiqueta')}
+                ${statusItem('email',    'E-mail enviado',       st.email,    'email')}
+                ${statusItem('romaneio', 'Romaneio impresso',    st.romaneio, 'romaneio')}
+                ${statusItem('etiqueta', 'Etiqueta impressa',    st.etiqueta, 'etiqueta')}
             </div>
         </div>
     `;
@@ -322,6 +343,9 @@ window.gerarDoHistorico = function (id, tipo) {
     const win = window.open('', '_blank');
     if (!win) { alert('Bloqueador de popups ativo – permita e tente novamente.'); return; }
     win.document.open(); win.document.write(fullHtml); win.document.close(); win.focus();
+
+    // Marca automaticamente a etapa como feita
+    if (!(reg.status || {})[tipo]) toggleStatusHistorico(id, tipo);
 };
 
 // Carregar e exibir lista de destinatários
@@ -364,25 +388,42 @@ window.deleteDestinatario = async function (idx) {
 window.AppState = AppState;
 AppState.currentDraftId = null;
 
-window.salvarRascunhoAtual = async function() {
+// Mostra/oculta o aviso de que o formulário está editando um rascunho existente
+function atualizarIndicadorRascunho() {
+    const el = $('draft_indicator');
+    if (el) el.style.display = AppState.currentDraftId ? 'flex' : 'none';
+}
+
+window.salvarRascunhoAtual = async function(silencioso = false) {
     // Coleta todos os dados do form
     const dados = collectData();
-    if (dados.items.length === 0) { alert('Adicione pelo menos um item antes de salvar o rascunho.'); return; }
-    
+    if (dados.items.length === 0) { toast('Adicione pelo menos um item antes de salvar o rascunho.', 'warning'); return false; }
+
     const draftId = AppState.currentDraftId; // se existir, vai atualizar, se nao, cria novo
-    
+
     // Chama o DB
-    const salvo = await salvarPendente(dados, draftId);
-    
+    const salvo = await salvarPendente(dados, draftId, silencioso);
+
     if (salvo) {
         // Guarda o ID que voltou do supabase
-        AppState.currentDraftId = salvo.id;
+        AppState.currentDraftId = String(salvo.id);
+        atualizarIndicadorRascunho();
+        return true;
     }
+    return false;
+};
+
+// Limpa o formulário e desvincula do rascunho atual (evita sobrescrever rascunho antigo)
+window.novoEnvio = function() {
+    if (!confirm('Iniciar um novo envio? Os dados não salvos do formulário serão perdidos.')) return;
+    limparFormulario();
+    AppState.currentDraftId = null;
+    atualizarIndicadorRascunho();
 };
 
 window.carregarViewAndamento = async function() {
     const container = document.getElementById('andamento_list');
-    container.innerHTML = '<div style="padding:20px;text-align:center;">â†» Carregando Rascunhos...</div>';
+    container.innerHTML = '<div style="padding:20px;text-align:center;">Carregando rascunhos...</div>';
 
     const rascunhos = await carregarPendentes();
     window.__rascunhosCache = rascunhos;
@@ -402,8 +443,8 @@ window.carregarViewAndamento = async function() {
 
     rascunhos.forEach(reg => {
         const data = new Date(reg.created_at).toLocaleString('pt-BR');
-        
-        let destLabel = reg.destinatario || 'Sem Destinatário';
+
+        let destLabel = escapeHtml(reg.destinatario || 'Sem Destinatário');
         if (reg.unidade && reg.unidade !== reg.destinatario) {
             destLabel += '<br><small style="color:#888;">' + escapeHtml(reg.unidade) + '</small>';
         }
@@ -430,14 +471,15 @@ window.carregarViewAndamento = async function() {
 };
 
 window.editarRascunho = function(id) {
-    const rascunho = (window.__rascunhosCache || []).find(r => r.id === id);
+    const rascunho = (window.__rascunhosCache || []).find(r => String(r.id) === String(id));
     if(rascunho) {
         // Preenche o formulário
         preencherFormulario(rascunho.dados_completos);
-        
+
         // Seta o ID atual
-        AppState.currentDraftId = id;
-        
+        AppState.currentDraftId = String(id);
+        atualizarIndicadorRascunho();
+
         // Vai para a aba do romaneio
         window.switchTab('tab-romaneio');
     }
@@ -446,40 +488,55 @@ window.editarRascunho = function(id) {
 window.excluirRascunhoUI = async function(id) {
     const ok = await deletarPendente(id);
     if(ok) {
-        if(AppState.currentDraftId === id) AppState.currentDraftId = null;
+        if(AppState.currentDraftId === String(id)) {
+            AppState.currentDraftId = null;
+            atualizarIndicadorRascunho();
+        }
         carregarViewAndamento();
     }
 };
 
 window.concluirRascunhoUI = async function(id) {
     if(!confirm("Concluir Rascunho?\n\nEle será transferido para o Histórico DEFINITIVO e apagado daqui. As informações atuais do banco serão salvas.")) return;
-    
+
     // Certifique-se de que se o usuário clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
-    if (AppState.currentDraftId === id) {
-       await salvarRascunhoAtual(); // Força update do que ta na tela antes de fechar
+    if (AppState.currentDraftId === String(id)) {
+       const salvo = await salvarRascunhoAtual(true); // Força update do que ta na tela antes de fechar
+       if (!salvo) return;
     }
 
     const ok = await concluirPendente(id);
     if(ok) {
-        if(AppState.currentDraftId === id) AppState.currentDraftId = null; // reseta a UI ativa se fomos nós
+        if(AppState.currentDraftId === String(id)) { // reseta a UI ativa se fomos nós
+            AppState.currentDraftId = null;
+            atualizarIndicadorRascunho();
+        }
         carregarViewAndamento();
     }
 };
 
 
-// Inicializar ao carregar
-(async function init() {
-    await initializeItems();
-    // Renderizar items na aba
-    renderItemsCRUD('items_list');
-})();
+// Confere os dados mínimos antes de gerar documentos ou e-mail.
+// Erros bloqueiam; avisos perguntam se quer continuar.
+function validarAntesDeGerar(d) {
+    if (d.items.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return false; }
+    if (!d.dest_name.trim() || !d.dest_addr1.trim()) {
+        toast('Preencha o Nome e o Endereço (linha 1) do destinatário.', 'warning');
+        return false;
+    }
+    const avisos = [];
+    if (!validarDoc(d.dest_doc)) avisos.push('- O CPF/CNPJ do destinatário parece inválido');
+    if (d.reference_type !== 'none' && !d.reference.trim()) avisos.push('- O número da referência (Ticket/OS) está vazio');
+    if (avisos.length) return confirm('Atenção:\n' + avisos.join('\n') + '\n\nDeseja continuar mesmo assim?');
+    return true;
+}
 
 function generatePreview() {
     const docType = $('doc-selector').value;
-    if (!docType) { alert('Selecione um tipo de documento.'); return; }
+    if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return; }
 
     AppState.formData = collectData();
-    if (AppState.formData.items.length === 0) { alert('Adicione pelo menos um item antes de gerar.'); return; }
+    if (!validarAntesDeGerar(AppState.formData)) return;
 
     const documentElements = composeDocuments(AppState.formData, docType);
     const emailElement = renderEmailPreview(AppState.formData);
@@ -497,10 +554,10 @@ function generatePreview() {
 
 function generateNewTab() {
     const docType = $('doc-selector').value;
-    if (!docType) { alert('Selecione um tipo de documento.'); return; }
+    if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return; }
 
     AppState.formData = collectData();
-    if (AppState.formData.items.length === 0) { alert('Adicione pelo menos um item antes de gerar.'); return; }
+    if (!validarAntesDeGerar(AppState.formData)) return;
 
     const documentElements = composeDocuments(AppState.formData, docType);
     let documentsHtml = '';
@@ -535,73 +592,22 @@ function generateNewTab() {
     doc.write(fullHtml);
     doc.close();
     try { win.focus(); } catch (e) { }
-
-    // salvarNoHistorico removido
-
 }
 
 function copyEmailBody() {
-    if (!window.__lastEmailBody) { alert('Gere um preview primeiro.'); return; }
-    navigator.clipboard.writeText(window.__lastEmailBody)
-        .then(() => alert('Corpo do e-mail copiado para a área de transferência!'))
+    // Sempre gera a partir do formulário atual (não do último preview)
+    const body = buildEmailBody(collectData());
+    navigator.clipboard.writeText(body)
+        .then(() => toast('Corpo do e-mail copiado.'))
         .catch(err => alert('Erro ao copiar: ' + err));
 }
 
-function buildEmailBodyFromData(d) {
-    const isMultiMode = d.client_mode === 'multi';
-    let unitDisplay;
-    if (isMultiMode) {
-        // Multi: lista todos os clientes únicos dos itens
-        const clientes = [...new Set((d.items || []).map(it => it.client).filter(Boolean))];
-        unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes não preenchidos]';
-    } else {
-        // Simples: usa o campo Cliente/Unidade
-        unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatário não preenchido]';
-    }
-    const refType = d.reference_type || 'ticket';
-    const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
-    const itemsLines = (Array.isArray(d.items) && d.items.length) ? d.items.map(it => `${it.qty} x ${it.desc}`).join('\n') : '- (sem itens informados) -';
-
-    let emailText = `Olá financeiro,\n\n`;
-    if (refType === 'none') {
-        emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} (envio para fornecedor).\n\n`;
-    } else {
-        emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} referente a(o) ${refTypeLabel} ${ref}.\n\n`;
-    }
-
-    const lines = [
-        emailText,
-        'Serão:', `${itemsLines}`, '',
-        'Segue os dados para emissão:',
-        `CNPJ: ${d.dest_doc || ''}`,
-        `Nome/Razão Social: ${d.dest_name || ''}`,
-        `Endereço: ${[d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ')}`,
-        `Provável envio por: ${d.carrier || ''}`, ''
-    ];
-    return lines.join('\n');
-}
-
 function enviarEmailViaMailtoUsingData() {
-    const emails = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
-    let d = {};
-    try { d = collectData(); } catch (e) {
-        d = {
-            reference: $('reference')?.value || '', reference_type: 'ticket', items: [],
-            dest_doc: $('dest_doc')?.value || '', dest_name: $('dest_name')?.value || '',
-            dest_addr1: $('dest_addr1')?.value || '', dest_addr2: $('dest_addr2')?.value || '',
-            carrier: $('carrier')?.value || ''
-        };
-    }
-    const refType = d.reference_type || 'ticket';
-    const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
-    const assuntoBase = 'Nota fiscal para envio';
-    let assunto = assuntoBase;
-    if (refType !== 'none' && d.reference && d.reference.trim()) {
-        assunto = `${assuntoBase} - ${refTypeLabel} ${ref}`;
-    }
-    const body = buildEmailBodyFromData(d);
+    const d = collectData();
+    if (!validarAntesDeGerar(d)) return;
+    const emails = EMAILS_FINANCEIRO;
+    const assunto = buildEmailSubject(d);
+    const body = buildEmailBody(d);
     window.location.href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
 }
 
@@ -614,7 +620,7 @@ function toggleReferenceInput() {
         refInput.style.backgroundColor = '#f0f0f0';
     } else {
         refInput.disabled = false;
-        refInput.value = '';
+        if (refInput.value === 'N/A') refInput.value = '';
         refInput.style.backgroundColor = '';
     }
 }
@@ -673,12 +679,12 @@ function procesarIMEIs(btn) {
 
     const imeiText = textarea.value.trim();
     if (!imeiText) {
-        alert('Cole os números/IMEIs primeiro.');
+        toast('Cole os números/IMEIs primeiro.', 'warning');
         return;
     }
 
     const lines = imeiText.split('\n').map(l => l.trim()).filter(l => l);
-    const imeis = [];
+    let imeis = [];
 
     // Detectar formato (com tab = kit)
     let isKit = lines.some(l => l.includes('\t'));
@@ -700,8 +706,19 @@ function procesarIMEIs(btn) {
         });
     }
 
+    // Remove repetidos (mesmo IMEI ou mesmo par rastreador|teclado)
+    const vistos = new Set();
+    const totalColado = imeis.length;
+    imeis = imeis.filter(i => {
+        const chave = i.tipo === 'kit' ? `${i.rastreador}|${i.teclado}` : i.imei;
+        if (vistos.has(chave)) return false;
+        vistos.add(chave);
+        return true;
+    });
+    const duplicados = totalColado - imeis.length;
+
     if (imeis.length === 0) {
-        alert('Nenhum número válido encontrado.');
+        toast('Nenhum número válido encontrado.', 'warning');
         return;
     }
 
@@ -729,7 +746,17 @@ function procesarIMEIs(btn) {
     // Limpar textarea
     textarea.value = '';
 
-    alert(`${imeis.length} número(s) processado(s)!`);
+    if (duplicados) toast(`${imeis.length} número(s) processado(s). ${duplicados} repetido(s) ignorado(s).`, 'warning', 5000);
+    else toast(`${imeis.length} número(s) processado(s).`);
+}
+
+// Remove os IMEIs do item e libera a quantidade para edição
+function limparIMEIs(btn) {
+    const card = btn.closest('.item-card');
+    card.querySelector('.it-imei-list').innerHTML = '';
+    const qtd = card.querySelector('.it-qty');
+    qtd.readOnly = false;
+    qtd.style.backgroundColor = '';
 }
 
 function escapeHtml(text) {
@@ -746,6 +773,7 @@ window.toggleReferenceInput = toggleReferenceInput;
 window.toggleClientMode = toggleClientMode;
 window.toggleIMEISection = toggleIMEISection;
 window.procesarIMEIs = procesarIMEIs;
+window.limparIMEIs = limparIMEIs;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Escutando selectores iniciais
@@ -767,21 +795,26 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleReferenceInput();
     addItem(); // Adicionar um item padrão
 
+    // Máscara + validação de CPF/CNPJ nos três formulários de destinatário
+    ['dest_doc', 'new_dest_doc', 'modal_dest_doc'].forEach(id => ligarMascaraDoc($(id)));
+
     // Auth pipeline init (Dispara checagem do Supabase e carrega BD se logado)
     checkSession();
 
-    // Fechar modal de preview com Escape
+    // Esc fecha qualquer modal aberto
+    const aberto = (id) => $(id)?.style.display === 'flex';
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            const mp = document.getElementById('modal-preview');
-            if (mp && mp.style.display !== 'none') { mp.style.display = 'none'; }
-        }
+        if (e.key !== 'Escape') return;
+        if (aberto('modal-preview')) fecharModalPreview();
+        if (aberto('modal-edit-dest')) fecharModalEdit();
+        if (aberto('modal-historico-detalhe')) fecharDetalheHistorico();
     });
 
-    // Fechar modal de preview ao clicar no overlay (fora do card)
-    document.getElementById('modal-preview')?.addEventListener('click', function(e) {
-        if (e.target === this) this.style.display = 'none';
-    });
+    // Clique fora do card fecha o modal (não no de edição, para não perder o que foi digitado)
+    [['modal-preview', () => fecharModalPreview()], ['modal-historico-detalhe', () => fecharDetalheHistorico()]]
+        .forEach(([id, fechar]) => $(id)?.addEventListener('click', function (e) {
+            if (e.target === this) fechar();
+        }));
 });
 window.loadJsonFile = loadJsonFile;
 window.clearBase = clearBase;
@@ -797,7 +830,7 @@ window.switchSubTab = function(subTabName) {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
-    
+
     // 2. Localizar o container da aba atual para desmarcar APENAS os botoes irmãos
     // Para não remover o active das sub-abas que não estamos vendo
     const targetEl = document.getElementById(subTabName);
@@ -808,12 +841,12 @@ window.switchSubTab = function(subTabName) {
             parentTab.querySelectorAll('.sub-tab').forEach(btn => btn.classList.remove('active'));
         }
     }
-    
+
     // 3. Mostrar a aba certa e ativar botão
     if (targetEl) targetEl.style.display = 'block';
     const atvBtn = document.getElementById('btn-' + subTabName);
     if(atvBtn) atvBtn.classList.add('active');
-    
+
     // 4. Carregar seus dados
     if(subTabName === 'sub-andamento') {
         carregarViewAndamento();
@@ -823,7 +856,7 @@ window.switchSubTab = function(subTabName) {
         window.loadDestinatariosList();
     } else if (subTabName === 'sub-itens') {
         // importar/chamar renderItemsCRUD da forma certa, já ta no switchTab antigo
-        window.switchTabToItens(); 
+        window.switchTabToItens();
     }
 };
 

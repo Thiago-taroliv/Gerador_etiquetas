@@ -1,4 +1,4 @@
-import { AppState } from './config.js';
+import { supabaseClient, escapeHtml } from './config.js';
 
 // Lista padrão de items
 const DEFAULT_ITEMS = [
@@ -29,25 +29,25 @@ let cachedItems = [];
 
 // Inicializar items do banco ou com padrão
 export async function initializeItems() {
-    try {
-        // Tentar buscar do Supabase
-        const supabase = window.__supabase;
-        if (supabase) {
-            const { data, error } = await supabase
-                .from('items')
-                .select('*')
-                .order('nome', { ascending: true });
-            
-            if (!error && data) {
-                cachedItems = data.map(item => item.nome);
-                return;
-            }
-        }
-    } catch (e) {
-        console.log('Supabase não disponível, usando items padrão');
+    const { data, error } = await supabaseClient
+        .from('items')
+        .select('nome')
+        .order('nome', { ascending: true });
+
+    if (!error && data && data.length > 0) {
+        cachedItems = data.map(item => item.nome);
+        return;
     }
-    
-    // Usar items padrão se não conseguir buscar do banco
+    if (error) {
+        console.error('Erro ao buscar items, usando lista padrão:', error.message);
+    } else {
+        // Tabela vazia: grava a lista padrão no banco para que adições futuras não a "apaguem"
+        const { error: seedError } = await supabaseClient
+            .from('items')
+            .insert(DEFAULT_ITEMS.map(nome => ({ nome })));
+        if (seedError) console.error('Erro ao gravar items padrão:', seedError.message);
+    }
+
     cachedItems = [...DEFAULT_ITEMS];
 }
 
@@ -65,21 +65,13 @@ export async function addItem(nome) {
     // Evitar duplicatas local
     if (cachedItems.includes(upperName)) return false;
     
-    try {
-        const supabase = window.__supabase;
-        if (supabase) {
-            const { data, error } = await supabase
-                .from('items')
-                .insert([{ nome: upperName }])
-                .select();
-            
-            if (error) {
-                console.error('Erro ao adicionar item:', error);
-                return false;
-            }
-        }
-    } catch (e) {
-        console.log('Não foi possível salvar no Supabase');
+    const { error } = await supabaseClient
+        .from('items')
+        .insert([{ nome: upperName }]);
+
+    if (error) {
+        console.error('Erro ao adicionar item:', error.message);
+        return false;
     }
     
     // Adicionar ao cache local
@@ -93,21 +85,14 @@ export async function addItem(nome) {
 export async function deleteItem(nome) {
     const upperName = nome.toUpperCase().trim();
     
-    try {
-        const supabase = window.__supabase;
-        if (supabase) {
-            const { error } = await supabase
-                .from('items')
-                .delete()
-                .eq('nome', upperName);
-            
-            if (error) {
-                console.error('Erro ao deletar item:', error);
-                return false;
-            }
-        }
-    } catch (e) {
-        console.log('Não foi possível deletar do Supabase');
+    const { error } = await supabaseClient
+        .from('items')
+        .delete()
+        .eq('nome', upperName);
+
+    if (error) {
+        console.error('Erro ao deletar item:', error.message);
+        return false;
     }
     
     // Remover do cache
@@ -173,8 +158,8 @@ export function renderItemsCRUD(containerId) {
         items.forEach(item => {
             html += `
                 <div style="padding:8px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:13px;">${item}</span>
-                    <button onclick="window.deleteItem_global('${item}')" style="padding:4px 8px;background:#f44;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:11px;">Deletar</button>
+                    <span style="font-size:13px;">${escapeHtml(item)}</span>
+                    <button data-item="${escapeHtml(item)}" onclick="window.deleteItem_global(this.dataset.item)" style="padding:4px 8px;background:#f44;color:#fff;border:0;border-radius:2px;cursor:pointer;font-size:11px;">Deletar</button>
                 </div>
             `;
         });

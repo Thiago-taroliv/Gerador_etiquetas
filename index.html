@@ -41,11 +41,9 @@
                 <img src="./img/logo.png" alt="Ranor" class="nav-logo">
             </div>
             <div class="nav-center">
-                <button class="nav-tab active" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
-                
-                
-                <button class="nav-tab" onclick="switchTab('tab-dados')">Gerenciar Dados</button>
-                <button class="nav-tab" onclick="switchTab('tab-envios')">Envios</button>
+                <button class="nav-tab active" data-tab="tab-romaneio" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
+                <button class="nav-tab" data-tab="tab-dados" onclick="switchTab('tab-dados')">Gerenciar Dados</button>
+                <button class="nav-tab" data-tab="tab-envios" onclick="switchTab('tab-envios')">Envios</button>
             </div>
             <div class="nav-links">
                 <button class="nav-btn" onclick="handleLogout()">Sair</button>
@@ -57,6 +55,13 @@
             <div id="tab-romaneio" class="tab-content" style="display: block;">
                 <div class="grid">
                     <div class="card">
+                        <div id="draft_indicator"
+                            style="display:none; justify-content:space-between; align-items:center; gap:12px; padding:10px 14px; margin-bottom:14px; background:#fff8e1; border:1px solid #ffc107; border-radius:8px; font-size:13px;">
+                            <span>Editando um rascunho salvo. "Salvar Rascunho" atualiza este rascunho.</span>
+                            <button class="secondary" type="button" onclick="novoEnvio()"
+                                style="font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Novo Envio</button>
+                        </div>
+
                         <strong>Formulário (mínimo de envio)</strong>
                         <div class="small">Carregue um arquivo JSON com registros simples ou use o seletor para
                             preencher.</div>
@@ -79,7 +84,8 @@
                             <input id="sender_cnpj" type="text" readonly>
 
                             <label>Endereço</label>
-                            <input id="sender_address" type="text" readonly>
+                            <textarea id="sender_address" rows="2" readonly
+                                style="min-height:0; font-family:inherit; resize:none;"></textarea>
                         </fieldset>
 
                         <!-- SEÇÃO: DESTINATÁRIO -->
@@ -88,6 +94,8 @@
 
                             <!-- Seletor compacto do cadastro -->
                             <label>Selecionar do cadastro</label>
+                            <input id="client_search" type="text" placeholder="Filtrar por nome, CPF/CNPJ ou cidade..."
+                                oninput="filtrarSeletorDestinatarios(this.value)">
                             <select id="client_select">
                                 <option value="">— nenhum —</option>
                             </select>
@@ -106,6 +114,13 @@
                                     <label>Contato (opcional)</label>
                                     <input id="dest_phone" type="text" placeholder="">
                                 </div>
+                            </div>
+
+                            <label>CEP <span style="font-weight:400;color:#888;font-size:12px;">(preenche o endereço automaticamente)</span></label>
+                            <div class="cep-row">
+                                <input id="dest_cep" type="text" inputmode="numeric" maxlength="9" placeholder="00000-000"
+                                    onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCep('dest')}">
+                                <button type="button" class="btn-outline" onclick="buscarCep('dest')">Buscar CEP</button>
                             </div>
 
                             <label>Endereço linha 1</label>
@@ -199,6 +214,7 @@
                                 <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
                                 <button class="secondary" type="button" onclick="salvarRascunhoAtual()">Salvar Rascunho</button>
                                 <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
+                                <button class="secondary" type="button" onclick="novoEnvio()">Novo Envio</button>
                             </div>
                         </fieldset>
 
@@ -220,11 +236,14 @@
                     <div class="card no-print">
                         <strong>Ajuda / notas</strong>
                         <div class="small" style="margin-top:8px">
-                            • Carregue um JSON e selecione um registro para preencher o destinatário.<br><br>
-                            • No preview, escolha quais documentos deseja gerar (etiqueta, romaneio e/ou
-                            e-mail).<br><br>
+                            • Use o filtro em "Selecionar do cadastro" para achar o destinatário rápido, ou digite o
+                            CEP e clique em "Buscar CEP" para preencher o endereço.<br><br>
+                            • Na descrição do item, use ↑/↓ e Enter para escolher uma sugestão. Enter num nome novo
+                            cadastra o item.<br><br>
+                            • "Salvar Rascunho" guarda o envio na aba Envios para continuar depois. Use "Novo Envio"
+                            para começar outro sem sobrescrever o rascunho aberto.<br><br>
                             • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
-                            • Para imprimir sem cortes: abra preview em nova aba → imprimir com escala 100% e margens
+                            • Para imprimir sem cortes: "Gerar em Nova Aba" → imprimir com escala 100% e margens
                             nenhuma.
                         </div>
                     </div>
@@ -265,6 +284,13 @@
                                 </div>
                             </div>
 
+                            <label>CEP <span style="font-weight:400;color:#888;font-size:12px;">(preenche o endereço automaticamente)</span></label>
+                            <div class="cep-row">
+                                <input id="new_dest_cep" type="text" inputmode="numeric" maxlength="9" placeholder="00000-000"
+                                    onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCep('new_dest')}">
+                                <button type="button" class="btn-outline" onclick="buscarCep('new_dest')">Buscar CEP</button>
+                            </div>
+
                             <label>Endereço linha 1</label>
                             <input id="new_dest_addr1" type="text" placeholder="">
 
@@ -281,7 +307,7 @@
                             <input
                                 id="dest_search"
                                 type="text"
-                                placeholder="🔍 Pesquisar por nome, CNPJ ou endereço..."
+                                placeholder="Pesquisar por nome, CNPJ ou endereço..."
                                 oninput="filtrarDestinatarios(this.value)"
                                 style="margin-top:12px;"
                             >
@@ -359,6 +385,9 @@
                             <button class="btn-outline" onclick="loadHistoricoView()">🔄 Atualizar</button>
                         </div>
 
+                        <input id="historico_search" type="text" placeholder="Filtrar por destinatário, unidade ou referência..."
+                            oninput="renderHistoricoLista()" style="margin:0 0 12px;">
+
                         <div id="historico_list" style="border: 1px solid #ddd; border-radius: 4px; overflow: hidden;">
                             <!-- A lista será carregada aqui via JS -->
                             <div style="padding:40px; text-align:center; color:#999;">Carregando histórico...</div>
@@ -373,7 +402,7 @@
     </div> <!-- Fim do #app_content -->
 
     <!-- MODAL DE EDIÇÃO DE DESTINATÁRIO -->
-    <div id="modal-edit-dest" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; justify-content:center; align-items:center;">
+    <div id="modal-edit-dest" class="modal-overlay">
         <div style="background:#fff; border-radius:16px; padding:32px; width:100%; max-width:480px; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.25s ease;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <strong style="font-size:16px;">✏️ Editar Destinatário</strong>
@@ -409,7 +438,7 @@
 
 
     <!-- MODAL DE DETALHE DO HISTORICO -->
-    <div id="modal-historico-detalhe" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:9999; justify-content:center; align-items:center;">
+    <div id="modal-historico-detalhe" class="modal-overlay">
         <div style="background:#fff; border-radius:16px; padding:32px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.2); animation:slideUp 0.25s ease;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <strong style="font-size:16px;">Detalhes do Envio</strong>
@@ -427,9 +456,9 @@
                 <strong style="font-size:16px; color:#222;">&#128196; Pr&#233;-visualiza&#231;&#227;o do Documento</strong>
                 <button onclick="fecharModalPreview()" style="background:none; border:none; font-size:24px; cursor:pointer; color:#888; margin:0; padding:0; box-shadow:none; line-height:1;">&times;</button>
             </div>
-            <div style="display:grid; grid-template-columns:1fr 380px; gap:0;">
-                <div id="preview-documents" style="padding:20px; border-right:1px solid #eee; overflow-y:auto; max-height:85vh;"></div>
-                <div id="preview-email" style="padding:20px; overflow-y:auto; max-height:85vh;"></div>
+            <div class="preview-grid">
+                <div id="preview-documents"></div>
+                <div id="preview-email"></div>
             </div>
         </div>
     </div>

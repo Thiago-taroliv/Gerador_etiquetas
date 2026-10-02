@@ -1,5 +1,6 @@
 import { supabaseClient, $ } from './config.js';
 import { carregarDestinatarios, popularSelectDestinatarios } from './db.js';
+import { initializeItems, renderItemsCRUD } from './items.js';
 
 export async function checkSession() {
     const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -7,6 +8,8 @@ export async function checkSession() {
         $('auth_container').style.display = 'none';
         $('app_content').style.display = 'block';
         carregarDestinatarios(); 
+        // Items só podem ser lidos depois do login (RLS)
+        initializeItems().then(() => renderItemsCRUD('items_list'));
     } else {
         $('auth_container').style.display = 'flex';
         $('app_content').style.display = 'none';
@@ -26,7 +29,12 @@ export async function handleLogin() {
         return;
     }
 
+    const btn = $('btn_login_submit');
+    btn.disabled = true;
+    btn.textContent = 'Entrando...';
     const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    btn.disabled = false;
+    btn.textContent = 'Entrar no Sistema';
 
     if (error) {
         if (error.message.includes('Invalid login credentials')) {
@@ -45,6 +53,11 @@ export async function handleLogout() {
     if(error) alert("Erro ao sair: " + error.message);
     else checkSession();
 }
+
+// Enter nos campos de login envia o formulário
+['login_email', 'login_password'].forEach(id => {
+    $(id)?.addEventListener('keydown', (e) => { if (e.key === 'Enter') handleLogin(); });
+});
 
 supabaseClient.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_OUT') checkSession();

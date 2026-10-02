@@ -1,4 +1,5 @@
 import { supabaseClient, $ } from './config.js';
+import { toast } from './toast.js';
 
 export async function carregarDestinatarios() {
     const { data, error } = await supabaseClient.from('destinatarios').select('*').order('nome', { ascending: true });
@@ -8,45 +9,88 @@ export async function carregarDestinatarios() {
         return;
     }
     window.__destinatariosSupabase = data || [];
-    popularSelectDestinatarios(window.__destinatariosSupabase);
+    popularSelectDestinatarios(window.__destinatariosSupabase, $('client_search')?.value || '');
 }
 
-export function popularSelectDestinatarios(arr) {
+// Preenche o seletor; com filtro, mostra só os que batem com nome/documento/endereço
+// (o value continua sendo o índice no array completo)
+export function popularSelectDestinatarios(arr, filtro = '') {
     const sel = $('client_select');
-    sel.innerHTML = '<option value="">— nenhum —</option>';
+    const termo = filtro.trim().toLowerCase();
+    const termoDoc = termo.replace(/[^0-9a-z]/g, '');
+    let encontrados = 0;
+
+    sel.innerHTML = '';
     arr.forEach((c, idx) => {
+        if (termo) {
+            const texto = [c.nome, c.endereco_linha1, c.endereco_linha2].join(' ').toLowerCase();
+            const doc = (c.cpf_cnpj || '').toLowerCase().replace(/[^0-9a-z]/g, '');
+            if (!texto.includes(termo) && !(termoDoc && doc.includes(termoDoc))) return;
+        }
         const opt = document.createElement('option');
         opt.value = idx;
         opt.textContent = c.nome || ('Sem nome');
         sel.appendChild(opt);
+        encontrados++;
     });
+
+    const primeira = document.createElement('option');
+    primeira.value = '';
+    primeira.textContent = termo ? `— ${encontrados} encontrado(s) —` : '— nenhum —';
+    sel.insertBefore(primeira, sel.firstChild);
+    sel.value = '';
+}
+
+// Procura cadastro existente com mesmo documento ou mesmo nome
+function encontrarDuplicado(registro, ignorarId = null) {
+    const norm = s => (s || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+    const doc = norm(registro.cpf_cnpj);
+    const nome = (registro.nome || '').trim().toLowerCase();
+    return (window.__destinatariosSupabase || []).find(d =>
+        d.id !== ignorarId &&
+        ((doc && norm(d.cpf_cnpj) === doc) || (d.nome || '').trim().toLowerCase() === nome)
+    );
+}
+
+// Insere um destinatário; se já existir (mesmo CPF/CNPJ ou nome), oferece atualizar o existente
+export async function salvarOuAtualizarDestinatario(registro) {
+    const existente = encontrarDuplicado(registro);
+    let error;
+
+    if (existente) {
+        if (!confirm(`Já existe um cadastro para "${existente.nome}" (${existente.cpf_cnpj || 'sem documento'}).\n\nDeseja ATUALIZAR esse cadastro com os dados atuais?`)) return false;
+        ({ error } = await supabaseClient.from('destinatarios').update(registro).eq('id', existente.id));
+    } else {
+        ({ error } = await supabaseClient.from('destinatarios').insert([registro]));
+    }
+
+    if (error) {
+        alert('Erro ao salvar: ' + error.message);
+        return false;
+    }
+    toast(existente ? 'Cadastro atualizado na nuvem.' : 'Destinatário salvo na nuvem.');
+    await carregarDestinatarios();
+    return true;
 }
 
 export async function salvarDestinatarioAtual() {
     const nome = $('dest_name').value.trim();
     if (!nome) {
-        alert("Preencha pelo menos o Nome para poder salvar no Banco.");
+        toast('Preencha pelo menos o Nome para salvar no cadastro.', 'warning');
         return;
     }
-    const novoRegistro = {
+    await salvarOuAtualizarDestinatario({
         nome,
         cpf_cnpj: $('dest_doc').value.trim(),
         endereco_linha1: $('dest_addr1').value.trim(),
         endereco_linha2: $('dest_addr2').value.trim(),
         contato: $('dest_phone').value.trim()
-    };
-    const { error } = await supabaseClient.from('destinatarios').insert([novoRegistro]);
-
-    if (error) alert("Erro ao salvar: " + error.message);
-    else {
-        alert("Cliente salvo com sucesso na nuvem!");
-        carregarDestinatarios();
-    }
+    });
 }
 
 export async function loadJsonFile() {
     const f = $('file_input').files[0];
-    if (!f) { alert('Selecione um arquivo .json primeiro.'); return; }
+    if (!f) { toast('Selecione um arquivo .json primeiro.', 'warning'); return; }
     const r = new FileReader();
     r.onload = async function (e) {
         try {
@@ -59,12 +103,26 @@ export async function loadJsonFile() {
                 endereco_linha1: r.endereco_linha1 || r.addr1 || r.endereco1 || '',
                 endereco_linha2: r.endereco_linha2 || r.addr2 || r.endereco2 || '',
                 contato: r.contato || r.telefone || r.contact || ''
-            }));
+            })).filter(r => r.nome);
 
-            const { error } = await supabaseClient.from('destinatarios').insert(registrosParaBanco);
+            // Pula quem já está cadastrado (mesmo documento ou nome), inclusive repetidos no próprio arquivo
+            const novos = [];
+            registrosParaBanco.forEach(reg => {
+                const jaExiste = encontrarDuplicado(reg) || novos.some(n =>
+                    n.nome.trim().toLowerCase() === reg.nome.trim().toLowerCase());
+                if (!jaExiste) novos.push(reg);
+            });
+            const ignorados = registrosParaBanco.length - novos.length;
+
+            if (novos.length === 0) {
+                toast(`Nada a importar: todos os ${ignorados} registro(s) já estão cadastrados.`, 'warning', 5000);
+                return;
+            }
+
+            const { error } = await supabaseClient.from('destinatarios').insert(novos);
             if (error) alert('Erro do Supabase ao importar: ' + error.message);
             else {
-                alert(`Sucesso! ${registrosParaBanco.length} contatos foram importados.`);
+                toast(`${novos.length} contato(s) importado(s)${ignorados ? `, ${ignorados} já existente(s) ignorado(s)` : ''}.`, 'success', 5000);
                 carregarDestinatarios();
             }
         } catch (err) { alert('Erro ao processar JSON: ' + err.message); }
@@ -79,7 +137,7 @@ export async function exportToJSON() {
         return;
     }
     if (!data || data.length === 0) {
-        alert("O banco de dados está vazio. Nada para exportar.");
+        toast('O cadastro está vazio. Nada para exportar.', 'warning');
         return;
     }
     // Remove id e created_at para que a reimportação não gere conflitos
@@ -98,7 +156,7 @@ export async function clearBase() {
 
     if (error) alert('Erro ao apagar: ' + error.message);
     else {
-        alert('Todos os dados fictícios (ou antigos) foram apagados.');
+        toast('Todos os destinatários foram apagados.');
         carregarDestinatarios();
     }
 }
@@ -110,7 +168,7 @@ export async function salvarNoHistorico(dados) {
         destinatario: dados.dest_name,
         unidade: dados.unit_name || dados.dest_name,
         referencia: dados.reference,
-        tipo_doc: dados.docType || 'não informado',
+        tipo_doc: dados.doc_type || dados.docType || 'não informado',
         itens: dados.items,
         transportadora: dados.carrier,
         // Snapshot completo para regeração futura
@@ -123,9 +181,9 @@ export async function salvarNoHistorico(dados) {
 
     if (error) {
         console.error('Erro ao salvar no histórico:', error.message);
-    } else {
-        console.log('✅ Registro salvo no histórico com sucesso.');
+        return false;
     }
+    return true;
 }
 
 export async function carregarHistorico() {
@@ -157,7 +215,7 @@ export async function atualizarStatusHistorico(id, novoStatus) {
 
 // --- FUNÇÕES DE PEDIDOS EM ANDAMENTO (RASCUNHOS) ---
 
-export async function salvarPendente(dados, draftId = null) {
+export async function salvarPendente(dados, draftId = null, silencioso = false) {
     const registro = {
         destinatario: dados.dest_name || 'Sem Destinatário',
         unidade: dados.unit_name || dados.dest_name || '',
@@ -181,7 +239,7 @@ export async function salvarPendente(dados, draftId = null) {
         alert('Erro ao salvar rascunho: ' + error.message);
         return null;
     } else {
-        alert('Rascunho salvo com sucesso!');
+        if (!silencioso) toast('Rascunho salvo.');
         return data[0]; // Retorna o registro salvo (com ID)
     }
 }
@@ -227,12 +285,17 @@ export async function concluirPendente(id) {
 
     // 2. Salva no histórico
     const dadosFormulario = rascunho.dados_completos;
-    await salvarNoHistorico(dadosFormulario);
+    const salvo = await salvarNoHistorico(dadosFormulario);
+    if (!salvo) {
+        // Não apaga o rascunho se o histórico falhou, para não perder dados
+        alert('Erro ao salvar no Histórico. O rascunho foi mantido.');
+        return false;
+    }
 
     // 3. Deleta o rascunho
     const { error: errDel } = await supabaseClient.from('pedidos_pendentes').delete().eq('id', id);
     if(errDel) console.error("Erro ao remover rascunho concluido: ", errDel);
 
-    alert('Pedido concluído e enviado para o Histórico!');
+    toast('Pedido concluído e enviado para o Histórico.');
     return true;
 }

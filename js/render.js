@@ -1,5 +1,9 @@
 import { escapeHtml, AppState } from './config.js';
-import { collectData } from './ui.js';
+
+// Escapa e preserva quebras de linha (ex: endereço do remetente)
+function escapeMultiline(s) {
+    return escapeHtml(s).replace(/\n/g, '<br>');
+}
 
 export function renderLabels(data) {
     const sheet = document.createElement('div');
@@ -17,11 +21,12 @@ export function renderLabels(data) {
                 ${escapeHtml(data.dest_doc)}<br>
                 ${escapeHtml(data.dest_addr1)}<br>
                 ${escapeHtml(data.dest_addr2)}
+                ${data.dest_phone ? `<br>Contato: ${escapeHtml(data.dest_phone)}` : ''}
             </div>
             <hr style="margin:6px 0;">
             <div style="font-size:12px;"><strong>REMETENTE:</strong><br>
                 ${escapeHtml(data.sender_company)}<br>
-                ${escapeHtml(data.sender_address)}<br>
+                ${escapeMultiline(data.sender_address)}<br>
                 CNPJ: ${escapeHtml(data.sender_cnpj)}
             </div>
             <div style="margin-top:6px;font-size:12px;"><strong>Etiqueta:</strong> ${i + 1} / ${data.total_vol}</div>
@@ -102,7 +107,7 @@ export function renderRomaneio(data) {
                     <div style="font-size:28px;color:var(--brand);font-weight:700;margin-bottom:12px;">Romaneio de Entrega</div>
                     <div style="margin-bottom:12px;padding:8px;background:#f9f9f9;border-bottom:2px solid var(--brand);">
                         <strong>Empresa:</strong> ${escapeHtml(data.sender_company)} | <strong>CNPJ:</strong> ${escapeHtml(data.sender_cnpj)}<br>
-                        <strong>Endereço:</strong> ${escapeHtml(data.sender_address)}
+                        <strong>Endereço:</strong> ${escapeMultiline(data.sender_address)}
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:12px;">
                         <div>
@@ -126,12 +131,12 @@ export function renderRomaneio(data) {
                 showGlobalHeader = false;
             }
             
-            // Cabeçalho do cliente aparece só na primeira página do grupo
-            const clientHeaderHTML = isFirstPageOfThisClient ? `
+            // Cabeçalho do cliente; nas páginas seguintes do mesmo grupo indica continuação
+            const clientHeaderHTML = `
                 <div style="margin-bottom:8px;padding:6px 10px;background:#f5f5f5;border-left:3px solid var(--brand);">
-                    <strong>Cliente:</strong> ${escapeHtml(clientName)}
+                    <strong>Cliente:</strong> ${escapeHtml(clientName)}${isFirstPageOfThisClient ? '' : ' <em>(continuação)</em>'}
                 </div>
-            ` : '';
+            `;
             
             const clientSection = `
                 <div style="margin-bottom:16px;${itemsInCurrentPage > 0 ? 'border-top:2px solid #ddd;padding-top:12px;' : ''}">
@@ -155,14 +160,13 @@ export function renderRomaneio(data) {
             clientPageItems = [];
         };
         
-        items.forEach((item, itemIdx) => {
-            // Se a página atual já está cheia, fechar e abrir nova
-            if (currentPage !== null && itemsInCurrentPage >= MAX_ITEMS_PER_PAGE) {
+        items.forEach((item) => {
+            // Conta também os itens ainda no buffer, senão um único cliente nunca quebra página
+            if (itemsInCurrentPage + clientPageItems.length >= MAX_ITEMS_PER_PAGE) {
                 flushClientPage(false);
                 pages.push(currentPage);
                 currentPage = null;
                 itemsInCurrentPage = 0;
-                // Não é mais a primeira página deste cliente, mas mostra cabeçalho de continuação
             }
             clientPageItems.push(item);
         });
@@ -236,42 +240,70 @@ export function renderRomaneio(data) {
     return container;
 }
 
-export function renderEmailPreview(data) {
-    const emailBox = document.createElement('div');
-    emailBox.className = 'page';
-    const itemLines = data.items.map(it => `${it.qty} x ${it.desc}`).join('\n');
-    const isMultiMode = data.client_mode === 'multi';
+function getRefInfo(d) {
+    const refType = d.reference_type || 'ticket';
+    const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
+    const ref = d.reference && d.reference.trim() ? d.reference.trim() : (refType === 'none' ? 'N/A' : '[preencha a referência]');
+    return { refType, refTypeLabel, ref };
+}
+
+// Assunto do e-mail ao financeiro (única fonte para preview, cópia e mailto)
+export function buildEmailSubject(d) {
+    const { refType, refTypeLabel, ref } = getRefInfo(d);
+    const assuntoBase = 'Nota fiscal para envio';
+    if (refType !== 'none' && d.reference && d.reference.trim()) {
+        return `${assuntoBase} - ${refTypeLabel} ${ref}`;
+    }
+    return assuntoBase;
+}
+
+// Corpo do e-mail ao financeiro (única fonte para preview, cópia e mailto)
+export function buildEmailBody(d) {
     let unitDisplay;
-    if (isMultiMode) {
-        // Multi: extrai lista única de clientes dos itens
-        const clientes = [...new Set((data.items || []).map(it => it.client).filter(Boolean))];
+    if (d.client_mode === 'multi') {
+        // Multi: lista todos os clientes únicos dos itens
+        const clientes = [...new Set((d.items || []).map(it => it.client).filter(Boolean))];
         unitDisplay = clientes.length > 0 ? clientes.join(', ') : '[clientes não preenchidos]';
     } else {
         // Simples: usa o campo Cliente/Unidade
-        unitDisplay = data.unit_name || data.dest_name || '[destinatário não preenchido]';
+        unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatário não preenchido]';
     }
-    const refType = data.reference_type || 'ticket';
-    const refTypeLabel = refType === 'os' ? 'OS' : refType === 'ticket' ? 'Ticket' : 'Fornecedor';
-    const ref = data.reference ? data.reference : (refType === 'none' ? 'N/A' : '[preencha a referência]');
+    const { refType, refTypeLabel, ref } = getRefInfo(d);
+    const itemsLines = (Array.isArray(d.items) && d.items.length) ? d.items.map(it => `${it.qty} x ${it.desc}`).join('\n') : '- (sem itens informados) -';
 
-    let emailBodyText = `Olá financeiro,\n\n`;
+    let emailText = `Olá financeiro,\n\n`;
     if (refType === 'none') {
-        emailBodyText += `Preciso de uma nota fiscal de envio para ${unitDisplay} (envio para fornecedor).\n\n`;
+        emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} (envio para fornecedor).\n`;
     } else {
-        emailBodyText += `Preciso de uma nota fiscal de envio para ${unitDisplay} referente a(o) ${refTypeLabel} ${ref}.\n\n`;
+        emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} referente a(o) ${refTypeLabel} ${ref}.\n`;
     }
-    emailBodyText += `Serão:\n${itemLines}\n\nSegue os dados para emissão:\nCNPJ: ${data.dest_doc}\nNome/Razão Social: ${data.dest_name}\nEndereço: ${data.dest_addr1} / ${data.dest_addr2}\nProvável envio por: ${data.carrier}\n`;
+
+    const lines = [
+        emailText,
+        'Serão:', `${itemsLines}`, '',
+        'Segue os dados para emissão:',
+        `CNPJ: ${d.dest_doc || ''}`,
+        `Nome/Razão Social: ${d.dest_name || ''}`,
+        `Endereço: ${[d.dest_addr1, d.dest_addr2].filter(Boolean).join(' / ')}`,
+        `Provável envio por: ${d.carrier || ''}`, ''
+    ];
+    return lines.join('\n');
+}
+
+export function renderEmailPreview(data) {
+    const emailBox = document.createElement('div');
+    emailBox.className = 'page';
+    const emailBodyText = buildEmailBody(data);
 
     emailBox.innerHTML = `
         <div>
             <div style="font-size:18px;color:var(--brand);font-weight:700;margin-bottom:6px">Pré-visualização do e-mail</div>
             <div style="font-weight:700">Assunto:</div>
-            <div style="margin-bottom:8px;font-size:12px;">Nota fiscal para envio${refType !== 'none' ? ` - ${refTypeLabel} ${escapeHtml(ref)}` : ''}</div>
+            <div style="margin-bottom:8px;font-size:12px;">${escapeHtml(buildEmailSubject(data))}</div>
             <div style="font-weight:700;margin-top:8px;">Corpo:</div>
             <pre class="email-box" id="email_preview">${escapeHtml(emailBodyText)}</pre>
         </div>
     `;
-    window.__lastEmailBody = emailBodyText;
     AppState.emailBody = emailBodyText;
     return emailBox;
 }
