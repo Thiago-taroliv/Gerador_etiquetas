@@ -1,9 +1,10 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, clearBase, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente } from './db.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente } from './db.js';
 import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
 import { toast } from './toast.js';
+import { renderItemsCRUD } from './items.js';
 
 // E-mails do financeiro que recebem o pedido de nota fiscal
 const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
@@ -12,7 +13,6 @@ const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@rano
 window.handleLogin = handleLogin;
 window.handleLogout = handleLogout;
 window.loadJsonFile = loadJsonFile;
-window.clearBase = clearBase;
 window.exportToJSON = exportToJSON;
 window.salvarDestinatarioAtual = salvarDestinatarioAtual;
 window.onSenderChange = onSenderChange;
@@ -400,6 +400,25 @@ window.deleteDestinatario = async function (idx) {
 // --- LÓGICA DE PEDIDOS EM ANDAMENTO ---
 window.AppState = AppState;
 AppState.currentDraftId = null;
+// Registro no histórico do envio que está no formulário (gerar de novo atualiza em vez de duplicar)
+AppState.currentHistoricoId = null;
+
+// Grava/atualiza o envio atual no histórico, marcando as etapas feitas.
+// Se houver rascunho aberto, guarda nele o vínculo para que "Concluir" não duplique o registro.
+async function registrarEnvio(dados, etapas) {
+    const id = await registrarNoHistorico(dados, AppState.currentHistoricoId, etapas);
+    if (!id) {
+        toast('Não foi possível registrar no histórico.', 'error', 5000);
+        return;
+    }
+    const novo = !AppState.currentHistoricoId;
+    AppState.currentHistoricoId = String(id);
+    toast(novo ? 'Envio registrado no histórico.' : 'Registro do histórico atualizado.');
+
+    if (AppState.currentDraftId) {
+        await salvarPendente({ ...dados, historico_id: AppState.currentHistoricoId }, AppState.currentDraftId, true);
+    }
+}
 
 // Mostra/oculta o aviso de que o formulário está editando um rascunho existente
 function atualizarIndicadorRascunho() {
@@ -411,6 +430,7 @@ window.salvarRascunhoAtual = async function(silencioso = false) {
     // Coleta todos os dados do form
     const dados = collectData();
     if (dados.items.length === 0) { toast('Adicione pelo menos um item antes de salvar o rascunho.', 'warning'); return false; }
+    if (AppState.currentHistoricoId) dados.historico_id = AppState.currentHistoricoId;
 
     const draftId = AppState.currentDraftId; // se existir, vai atualizar, se nao, cria novo
 
@@ -431,6 +451,7 @@ window.novoEnvio = function() {
     if (!confirm('Iniciar um novo envio? Os dados não salvos do formulário serão perdidos.')) return;
     limparFormulario();
     AppState.currentDraftId = null;
+    AppState.currentHistoricoId = null;
     atualizarIndicadorRascunho();
 };
 
@@ -482,8 +503,9 @@ window.editarRascunho = function(id) {
         // Preenche o formulário
         preencherFormulario(rascunho.dados_completos);
 
-        // Seta o ID atual
+        // Seta o ID atual (e o registro do histórico, se este rascunho já foi gerado antes)
         AppState.currentDraftId = String(id);
+        AppState.currentHistoricoId = rascunho.dados_completos?.historico_id || null;
         atualizarIndicadorRascunho();
 
         // Vai para a aba do romaneio
@@ -515,6 +537,7 @@ window.concluirRascunhoUI = async function(id) {
     if(ok) {
         if(AppState.currentDraftId === String(id)) { // reseta a UI ativa se fomos nós
             AppState.currentDraftId = null;
+            AppState.currentHistoricoId = null;
             atualizarIndicadorRascunho();
         }
         carregarViewAndamento();
@@ -598,6 +621,12 @@ function generateNewTab() {
     doc.write(fullHtml);
     doc.close();
     try { win.focus(); } catch (e) { }
+
+    // Registra no histórico depois de abrir a aba (abrir precisa ser imediato para não cair no bloqueador)
+    const etapas = {};
+    if (docType === 'labels' || docType === 'both') etapas.etiqueta = true;
+    if (docType === 'romaneio' || docType === 'both') etapas.romaneio = true;
+    registrarEnvio(AppState.formData, etapas);
 }
 
 function copyEmailBody() {
@@ -615,6 +644,7 @@ function enviarEmailViaMailtoUsingData() {
     const assunto = buildEmailSubject(d);
     const body = buildEmailBody(d);
     window.location.href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
+    registrarEnvio(d, { email: true });
 }
 
 function toggleReferenceInput() {
@@ -821,11 +851,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === this) fechar();
         }));
 });
-window.loadJsonFile = loadJsonFile;
-window.clearBase = clearBase;
-window.exportToJSON = exportToJSON;
-window.salvarDestinatarioAtual = salvarDestinatarioAtual;
-window.loadHistoricoView = loadHistoricoView;
 
 
 window.switchSubTab = function(subTabName) {
@@ -860,15 +885,12 @@ window.switchSubTab = function(subTabName) {
     } else if (subTabName === 'sub-destinatarios') {
         window.loadDestinatariosList();
     } else if (subTabName === 'sub-itens') {
-        // importar/chamar renderItemsCRUD da forma certa, já ta no switchTab antigo
         window.switchTabToItens();
     }
 };
 
 window.switchTabToItens = function() {
-    import('./items.js').then(m => {
-        m.renderItemsCRUD('items_list');
-    }).catch(e => console.error(e));
+    renderItemsCRUD('items_list');
 };
 
 

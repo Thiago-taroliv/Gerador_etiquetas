@@ -149,21 +149,11 @@ export async function exportToJSON() {
     dlAnchorElem.click();
 }
 
-export async function clearBase() {
-    if (!confirm('CUIDADO EXTREMO: Tem certeza que deseja APAGAR TODOS os registros de destinatários? Não esqueça de gerar um backup antes (Exportar JSON)!')) return;
-
-    const { error } = await supabaseClient.from('destinatarios').delete().neq('id', 0);
-
-    if (error) alert('Erro ao apagar: ' + error.message);
-    else {
-        toast('Todos os destinatários foram apagados.');
-        carregarDestinatarios();
-    }
-}
 // --- FUNÇÕES DO HISTÓRICO ---
 
-export async function salvarNoHistorico(dados) {
-    const registro = {
+// Campos da tabela historico montados a partir dos dados do formulário
+function montarRegistroHistorico(dados) {
+    return {
         remetente: dados.sender_company,
         destinatario: dados.dest_name,
         unidade: dados.unit_name || dados.dest_name,
@@ -171,19 +161,44 @@ export async function salvarNoHistorico(dados) {
         tipo_doc: dados.doc_type || dados.docType || 'não informado',
         itens: dados.items,
         transportadora: dados.carrier,
-        // Snapshot completo para regeração futura
-        dados_completos: dados,
-        // Status inicial: nada foi feito ainda
-        status: { email: false, etiqueta: false, romaneio: false }
+        // Snapshot completo para regeração futura (sem o vínculo interno)
+        dados_completos: { ...dados, historico_id: undefined }
     };
+}
 
-    const { error } = await supabaseClient.from('historico').insert([registro]);
+// Cria ou atualiza o registro do envio no histórico.
+// historicoId: registro já criado para este envio (evita duplicar ao gerar de novo).
+// etapas: o que acabou de ser feito, ex. { etiqueta: true } — soma ao status existente.
+// Retorna o id do registro, ou null em caso de erro.
+export async function registrarNoHistorico(dados, historicoId = null, etapas = {}) {
+    const registro = montarRegistroHistorico(dados);
+
+    if (historicoId) {
+        const { data: atual } = await supabaseClient
+            .from('historico').select('status').eq('id', historicoId).single();
+
+        if (atual) {
+            const status = { email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas };
+            const { error } = await supabaseClient
+                .from('historico').update({ ...registro, status }).eq('id', historicoId);
+            if (error) {
+                console.error('Erro ao atualizar histórico:', error.message);
+                return null;
+            }
+            return historicoId;
+        }
+        // Registro foi apagado: cai para criar um novo
+    }
+
+    const status = { email: false, etiqueta: false, romaneio: false, ...etapas };
+    const { data, error } = await supabaseClient
+        .from('historico').insert([{ ...registro, status }]).select();
 
     if (error) {
         console.error('Erro ao salvar no histórico:', error.message);
-        return false;
+        return null;
     }
-    return true;
+    return data[0].id;
 }
 
 export const HISTORICO_POR_PAGINA = 50;
@@ -281,15 +296,15 @@ export async function concluirPendente(id) {
         .select('*')
         .eq('id', id)
         .single();
-        
+
     if (errBusca || !rascunho) {
         alert('Erro ao encontrar o rascunho para concluir.');
         return false;
     }
 
-    // 2. Salva no histórico
+    // 2. Salva no histórico (se já foi gerado antes, atualiza o mesmo registro em vez de duplicar)
     const dadosFormulario = rascunho.dados_completos;
-    const salvo = await salvarNoHistorico(dadosFormulario);
+    const salvo = await registrarNoHistorico(dadosFormulario, dadosFormulario.historico_id || null);
     if (!salvo) {
         // Não apaga o rascunho se o histórico falhou, para não perder dados
         alert('Erro ao salvar no Histórico. O rascunho foi mantido.');

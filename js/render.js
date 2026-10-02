@@ -104,7 +104,12 @@ export function renderRomaneio(data) {
             let globalHeaderHTML = '';
             if (showGlobalHeader) {
                 globalHeaderHTML = `
-                    <div style="font-size:28px;color:var(--brand);font-weight:700;margin-bottom:12px;">Romaneio de Entrega</div>
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:12px;">
+                        <div style="font-size:28px;color:var(--brand);font-weight:700;">Romaneio de Entrega</div>
+                        <div style="background:#fff3cd;border:1px solid #ffc107;padding:8px;border-radius:3px;max-width:280px;font-size:11px;line-height:1.4;">
+                            <strong>IMPORTANTE:</strong> Assinar documento e enviar foto para WhatsApp Ranor.
+                        </div>
+                    </div>
                     <div style="margin-bottom:12px;padding:8px;background:#f9f9f9;border-bottom:2px solid var(--brand);">
                         <strong>Empresa:</strong> ${escapeHtml(data.sender_company)} | <strong>CNPJ:</strong> ${escapeHtml(data.sender_cnpj)}<br>
                         <strong>Endereço:</strong> ${escapeMultiline(data.sender_address)}
@@ -120,9 +125,6 @@ export function renderRomaneio(data) {
                             ${escapeHtml(data.dest_addr1)}<br>
                             ${escapeHtml(data.dest_addr2)}
                         </div>
-                    </div>
-                    <div style="position:absolute;top:16px;right:16px;background:#fff3cd;border:1px solid #ffc107;padding:8px;border-radius:3px;max-width:280px;font-size:11px;line-height:1.4;z-index:10;">
-                        <strong>IMPORTANTE:</strong> Assinar documento e enviar foto para WhatsApp Ranor.
                     </div>
                     <div style="margin-bottom:8px;margin-top:16px;background:var(--brand);color:#fff;display:inline-block;padding:6px 10px;border-radius:2px;font-weight:bold;font-size:13px;">
                         Descrição das Mercadorias
