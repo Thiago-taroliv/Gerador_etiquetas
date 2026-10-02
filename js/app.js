@@ -6,6 +6,8 @@ import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
 import { gerarLinhasPlanilha } from './planilha.js';
+import { grupoParaFormulario } from './importarPlanilha.js';
+import { abrirImportarPlanilha, fecharImportarPlanilha, importarPlanilhaAberto, novaBaseImportada, limparBaseImportada, escolherArquivoImportar, usarEnvioImportado } from './importarPlanilhaModal.js';
 import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto } from './planilhaPreview.js';
 
 // E-mails do financeiro que recebem o pedido de nota fiscal
@@ -583,6 +585,45 @@ window.copiarPlanilhaDoHistorico = function (id) {
         `Linhas para a planilha · ${reg.destinatario || ''}`);
 };
 
+// --- IMPORTAR DA PLANILHA (processo inverso) ---
+window.fecharImportarPlanilha = fecharImportarPlanilha;
+window.novaBaseImportada = novaBaseImportada;
+window.limparBaseImportada = limparBaseImportada;
+window.escolherArquivoImportar = escolherArquivoImportar;
+window.usarEnvioImportado = usarEnvioImportado;
+
+const normNome = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// Preenche o formulário com um envio da planilha. Retorna false se o usuário cancelar.
+function preencherComEnvioImportado(grupo) {
+    const atual = collectData();
+    if ((atual.dest_name.trim() || atual.items.length) &&
+        !confirm('Substituir os dados do formulário pelo envio da planilha?')) return false;
+
+    // Remetente, transportadora, volumes etc. continuam como estão no formulário
+    const dados = grupoParaFormulario(grupo, atual);
+
+    // A planilha não tem CPF/CNPJ: busca no cadastro pelo nome do destinatário
+    const cad = (window.__destinatariosSupabase || []).find(d => normNome(d.nome) === normNome(dados.dest_name));
+    dados.dest_doc = cad?.cpf_cnpj || '';
+    if (cad && !dados.dest_phone) dados.dest_phone = cad.contato || '';
+
+    preencherFormulario(dados);
+    // É um envio novo: não vincula a rascunho nem a registro do histórico anteriores
+    AppState.currentDraftId = null;
+    AppState.currentHistoricoId = null;
+    atualizarIndicadorRascunho();
+    window.switchTab('tab-romaneio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const ref = grupo.os ? `OS/Ticket ${grupo.os}` : 'o envio';
+    toast(`Formulário preenchido com ${ref}${cad ? ' (CPF/CNPJ do cadastro)' : ' (destinatário fora do cadastro: confira o CPF/CNPJ)'}.`,
+        cad ? 'success' : 'warning', 6000);
+    return true;
+}
+
+window.abrirImportarPlanilha = () => abrirImportarPlanilha(preencherComEnvioImportado);
+
 // Confere os dados mínimos antes de gerar documentos ou e-mail.
 // Erros bloqueiam; avisos perguntam se quer continuar.
 function validarAntesDeGerar(d) {
@@ -880,6 +921,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key !== 'Escape') return;
         // Fecha só o modal de cima (o da planilha pode estar aberto sobre o do histórico)
         if (previewPlanilhaAberto()) { fecharPreviewPlanilha(); return; }
+        if (importarPlanilhaAberto()) { fecharImportarPlanilha(); return; }
         if (aberto('modal-preview')) fecharModalPreview();
         if (aberto('modal-edit-dest')) fecharModalEdit();
         if (aberto('modal-historico-detalhe')) fecharDetalheHistorico();

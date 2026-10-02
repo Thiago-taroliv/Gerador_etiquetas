@@ -62,9 +62,13 @@
                                 style="font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Novo Envio</button>
                         </div>
 
-                        <strong>Formulário (mínimo de envio)</strong>
-                        <div class="small">Carregue um arquivo JSON com registros simples ou use o seletor para
-                            preencher.</div>
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                            <div>
+                                <strong>Formulário (mínimo de envio)</strong>
+                                <div class="small" style="margin-top:0;">Preencha manualmente, use o cadastro ou importe um envio da planilha de controle.</div>
+                            </div>
+                            <button type="button" class="btn-outline" onclick="abrirImportarPlanilha()" style="margin:0;">Importar da Planilha</button>
+                        </div>
 
                         <!-- SEÇÃO: REMETENTE -->
                         <fieldset>
@@ -260,6 +264,9 @@
                             cadastra o item.<br><br>
                             • "Salvar Rascunho" guarda o envio na aba Envios para continuar depois. Use "Novo Envio"
                             para começar outro sem sobrescrever o rascunho aberto.<br><br>
+                            • "Importar da Planilha" faz o caminho inverso: cole as linhas da planilha de controle
+                            (ou escolha o .xlsx), escolha o envio e o formulário é preenchido com destinatário, itens
+                            e IMEIs. A base fica guardada neste navegador.<br><br>
                             • "Linhas p/ Planilha" abre uma tabela no padrão da planilha de controle para
                             conferir e editar antes de copiar. Colar uma lista numa célula preenche para baixo.
                             Depois, na planilha, clique na coluna OS/Ticket da primeira linha vazia e cole
@@ -469,6 +476,46 @@
         </div>
     </div>
 
+
+    <!-- MODAL: IMPORTAR ENVIO DA PLANILHA DE CONTROLE -->
+    <div id="modal-importar" class="modal-overlay">
+        <div class="modal-card importar-card">
+            <div class="modal-header">
+                <div>
+                    <strong>Importar da Planilha</strong>
+                    <div class="small" id="importar_info" style="margin-top:2px;"></div>
+                </div>
+                <button class="modal-close" onclick="fecharImportarPlanilha()" title="Fechar (Esc)">&times;</button>
+            </div>
+
+            <!-- Etapa 1: receber os dados -->
+            <div id="importar_vazio" class="import-drop">
+                <div class="import-drop-titulo">Cole aqui as linhas da planilha de controle</div>
+                <div class="small" style="margin:0 0 10px;">
+                    No Excel, selecione as linhas (pode incluir o cabeçalho) e copie (Ctrl+C).
+                    Clique na área abaixo e cole (Ctrl+V).
+                </div>
+                <textarea id="importar_colar" class="import-paste" placeholder="Clique aqui e aperte Ctrl+V" spellcheck="false"></textarea>
+                <div class="import-ou">
+                    <span>ou</span>
+                    <button type="button" class="btn-neutral btn-sm" onclick="escolherArquivoImportar()">Escolher arquivo (.xlsx, .csv)</button>
+                    <span class="small" style="margin:0;">também dá para arrastar o arquivo para cá</span>
+                    <span id="importar_status" class="small" style="margin:0;font-weight:600;"></span>
+                </div>
+                <input id="importar_arquivo" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none;">
+            </div>
+
+            <!-- Etapa 2: escolher o envio -->
+            <div id="importar_dados" class="import-dados" style="display:none;">
+                <div class="import-toolbar">
+                    <input id="importar_busca" type="text" placeholder="Filtrar por OS/Ticket, destinatário, unidade, cidade ou data...">
+                    <button type="button" class="btn-sm btn-neutral" onclick="novaBaseImportada()" title="Colar ou escolher outra planilha">Trocar dados</button>
+                    <button type="button" class="btn-sm btn-neutral" onclick="limparBaseImportada()">Limpar base</button>
+                </div>
+                <div id="importar_lista" class="import-lista"></div>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL DE LINHAS PARA A PLANILHA (preview editável) -->
     <div id="modal-planilha" class="modal-overlay">
