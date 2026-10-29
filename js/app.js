@@ -1,16 +1,22 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarRastreio, cancelarPedido } from './db.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarRastreio, cancelarPedido, gravarEscolhaKits } from './db.js';
 import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao } from './juncao.js';
+import { renderDeParaCRUD } from './dePara.js';
+import { pendenciasEnvio } from './importarEstoque.js';
+import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } from './importarEstoqueModal.js';
+
+// Depois de criar os rascunhos, o kanban mostra os novos cards
+window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisivel()) carregarViewKanban(); });
 import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
-import { gerarLinhasPlanilha } from './planilha.js';
+import { gerarLinhasPlanilha, contarKits } from './planilha.js';
 import { grupoParaFormulario } from './importarPlanilha.js';
 import { abrirImportarPlanilha, fecharImportarPlanilha, importarPlanilhaAberto, novaBaseImportada, limparBaseImportada, escolherArquivoImportar, usarEnvioImportado } from './importarPlanilhaModal.js';
-import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto } from './planilhaPreview.js';
+import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto, alternarKitsPlanilha } from './planilhaPreview.js';
 
 // E-mails do financeiro que recebem o pedido de nota fiscal
 const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
@@ -516,6 +522,35 @@ function atualizarIndicadorRascunho() {
     if (el) el.style.display = AppState.currentDraftId ? 'flex' : 'none';
 }
 
+// Dados do envio que não têm campo no formulário e precisam sobreviver a "Salvar rascunho"
+function extrasDoEnvio(dados) {
+    const extras = {};
+    if (dados?.origem) extras.origem = dados.origem;
+    if (dados?.montar_kits !== undefined) extras.montar_kits = dados.montar_kits;
+    return extras;
+}
+
+// Campo do formulário de cada pendência (destacado até ser preenchido)
+const CAMPO_DA_PENDENCIA = {
+    'CPF/CNPJ': 'dest_doc', 'Endereço': 'dest_addr1', 'Contato': 'dest_phone',
+    'Referência': 'reference', 'Tipo': 'planilha_tipo', 'Volumes': 'total_vol'
+};
+
+// Envio importado da planilha de estoque: faixa com o que falta preencher à mão
+function atualizarPendencias() {
+    const banner = $('pendencias_banner');
+    if (!banner) return;
+    const importado = AppState.extrasEnvio?.origem?.perfil === 'estoque';
+    const pendencias = importado ? pendenciasEnvio(collectData()) : [];
+
+    Object.entries(CAMPO_DA_PENDENCIA).forEach(([nome, id]) =>
+        $(id)?.classList.toggle('campo-pendente', pendencias.includes(nome)));
+
+    banner.style.display = pendencias.length ? 'flex' : 'none';
+    banner.innerHTML = pendencias.length
+        ? `<span>⚠ Importado da planilha de estoque. Complete à mão: <b>${pendencias.join(', ')}</b>.</span>` : '';
+}
+
 window.salvarRascunhoAtual = async function(silencioso = false) {
     // Coleta todos os dados do form
     const dados = collectData();
@@ -544,6 +579,7 @@ window.novoEnvio = function() {
     AppState.currentHistoricoId = null;
     AppState.juncaoPendente = [];
     atualizarIndicadorRascunho();
+    atualizarPendencias();
 };
 
 window.carregarViewAndamento = async function() {
@@ -598,7 +634,9 @@ window.editarRascunho = function(id) {
         AppState.currentDraftId = String(id);
         AppState.currentHistoricoId = rascunho.dados_completos?.historico_id || null;
         AppState.juncaoPendente = [];
+        AppState.extrasEnvio = extrasDoEnvio(rascunho.dados_completos);
         atualizarIndicadorRascunho();
+        atualizarPendencias();
 
         // Vai para a aba do romaneio
         window.switchTab('tab-romaneio');
@@ -645,17 +683,28 @@ window.adicionarLinhaPlanilha = adicionarLinhaPlanilha;
 window.restaurarPlanilha = restaurarPlanilha;
 window.confirmarCopiaPlanilha = confirmarCopiaPlanilha;
 
-function abrirLinhas(dados, dataEnvio, titulo) {
-    const linhas = gerarLinhasPlanilha(dados, dataEnvio);
+window.alternarKitsPlanilha = alternarKitsPlanilha;
+
+// aoMudarKits(montar): grava a escolha de "Montar kits" no envio de onde as linhas vieram
+function abrirLinhas(dados, dataEnvio, titulo, aoMudarKits) {
+    const marcado = !!dados.montar_kits;
+    const gerar = montar => gerarLinhasPlanilha(dados, dataEnvio, { montarKits: montar });
+    const linhas = gerar(marcado);
     if (linhas.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return; }
-    abrirPreviewPlanilha(linhas, titulo);
+    const info = contarKits(dados);
+    abrirPreviewPlanilha(linhas, titulo, info.kits ? { info, marcado, gerar, aoMudar: aoMudarKits } : null);
 }
 
 // Botão "Linhas p/ Planilha" do formulário
 window.copiarParaPlanilha = function () {
     const d = collectData();
     const ref = d.reference_type !== 'none' && d.reference ? ` · ${d.reference_type === 'os' ? 'OS' : 'Ticket'} ${d.reference}` : '';
-    abrirLinhas(d, undefined, `Linhas para a planilha${ref}`);
+    abrirLinhas(d, undefined, `Linhas para a planilha${ref}`, async montar => {
+        AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), montar_kits: montar };
+        // Rascunho/registro já salvos guardam a escolha na hora; envio novo guarda ao salvar ou gerar
+        if (AppState.currentDraftId) await salvarRascunhoAtual(true);
+        if (AppState.currentHistoricoId) await gravarEscolhaKits(AppState.currentHistoricoId, montar);
+    });
 };
 
 // Botão no detalhe do histórico (data de envio = data do registro)
@@ -666,7 +715,9 @@ window.copiarPlanilhaDoHistorico = function (id) {
         return;
     }
     abrirLinhas(reg.dados_completos, new Date(reg.created_at).toLocaleDateString('pt-BR'),
-        `Linhas para a planilha · ${reg.destinatario || ''}`);
+        `Linhas para a planilha · ${reg.destinatario || ''}`, async montar => {
+            if (await gravarEscolhaKits(id, montar)) atualizarCaches(id, { dados_completos: { ...reg.dados_completos, montar_kits: montar } });
+        });
 };
 
 // --- IMPORTAR DA PLANILHA (processo inverso) ---
@@ -697,6 +748,8 @@ function preencherComEnvioImportado(grupo) {
     AppState.currentDraftId = null;
     AppState.currentHistoricoId = null;
     AppState.juncaoPendente = [];
+    AppState.extrasEnvio = {};
+    atualizarPendencias();
     atualizarIndicadorRascunho();
     window.switchTab('tab-romaneio');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -715,6 +768,11 @@ function validarAntesDeGerar(d) {
     if (d.items.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return false; }
     if (!d.dest_name.trim() || !d.dest_addr1.trim()) {
         toast('Preencha o Nome e o Endereço (linha 1) do destinatário.', 'warning');
+        return false;
+    }
+    if (d.total_vol === '') {
+        toast('Preencha o número de volumes.', 'warning');
+        $('total_vol')?.focus();
         return false;
     }
     const avisos = [];
@@ -1003,6 +1061,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Máscara + validação de CPF/CNPJ nos três formulários de destinatário
     ['dest_doc', 'new_dest_doc', 'modal_dest_doc'].forEach(id => ligarMascaraDoc($(id)));
 
+    // Faixa de pendências do envio importado: some à medida que os campos são preenchidos
+    ['input', 'change'].forEach(ev => $('tab-romaneio')?.addEventListener(ev, atualizarPendencias));
+
     // Auth pipeline init (Dispara checagem do Supabase e carrega BD se logado)
     checkSession();
 
@@ -1012,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key !== 'Escape') return;
         // Fecha só o modal de cima (o da planilha pode estar aberto sobre o do histórico)
         if (juncaoAberta()) { fecharJuncao(); return; }
+        if (importarEstoqueAberto()) { fecharImportarEstoque(); return; }
         if (previewPlanilhaAberto()) { fecharPreviewPlanilha(); return; }
         if (importarPlanilhaAberto()) { fecharImportarPlanilha(); return; }
         if (aberto('modal-preview')) fecharModalPreview();
@@ -1029,7 +1091,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.switchSubTab = function(subTabName) {
     // 1. Esconder TODAS as sub-abas conhecidas
-    const idsToHide = ['sub-andamento', 'sub-historico', 'sub-destinatarios', 'sub-itens'];
+    const idsToHide = ['sub-andamento', 'sub-historico', 'sub-destinatarios', 'sub-itens', 'sub-depara'];
     idsToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -1060,6 +1122,8 @@ window.switchSubTab = function(subTabName) {
         window.loadDestinatariosList();
     } else if (subTabName === 'sub-itens') {
         window.switchTabToItens();
+    } else if (subTabName === 'sub-depara') {
+        renderDeParaCRUD();
     }
 };
 

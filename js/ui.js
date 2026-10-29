@@ -1,4 +1,4 @@
-import { $, escapeHtml, SENDERS } from './config.js';
+import { $, escapeHtml, SENDERS, AppState } from './config.js';
 import { searchItems, getItems, addItem as addItemToDB } from './items.js';
 import { toast } from './toast.js';
 
@@ -186,18 +186,23 @@ export function collectData() {
                 imeiList.querySelectorAll('.imei-item').forEach(item => {
                     const imeiValue = item.dataset.imei;
                     if (imeiValue) {
+                        // Chip preso ao rastreador (veio da planilha de estoque; não aparece no romaneio)
+                        const chip = {};
+                        if (item.dataset.chip) chip.chip = item.dataset.chip;
+                        if (item.dataset.iccid) chip.iccid = item.dataset.iccid;
                         // Verificar se é kit (contém |)
                         if (imeiValue.includes('|')) {
                             const [rastreador, teclado] = imeiValue.split('|');
-                            imeis.push({ tipo: 'kit', rastreador, teclado });
+                            imeis.push({ tipo: 'kit', rastreador, teclado, ...chip });
                         } else {
-                            imeis.push({ tipo: 'simples', imei: imeiValue });
+                            imeis.push({ tipo: 'simples', imei: imeiValue, ...chip });
                         }
                     }
                 });
             }
 
-            return { desc, qty, client, imeis };
+            // papel (rastreador, teclado, acessório...) vem do de-para da planilha de estoque
+            return { desc, qty, client, imeis, ...(card.dataset.papel ? { papel: card.dataset.papel } : {}) };
         })
         .filter(it => it.desc.trim() !== '');
 
@@ -214,13 +219,16 @@ export function collectData() {
         doc_type: $('doc-selector')?.value || '',
         planilha_cliente: $('planilha_cliente')?.value.trim() || '',
         planilha_tipo: $('planilha_tipo')?.value || '',
-        total_vol: Math.max(1, parseInt($('total_vol').value || 1)),
+        // Vazio = ainda não informado (envio importado); gerar documentos exige preencher
+        total_vol: $('total_vol').value.trim() === '' ? '' : Math.max(1, parseInt($('total_vol').value) || 1),
         reference: $('reference').value || '',
         reference_type: $('reference_type')?.value || 'ticket',
         carrier: $('carrier').value || '',
         receiver: $('receiver').value || '',
         client_mode: isMultiMode ? 'multi' : 'single',
-        items: items
+        items: items,
+        // Dados do envio que não ficam em campos do formulário (origem da importação, escolha de kits...)
+        ...(AppState.extrasEnvio || {})
     };
 }
 
@@ -279,6 +287,7 @@ export function preencherFormulario(dados) {
             const lastCard = cards[cards.length - 1];
 
             if(lastCard) {
+                if (it.papel) lastCard.dataset.papel = it.papel;
                 const descInput = lastCard.querySelector('.it-desc');
                 if(descInput) descInput.value = it.desc || '';
 
@@ -311,7 +320,13 @@ export function preencherFormulario(dados) {
                                 valA = imeiObj.imei;
                                 labelHtml = '<div>IMEI: <strong>'+escapeHtml(imeiObj.imei)+'</strong></div>';
                             }
-                            imeisHtml += '<div class="imei-item" data-imei="'+escapeHtml(valA)+'">'+labelHtml+'</div>';
+                            // Chip preso ao rastreador: guardado nos atributos para não se perder ao salvar de novo
+                            let chipAttr = '';
+                            if(imeiObj.chip) {
+                                chipAttr = ' data-chip="'+escapeHtml(imeiObj.chip)+'"' + (imeiObj.iccid ? ' data-iccid="'+escapeHtml(imeiObj.iccid)+'"' : '');
+                                labelHtml += '<span class="imei-chip" title="'+escapeHtml(imeiObj.chip + (imeiObj.iccid ? ' — ICCID ' + imeiObj.iccid : ''))+'">+ chip</span>';
+                            }
+                            imeisHtml += '<div class="imei-item" data-imei="'+escapeHtml(valA)+'"'+chipAttr+'>'+labelHtml+'</div>';
                         });
                         if(imeiList) imeiList.innerHTML = imeisHtml;
                     }
@@ -330,7 +345,7 @@ export function preencherFormulario(dados) {
     // Atualiza estado do campo ANTES de preencher, senão o toggle apaga o valor
     try { window.toggleReferenceInput(); } catch(e){}
     $('reference').value = String(dados.reference || '');
-    $('total_vol').value = dados.total_vol || 1;
+    $('total_vol').value = dados.total_vol === '' ? '' : (dados.total_vol || 1);
     $('carrier').value = dados.carrier || 'Jadlog';
     $('receiver').value = dados.receiver || '';
     if ($('doc-selector')) $('doc-selector').value = dados.doc_type || '';
@@ -340,6 +355,7 @@ export function preencherFormulario(dados) {
 
 // Volta o formulário ao estado inicial (novo envio)
 export function limparFormulario() {
+    AppState.extrasEnvio = {};
     $('sender_select').value = 'ranor';
     onSenderChange();
 

@@ -5,6 +5,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 ## Funcionalidades
 
 - **Kanban de pedidos** (aba principal): cada envio aparece na coluna da sua fase — Rascunho, Aguardando NF, NF emitida, Pronto p/ envio, Despachado e Entregue. Os cards podem ser arrastados entre colunas, e as ações do sistema (e-mail, etiqueta, romaneio) avançam a fase sozinhas
+- **Importação da planilha de estoque**: o responsável do estoque sobe a planilha de saída e cada envio vira um rascunho no kanban, com aviso do que falta preencher à mão (CPF/CNPJ, endereço, volumes...). Os nomes do estoque viram itens do sistema pela tabela de-para (Gerenciar Dados → De-para Estoque); o chip fica na linha do rastreador na planilha de envio, e rastreador + teclado podem ser montados em kit
 - **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos 7 dias) e permite juntar tudo num envio só
 - Geração automática de **etiquetas de envio** (com suporte a múltiplos volumes)
 - Geração de **romaneio de entrega** para impressão
@@ -40,6 +41,9 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
     ├── render.js       # Renderização de etiquetas, romaneio e e-mail
     ├── kanban.js       # Quadro de pedidos por fase (arrastar e soltar)
     ├── juncao.js       # Alerta e junção de pedidos do mesmo técnico
+    ├── importarEstoque.js      # Leitor da planilha de estoque (agrupa linhas em envios)
+    ├── importarEstoqueModal.js # Prévia da importação e criação dos rascunhos
+    ├── dePara.js       # De-para: item do estoque -> item do sistema + papel
     └── app.js          # Inicialização, bindagem de eventos e orquestração
 ```
 
@@ -56,6 +60,8 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 ## Banco de dados
 
 O kanban usa as colunas `fase`, `fase_em`, `rastreio` e `mesclado_em` da tabela `historico`. Para criá-las, rode [`sql/kanban.sql`](sql/kanban.sql) no SQL Editor do Supabase (pode ser executado mais de uma vez).
+
+A importação da planilha de estoque usa a tabela `de_para_itens`: rode [`sql/estoque.sql`](sql/estoque.sql) da mesma forma.
 
 ## Segurança
 

@@ -63,6 +63,7 @@
                         <div class="kanban-acoes">
                             <input id="kanban_search" type="text" placeholder="Filtrar por destinatário, unidade, referência ou rastreio..."
                                 oninput="renderKanban()">
+                            <button class="btn-outline" onclick="abrirImportarEstoque()" title="Criar rascunhos a partir da planilha de saída de estoque">📥 Importar estoque</button>
                             <button class="btn-outline" onclick="carregarViewKanban()">🔄 Atualizar</button>
                         </div>
                     </div>
@@ -83,6 +84,8 @@
                             <button class="secondary" type="button" onclick="novoEnvio()"
                                 style="font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Novo Envio</button>
                         </div>
+                        <!-- Envio importado da planilha de estoque: o que falta preencher à mão -->
+                        <div id="pendencias_banner" class="pendencias-banner" style="display:none;"></div>
 
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                             <div>
@@ -309,6 +312,7 @@
                 <div class="sub-nav">
                     <button class="sub-tab active" id="btn-sub-destinatarios" onclick="switchSubTab('sub-destinatarios')">Destinatários</button>
                     <button class="sub-tab" id="btn-sub-itens" onclick="switchSubTab('sub-itens')">Itens / Produtos</button>
+                    <button class="sub-tab" id="btn-sub-depara" onclick="switchSubTab('sub-depara')">De-para Estoque</button>
                 </div>
 
             <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
@@ -393,6 +397,52 @@
                     </div>
                 </div>
                 </div> <!-- Fim de sub-itens -->
+
+                <!-- SUB-ABA: DE-PARA DA PLANILHA DE ESTOQUE -->
+                <div id="sub-depara" style="display: none;">
+                <div class="card">
+                    <strong>De-para da Planilha de Estoque</strong>
+                    <div class="small">Como cada item da planilha de estoque aparece no sistema. O código do estoque tem prioridade;
+                        sem código, vale a descrição. O papel define o tratamento: rastreador e teclado levam IMEI,
+                        chip não vai para o romaneio (fica na linha do rastreador na planilha de envio).</div>
+
+                    <fieldset>
+                        <legend>Novo mapeamento</legend>
+                        <div class="depara-novo">
+                            <div>
+                                <label>Cód. estoque</label>
+                                <input id="depara_new_cod" type="text" placeholder="Ex: 61.5">
+                            </div>
+                            <div>
+                                <label>Descrição no estoque</label>
+                                <input id="depara_new_desc" type="text" placeholder="Ex: Equipamento RA24 MNT-PLE" oninput="sugerirPapelNovoDePara()">
+                            </div>
+                            <div>
+                                <label>Nome no romaneio</label>
+                                <input id="depara_new_nome" type="text" list="depara_itens_catalogo" placeholder="Ex: RASTREADOR RA24">
+                            </div>
+                            <div>
+                                <label>Papel</label>
+                                <select id="depara_new_papel">
+                                    <option value="rastreador">Rastreador</option>
+                                    <option value="teclado">Teclado</option>
+                                    <option value="chip">Chip (fora do romaneio)</option>
+                                    <option value="acessorio" selected>Acessório</option>
+                                    <option value="ignorar">Ignorar</option>
+                                </select>
+                            </div>
+                            <button onclick="novoDePara()">+ Adicionar</button>
+                        </div>
+                    </fieldset>
+
+                    <fieldset>
+                        <legend>Mapeamentos cadastrados</legend>
+                        <input id="depara_search" type="text" placeholder="Pesquisar por código, descrição ou nome..."
+                            oninput="renderListaDePara()" style="margin-top:12px;">
+                        <div id="depara_list"></div>
+                    </fieldset>
+                </div>
+                </div> <!-- Fim de sub-depara -->
             </div> <!-- Fim de tab-dados -->
             <!-- ABA: ENVIOS (Unificada) -->
             <div id="tab-envios" class="tab-content" style="display: none;">
@@ -515,6 +565,45 @@
         </div>
     </div>
 
+    <!-- MODAL: IMPORTAR PLANILHA DE ESTOQUE (cria rascunhos) -->
+    <div id="modal-estoque" class="modal-overlay">
+        <div class="modal-card importar-card">
+            <div class="modal-header">
+                <div>
+                    <strong>Importar Planilha de Estoque</strong>
+                    <div class="small" id="estoque_info" style="margin-top:2px;"></div>
+                </div>
+                <button class="modal-close" onclick="fecharImportarEstoque()" title="Fechar (Esc)">&times;</button>
+            </div>
+
+            <!-- Etapa 1: receber a planilha -->
+            <div id="estoque_entrada" class="import-drop">
+                <div class="import-drop-titulo">Cole aqui as linhas da planilha de saída de estoque</div>
+                <div class="small" style="margin:0 0 10px;">
+                    Copie as linhas <b>com o cabeçalho</b> (Ctrl+C), clique na área abaixo e cole (Ctrl+V).
+                    Cada envio encontrado vira um rascunho na coluna Rascunho dos Pedidos.
+                </div>
+                <textarea id="estoque_colar" class="import-paste" placeholder="Clique aqui e aperte Ctrl+V" spellcheck="false"></textarea>
+                <div class="import-ou">
+                    <span>ou</span>
+                    <button type="button" class="btn-neutral btn-sm" onclick="escolherArquivoEstoque()">Escolher arquivo (.xlsx, .csv)</button>
+                    <span class="small" style="margin:0;">também dá para arrastar o arquivo para cá</span>
+                    <span id="estoque_status" class="small" style="margin:0;font-weight:600;"></span>
+                </div>
+                <input id="estoque_arquivo" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt" style="display:none;">
+            </div>
+
+            <!-- Etapa 2: prévia dos envios -->
+            <div id="estoque_previa" class="import-dados" style="display:none;">
+                <div id="estoque_lista" class="import-lista"></div>
+                <div class="modal-actions">
+                    <button class="btn-neutral" onclick="trocarArquivoEstoque()">Trocar arquivo</button>
+                    <button id="estoque_criar" onclick="criarRascunhosEstoque()">Criar rascunhos</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: IMPORTAR ENVIO DA PLANILHA DE CONTROLE -->
     <div id="modal-importar" class="modal-overlay">
         <div class="modal-card importar-card">
@@ -572,6 +661,11 @@
                     <label class="chip g-dados"><input type="checkbox" checked onchange="alternarGrupoPlanilha('dados', this.checked)"> Dados</label>
                     <label class="chip g-config"><input type="checkbox" checked onchange="alternarGrupoPlanilha('config', this.checked)"> Configuração</label>
                     <label class="chip g-envio"><input type="checkbox" checked onchange="alternarGrupoPlanilha('envio', this.checked)"> Envio</label>
+                    <label id="planilha_kits" class="chip planilha-kits" style="display:none;"
+                        title="Junta rastreador + teclado avulsos da mesma unidade numa linha só, na ordem dos IMEIs">
+                        <input type="checkbox" id="planilha_kits_check" onchange="alternarKitsPlanilha(this.checked)">
+                        <b>Montar kits</b> <span id="planilha_kits_info"></span>
+                    </label>
                 </div>
                 <div class="planilha-dicas small">
                     <b>Enter</b>/<b>↑↓</b> navega na coluna &middot; colar uma lista numa célula preenche para baixo &middot;

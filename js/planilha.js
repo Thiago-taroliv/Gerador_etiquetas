@@ -87,12 +87,74 @@ function hoje() {
     return new Date().toLocaleDateString('pt-BR');
 }
 
-// Monta as linhas (array de arrays, 25 colunas) a partir dos dados do formulário/rascunho/histórico
-export function gerarLinhasPlanilha(dados, dataEnvio = hoje()) {
+// Acessórios que podem ter "KIT" no nome sem serem kit de rastreador (ex. "SUPORTE ... KIT ÂNCORA")
+const ACESSORIO = /SUPORTE|LACRE|CHICOTE|ANCORA|ÂNCORA|CABO|PARAFUSO|ABRA[CÇ]ADEIRA|FUS[IÍ]VEL|CHIP/;
+
+// Papel do item: o do de-para (planilha de estoque) ou, em itens digitados à mão, deduzido da descrição
+export function papelDoItem(it) {
+    if (it.papel) return it.papel;
+    const desc = String(it.desc || '').toUpperCase();
+    if (/\bKIT\b/.test(desc) && !ACESSORIO.test(desc)) return 'kit';
+    if (/TECLADO/.test(desc)) return 'teclado';
+    if (/RASTREADOR|EQUIPAMENTO|ST\d{3}/.test(desc)) return 'rastreador';
+    return 'acessorio';
+}
+
+const unidadeDoItem = (dados, it) =>
+    ((dados.client_mode === 'multi' ? it.client : '') || dados.unit_name || dados.dest_name || '');
+
+// IMEIs avulsos (não kit) de rastreadores e teclados, por unidade, na ordem do formulário
+function imeisPorUnidade(dados, papel) {
+    const mapa = new Map();
+    (dados.items || []).forEach(it => {
+        if (papelDoItem(it) !== papel) return;
+        const un = unidadeDoItem(dados, it);
+        if (!mapa.has(un)) mapa.set(un, []);
+        (it.imeis || []).filter(im => im.tipo !== 'kit' && im.imei).forEach(im => mapa.get(un).push(im));
+    });
+    return mapa;
+}
+
+// Quantos kits dá para montar juntando rastreador + teclado avulsos da mesma unidade
+export function contarKits(dados) {
+    const rast = imeisPorUnidade(dados, 'rastreador');
+    const tecl = imeisPorUnidade(dados, 'teclado');
+    let kits = 0, rastreadores = 0, teclados = 0;
+    rast.forEach(l => { rastreadores += l.length; });
+    tecl.forEach(l => { teclados += l.length; });
+    rast.forEach((l, un) => { kits += Math.min(l.length, (tecl.get(un) || []).length); });
+    return { kits, rastreadores, teclados };
+}
+
+// "RASTREADOR RA24" -> "KIT RA24" (nome da linha do kit montado; editável no preview)
+function descricaoKit(descRastreador) {
+    const d = String(descRastreador || '').trim().toUpperCase();
+    return /RASTREADOR|EQUIPAMENTO/.test(d) ? d.replace(/RASTREADOR|EQUIPAMENTO/, 'KIT').replace(/\s+/g, ' ') : `KIT ${d}`;
+}
+
+// ICCID só vai para a planilha quando há número; sem número a coluna fica vazia
+const iccidDe = im => (im.iccid && /\d{6,}/.test(im.iccid) ? String(im.iccid).trim() : '');
+
+// Monta as linhas (array de arrays, 25 colunas) a partir dos dados do formulário/rascunho/histórico.
+// montarKits: junta rastreador + teclado avulsos da mesma unidade numa linha só (na ordem dos IMEIs)
+export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = !!dados.montar_kits } = {}) {
     const end = separarEnderecoLinha2(dados.dest_addr2);
     const os = dados.reference_type === 'none' ? '' : String(dados.reference || '').trim();
-    const multi = dados.client_mode === 'multi';
     const linhas = [];
+
+    // Pares rastreador -> teclado formados antes de gerar as linhas (vale qualquer ordem dos itens)
+    const parDoRastreador = new Map();
+    const tecladosEmKit = new Set();
+    if (montarKits) {
+        const tecl = imeisPorUnidade(dados, 'teclado');
+        imeisPorUnidade(dados, 'rastreador').forEach((rast, un) => {
+            const fila = tecl.get(un) || [];
+            rast.slice(0, fila.length).forEach((im, i) => {
+                parDoRastreador.set(im, fila[i]);
+                tecladosEmKit.add(fila[i]);
+            });
+        });
+    }
 
     const linha = (unidade, equip, campos = {}) => {
         const l = new Array(COLUNAS.length).fill('');
@@ -116,22 +178,27 @@ export function gerarLinhasPlanilha(dados, dataEnvio = hoje()) {
     (dados.items || []).forEach(it => {
         const desc = String(it.desc || '').trim().toUpperCase();
         if (!desc) return;
-        const unidade = (multi ? it.client : '') || dados.unit_name || dados.dest_name || '';
-        const ehKit = /\bKIT\b/.test(desc);
-        const ehTeclado = /TECLADO/.test(desc) && !ehKit;
-        const ehEquipamento = ehKit || ehTeclado || /RASTREADOR|ST\d{3}/.test(desc);
+        const unidade = unidadeDoItem(dados, it);
+        const papel = papelDoItem(it);
+        if (papel === 'chip' || papel === 'ignorar') return;
+        const ehTeclado = papel === 'teclado';
+        const ehEquipamento = papel === 'kit' || papel === 'rastreador' || ehTeclado;
         const qtd = Math.max(1, parseInt(it.qty, 10) || 1);
         const obs = ehTeclado ? { 16: 'Somente teclado' } : {};
 
         if (it.imeis && it.imeis.length) {
-            // Uma linha por equipamento identificado
+            // Uma linha por equipamento identificado (chip com ICCID vai na mesma linha do rastreador)
             it.imeis.forEach(im => {
                 if (im.tipo === 'kit') {
-                    linhas.push(linha(unidade, `1 ${desc}`, { 7: im.rastreador || '', 8: im.teclado || '' }));
+                    linhas.push(linha(unidade, `1 ${desc}`, { 7: im.rastreador || '', 8: im.teclado || '', 9: iccidDe(im) }));
                 } else if (ehTeclado) {
+                    if (tecladosEmKit.has(im)) return; // já saiu na linha de um kit montado
                     linhas.push(linha(unidade, `1 ${desc}`, { ...obs, 8: im.imei }));
+                } else if (parDoRastreador.has(im)) {
+                    const tecl = parDoRastreador.get(im);
+                    linhas.push(linha(unidade, `1 ${descricaoKit(desc)}`, { 7: im.imei, 8: tecl.imei, 9: iccidDe(im) }));
                 } else {
-                    linhas.push(linha(unidade, `1 ${desc}`, { 7: im.imei }));
+                    linhas.push(linha(unidade, `1 ${desc}`, { 7: im.imei, 9: iccidDe(im) }));
                 }
             });
         } else if (ehEquipamento) {

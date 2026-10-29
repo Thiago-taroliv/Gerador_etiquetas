@@ -11,6 +11,7 @@ let linhas = [];      // estado atual (editado)
 let original = [];    // como foi gerado, para "Restaurar"
 let editado = false;
 const ocultos = new Set();
+let kits = null;      // { info: {kits, rastreadores, teclados}, gerar(montar), aoMudar(montar) } quando dá para montar kits
 
 const clonar = arr => arr.map(l => [...l]);
 const grupoDa = c => GRUPOS.find(g => c >= g.de && c <= g.ate).id;
@@ -163,15 +164,46 @@ function ligarEventos() {
 
 // --- API usada pelo app ---
 
-export function abrirPreviewPlanilha(novasLinhas, titulo = '') {
+// opcoesKits (opcional): { info, marcado, gerar(montar) -> linhas, aoMudar(montar) } — mostra "Montar kits"
+export function abrirPreviewPlanilha(novasLinhas, titulo = '', opcoesKits = null) {
     linhas = clonar(novasLinhas);
     original = clonar(novasLinhas);
     editado = false;
+    kits = opcoesKits;
     $('planilha_titulo').textContent = titulo || 'Linhas para a planilha';
     $('planilha_tipos').innerHTML = TIPOS.map(t => `<option value="${t}">`).join('');
+    $('planilha_kits').style.display = kits ? 'inline-flex' : 'none';
+    if (kits) {
+        $('planilha_kits_check').checked = !!kits.marcado;
+        atualizarInfoKits(!!kits.marcado);
+    }
     ligarEventos();
     render();
     $('modal-planilha').style.display = 'flex';
+}
+
+function atualizarInfoKits(montar) {
+    const { kits: k, rastreadores, teclados } = kits.info;
+    const sobra = [teclados - k && `${teclados - k} teclado(s)`, rastreadores - k && `${rastreadores - k} rastreador(es)`].filter(Boolean);
+    $('planilha_kits_info').textContent = montar
+        ? `${k} kit(s)${sobra.length ? ` + ${sobra.join(' e ')} avulso(s)` : ''}`
+        : `${rastreadores} rastreador(es) e ${teclados} teclado(s) separados: dá para montar ${k} kit(s)`;
+}
+
+// Liga/desliga a montagem de kits: refaz as linhas e grava a escolha no envio
+export function alternarKitsPlanilha(montar) {
+    if (!kits) return;
+    if (editado && !confirm('Refazer as linhas? As edições feitas na tabela serão perdidas.')) {
+        $('planilha_kits_check').checked = !montar;
+        return;
+    }
+    linhas = clonar(kits.gerar(montar));
+    original = clonar(linhas);
+    editado = false;
+    kits.marcado = montar;
+    atualizarInfoKits(montar);
+    render();
+    kits.aoMudar?.(montar);
 }
 
 export function fecharPreviewPlanilha(forcar = false) {

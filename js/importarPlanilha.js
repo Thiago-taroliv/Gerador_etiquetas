@@ -204,7 +204,7 @@ export async function lerArquivo(arquivo) {
     }));
 }
 
-function carregarSheetJS() {
+export function carregarSheetJS() {
     if (window.XLSX) return Promise.resolve();
     return new Promise((ok, erro) => {
         const s = document.createElement('script');

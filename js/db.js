@@ -343,6 +343,37 @@ export async function atualizarStatusHistorico(reg, novoStatus) {
     return { fase, faseAnterior, faseEmAnterior: reg.fase_em, fase_em: update.fase_em || reg.fase_em };
 }
 
+// Guarda no registro do histórico se as linhas da planilha de envio saem com kits montados
+export async function gravarEscolhaKits(id, montar) {
+    const { data, error } = await supabaseClient.from('historico').select('dados_completos').eq('id', id).single();
+    if (error || !data) {
+        console.error('Erro ao ler registro para gravar kits:', error?.message);
+        return false;
+    }
+    const { error: erroUpdate } = await supabaseClient.from('historico')
+        .update({ dados_completos: { ...(data.dados_completos || {}), montar_kits: montar } }).eq('id', id);
+    if (erroUpdate) {
+        console.error('Erro ao gravar escolha de kits:', erroUpdate.message);
+        return false;
+    }
+    return true;
+}
+
+// Envios que vieram da planilha de estoque (para reconhecer uma reimportação): rascunhos e histórico
+export async function carregarOrigensEstoque() {
+    const [rasc, hist] = await Promise.all([
+        supabaseClient.from('pedidos_pendentes').select('id, dados_completos')
+            .eq('dados_completos->origem->>perfil', 'estoque'),
+        supabaseClient.from('historico').select('id, fase, origem:dados_completos->origem')
+            .eq('dados_completos->origem->>perfil', 'estoque')
+    ]);
+    if (rasc.error || hist.error) {
+        console.error('Erro ao buscar envios importados:', (rasc.error || hist.error).message);
+        return null;
+    }
+    return { rascunhos: rasc.data || [], historico: hist.data || [] };
+}
+
 // --- FUNÇÕES DE PEDIDOS EM ANDAMENTO (RASCUNHOS) ---
 
 export async function salvarPendente(dados, draftId = null, silencioso = false) {

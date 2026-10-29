@@ -1494,3 +1494,118 @@ button.resumo-chip:hover { transform: none; box-shadow: none; filter: brightness
     .kanban-acoes { min-width: 0; }
     .kanban-acoes input { max-width: none; }
 }
+
+/* --- DE-PARA DA PLANILHA DE ESTOQUE --- */
+.depara-novo {
+    display: grid;
+    grid-template-columns: 110px 1.3fr 1fr 190px auto;
+    gap: 10px;
+    align-items: end;
+}
+.depara-novo input, .depara-novo select { margin: 0; }
+.depara-novo button { margin: 0; white-space: nowrap; }
+.depara-row {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr 190px auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 13px;
+}
+.depara-row:last-child { border-bottom: 0; }
+.depara-row input, .depara-row select { margin: 0; }
+.depara-origem { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.depara-cod {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #eef1f6;
+    color: #4a5568;
+    white-space: nowrap;
+}
+.depara-autor { grid-column: 1 / -1; font-size: 11px; color: #aaa; margin-top: -4px; }
+.depara-autor:empty { display: none; }
+
+@media (max-width: 900px) {
+    .depara-novo, .depara-row { grid-template-columns: 1fr; }
+}
+
+/* --- IMPORTAR PLANILHA DE ESTOQUE --- */
+.estoque-envio { cursor: pointer; align-items: flex-start; }
+.estoque-envio > input[type="checkbox"] { width: auto; margin: 3px 0 0; flex-shrink: 0; }
+.estoque-envio.bloqueado { cursor: default; opacity: 0.6; }
+.estoque-tag, .estoque-status {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+.estoque-tag.ok { background: #dcf5e3; color: #1e8e3e; }
+.estoque-tag.falta { background: #fff4d6; color: #8a5a00; }
+.estoque-status { margin-left: auto; }
+.estoque-status.novo { background: #e8f0fe; color: #1a56b0; }
+.estoque-status.atualizar { background: #fff4d6; color: #8a5a00; }
+.estoque-status.igual, .estoque-status.gerado { background: #eee; color: #777; }
+.estoque-aviso { font-size: 12px; color: #8a5a00; margin-top: 4px; }
+.estoque-aviso.kit { color: #1a56b0; }
+
+.estoque-ignoradas { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 12px; color: #888; }
+.estoque-ignoradas summary { cursor: pointer; font-weight: 600; }
+.estoque-ignoradas div { margin-top: 4px; }
+
+.estoque-novos { padding: 12px 14px; background: #fffaf0; border-bottom: 1px solid #f3d27a; }
+.estoque-novos-titulo { font-size: 13px; font-weight: 700; color: #8a5a00; margin-bottom: 10px; }
+.estoque-novo-row {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 190px;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+.estoque-novo-row input, .estoque-novo-row select { margin: 0; }
+.estoque-novos-acoes { display: flex; justify-content: flex-end; }
+.estoque-novos-acoes button { margin: 0; }
+#estoque_previa .modal-actions { margin-top: 12px; }
+#estoque_criar:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+@media (max-width: 700px) {
+    .estoque-novo-row { grid-template-columns: 1fr; }
+    .estoque-status { margin-left: 0; }
+}
+
+/* Envio importado da planilha de estoque: faixa e campos pendentes no formulário */
+.pendencias-banner {
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    background: #fff4d6;
+    border: 1px solid #f3d27a;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #6b4700;
+}
+input.campo-pendente, select.campo-pendente {
+    border-color: #e0a800 !important;
+    background: #fffbea;
+}
+.imei-chip {
+    margin-left: 8px;
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background: #e8f0fe;
+    color: #1a56b0;
+    cursor: help;
+}
+.kanban-card-falta { font-size: 11.5px; color: #8a5a00; margin-top: 4px; font-weight: 600; }
+.kanban-tag.estoque { background: #eef1f6; color: #4a5568; cursor: default; }
+
+/* "Montar kits" no preview da planilha de envio */
+.chip.planilha-kits { background: #e8f0fe; border-color: #c3d6fb; color: #1a56b0; gap: 6px; }
+.chip.planilha-kits span { font-weight: 400; color: #33568a; }

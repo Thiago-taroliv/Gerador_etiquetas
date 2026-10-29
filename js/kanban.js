@@ -3,6 +3,7 @@ import { $, escapeHtml, supabaseClient } from './config.js';
 import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase } from './db.js';
 import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao } from './juncao.js';
 import { toast } from './toast.js';
+import { pendenciasEnvio } from './importarEstoque.js';
 
 // Dias parado na fase a partir dos quais o card fica amarelo / vermelho
 const LIMITES_ATRASO = { aguardando_nf: [2, 5], nf_emitida: [2, 5], pronto: [1, 3] };
@@ -125,6 +126,9 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     if (destacado && (destacado === chave || (grupos[destacado] || []).includes(chave))) classes.push('destaque');
 
     const idDraft = rascunho ? reg.id : rascunhoDoPedido[reg.id];
+    // Rascunho criado da planilha de estoque: etiqueta e o que ainda falta preencher
+    const doEstoque = reg.dados_completos?.origem?.perfil === 'estoque';
+    const falta = rascunho && doEstoque ? pendenciasEnvio(reg.dados_completos) : [];
     const acao = rascunho ? `editarRascunho('${reg.id}')` : `abrirDetalheHistorico('${reg.id}')`;
     const arrastar = rascunho ? '' : `draggable="true" ondragstart="kanbanDragStart(event, '${reg.id}')" ondragend="kanbanDragEnd(event)"`;
 
@@ -137,7 +141,9 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
                 ${[transportadora, qtd ? `${qtd} item(ns)` : ''].filter(Boolean).map(escapeHtml).join(' &middot; ')}
             </div>
             ${reg.rastreio ? `<div class="kanban-card-meta">Rastreio: <strong>${escapeHtml(reg.rastreio)}</strong></div>` : ''}
+            ${falta.length ? `<div class="kanban-card-falta">Falta: ${falta.map(escapeHtml).join(', ')}</div>` : ''}
             <div class="kanban-card-tags">
+                ${doEstoque ? '<span class="kanban-tag estoque" title="Importado da planilha de estoque">estoque</span>' : ''}
                 ${outros ? `<span class="kanban-tag juncao" title="Clique para destacar" onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length} p/ este técnico</span>` : ''}
                 ${!rascunho && idDraft ? `<span class="kanban-tag rasc" title="Abrir rascunho no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">rascunho aberto</span>` : ''}
             </div>
