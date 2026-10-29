@@ -55,8 +55,29 @@ function lerQtd(v) {
     return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
-// Descobre a linha de cabeçalho, os campos fixos e os blocos de saída (cod, IMEI, descrição, qtd)
+// Ordem padrão da planilha de estoque, usada quando as linhas são coladas sem o cabeçalho:
+// DATA | OS/NF | TICKET | PRODUTO | CLIENTE INICIAL | CLIENTE FINAL | MOTIVO | DESTINATÁRIO |
+// Cod | Emei Entrada | Descritivo Entrada | QTE | depois 3 blocos de saída (Cod | Emei | Descrição | Qtd)
+const PADRAO = {
+    campos: { data: 0, os: 1, ticket: 2, produto: 3, clienteInicial: 4, clienteFinal: 5, motivo: 6, destinatario: 7 },
+    blocos: [12, 16, 20].map(i => ({ cod: i, imei: i + 1, desc: i + 2, qtd: i + 3 }))
+};
+const pareceData = v => /^\d{1,2}[-/.]/.test(String(v ?? '').trim());
+
+// Linhas sem cabeçalho no layout padrão: data na 1ª coluna e destinatário + descrição de saída preenchidos
+function pareceLayoutPadrao(grade) {
+    return grade.some(l => l && pareceData(l[0]) && limpar(l[PADRAO.campos.destinatario]) && limpar(l[PADRAO.blocos[0].desc]));
+}
+
+// Descobre a linha de cabeçalho, os campos fixos e os blocos de saída (cod, IMEI, descrição, qtd).
+// Sem cabeçalho, usa a ordem padrão (semCabecalho: true) se as linhas tiverem cara de planilha de estoque.
 export function mapearColunasEstoque(grade) {
+    const comCabecalho = mapearPorCabecalho(grade);
+    if (comCabecalho) return comCabecalho;
+    return pareceLayoutPadrao(grade) ? { linhaCabecalho: -1, ...PADRAO, semCabecalho: true } : null;
+}
+
+function mapearPorCabecalho(grade) {
     for (let r = 0; r < Math.min(grade.length, 15); r++) {
         const nomes = (grade[r] || []).map(norm);
         const descs = nomes.map((n, i) => ehDescSaida(n) ? i : -1).filter(i => i >= 0);
@@ -89,7 +110,7 @@ export function mapearColunasEstoque(grade) {
 export function lerLinhasEstoque(grade, bruta = grade) {
     const mapa = mapearColunasEstoque(grade);
     if (!mapa) return null;
-    const { linhaCabecalho, campos, blocos } = mapa;
+    const { linhaCabecalho, campos, blocos, semCabecalho = false } = mapa;
 
     const registros = [];
     const ignoradas = [];
@@ -132,7 +153,7 @@ export function lerLinhasEstoque(grade, bruta = grade) {
         reg.destinatario = reg.paraClienteFinal ? reg.clienteFinal : reg.destinatarioOriginal;
         registros.push(reg);
     }
-    return { registros, ignoradas, blocos: blocos.length };
+    return { registros, ignoradas, blocos: blocos.length, semCabecalho };
 }
 
 // Impressão digital curta (FNV-1a) para reconhecer o mesmo envio numa reimportação

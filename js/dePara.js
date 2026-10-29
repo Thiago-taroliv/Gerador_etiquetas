@@ -18,6 +18,8 @@ export const normDesc = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g
 // Papel provável pela descrição, para pré-selecionar quando o item ainda não tem de-para
 export function sugerirPapel(desc) {
     const d = normDesc(desc);
+    // Acessório antes de tudo: "Suporte Ferro Teclado" e "Chicote ... RA24" não são teclado/rastreador
+    if (/suporte|lacre|chicote|cartao|sensor|cabo|parafuso|abracadeira|fusivel|ancora/.test(d)) return 'acessorio';
     if (/chip|simcard/.test(d)) return 'chip';
     if (/teclado/.test(d)) return 'teclado';
     if (/equipamento|rastreador|st\d{3}/.test(d)) return 'rastreador';

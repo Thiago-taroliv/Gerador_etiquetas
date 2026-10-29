@@ -11,6 +11,7 @@ let registros = [];    // linhas lidas da planilha (reagrupadas quando um de-par
 let ignoradas = [];
 let grupos = [];
 let nomeArquivo = '';
+let semCabecalho = false; // linhas coladas sem cabeçalho: colunas na ordem padrão da planilha
 let existentes = { rascunhos: new Map(), historico: new Set() }; // chave do envio -> rascunho / já gerado
 let marcados = new Set();
 let aoConcluir = null;
@@ -77,7 +78,7 @@ function itensNovos() {
 async function receber(grade, bruta, origem) {
     const lido = lerLinhasEstoque(grade, bruta);
     if (!lido) {
-        toast('Cabeçalho da planilha de estoque não encontrado (precisa de "Destinatário" e "Descrição Saída").', 'error', 7000);
+        toast('As linhas não parecem da planilha de estoque. Copie a partir da coluna DATA (com ou sem o cabeçalho).', 'error', 7000);
         return;
     }
     if (!lido.registros.length) {
@@ -100,6 +101,7 @@ async function receber(grade, bruta, origem) {
     registros = lido.registros;
     ignoradas = lido.ignoradas;
     nomeArquivo = origem;
+    semCabecalho = lido.semCabecalho;
     reagrupar();
     mostrarEtapa();
 }
@@ -126,7 +128,8 @@ function render() {
     const linhasLidas = registros.length;
 
     $('estoque_info').innerHTML = `${escapeHtml(nomeArquivo)} &middot; ${linhasLidas} linha(s) &middot; ${grupos.length} envio(s)` +
-        (ignoradas.length ? ` &middot; ${ignoradas.length} linha(s) ignorada(s)` : '');
+        (ignoradas.length ? ` &middot; ${ignoradas.length} linha(s) ignorada(s)` : '') +
+        (semCabecalho ? ' &middot; sem cabeçalho: colunas na ordem padrão da planilha' : '');
 
     const ignoradasHtml = ignoradas.length ? `
         <details class="estoque-ignoradas">
