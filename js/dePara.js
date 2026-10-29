@@ -26,6 +26,24 @@ export function sugerirPapel(desc) {
     return 'acessorio';
 }
 
+// Nome no romaneio sugerido para um item novo, no padrão do cadastro de itens
+// ("Chicote Principal RA24 - C1-Conner" -> "CHICOTE C1", "Lacre Ancora-ML" -> "LACRE"); editável na prévia
+export function sugerirNome(desc) {
+    const original = String(desc || '').replace(/\s+/g, ' ').trim();
+    const d = original.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+    const modelo = (d.match(/\bRA\s?(\d{2})\b/) || [])[1];
+    const chicote = d.match(/\bC([1-4])\b/);
+
+    if (/CHICOTE/.test(d) && chicote) return `CHICOTE C${chicote[1]}`;
+    if (/LACRE/.test(d) && /ANCORA/.test(d)) return 'LACRE';
+    if (/SUPORTE/.test(d)) return original.toUpperCase();
+    if (/CHIP/.test(d)) return 'CHIP';
+    if (modelo && /SENSOR/.test(d) && /COLISAO/.test(d)) return `SENSOR DE COLISÃO RA${modelo}`;
+    if (modelo && /TECLADO/.test(d)) return `TECLADO RA${modelo}`;
+    if (modelo && /EQUIPAMENTO|RASTREADOR/.test(d)) return `RASTREADOR RA${modelo}`;
+    return original.toUpperCase();
+}
+
 let mapeamentos = [];
 let carregado = false;
 
@@ -179,9 +197,15 @@ window.novoDePara = async function () {
     }
 };
 
-// Sugere o papel enquanto digita a descrição do estoque
+// Sugere o papel (e o nome, se ainda não foi digitado) enquanto digita a descrição do estoque
 window.sugerirPapelNovoDePara = function () {
-    $('depara_new_papel').value = sugerirPapel($('depara_new_desc').value);
+    const desc = $('depara_new_desc').value;
+    $('depara_new_papel').value = sugerirPapel(desc);
+    const nome = $('depara_new_nome');
+    if (!nome.value.trim() || nome.dataset.sugerido === nome.value) {
+        nome.value = desc.trim() ? sugerirNome(desc) : '';
+        nome.dataset.sugerido = nome.value;
+    }
 };
 
 window.salvarLinhaDePara = async function (id) {

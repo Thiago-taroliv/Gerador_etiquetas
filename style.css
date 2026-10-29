@@ -1609,3 +1609,31 @@ input.campo-pendente, select.campo-pendente {
 /* "Montar kits" no preview da planilha de envio */
 .chip.planilha-kits { background: #e8f0fe; border-color: #c3d6fb; color: #1a56b0; gap: 6px; }
 .chip.planilha-kits span { font-weight: 400; color: #33568a; }
+
+/* Itens do envio na prévia da importação: ✕ descarta (não vai para o rascunho), ↺ traz de volta */
+.estoque-itens { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.estoque-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 9px;
+    border-radius: 12px;
+    background: #eef4fb;
+    color: #2a5b8a;
+    font-size: 12px;
+}
+.estoque-item.novo { background: #fff4d6; color: #8a5a00; }
+.estoque-item.descartado { background: #f3f3f3; color: #aaa; text-decoration: line-through; }
+.estoque-item-btn {
+    margin: 0;
+    padding: 0 6px;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    box-shadow: none;
+    font-size: 12px;
+    line-height: 18px;
+    border-radius: 10px;
+    text-decoration: none;
+}
+.estoque-item-btn:hover { background: rgba(0,0,0,0.08); transform: none; box-shadow: none; }

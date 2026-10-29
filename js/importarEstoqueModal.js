@@ -3,7 +3,7 @@
 import { $, escapeHtml, SENDERS } from './config.js';
 import { parseTSV } from './importarPlanilha.js';
 import { lerLinhasEstoque, agruparEnviosEstoque, grupoEstoqueParaFormulario, lerArquivoEstoque } from './importarEstoque.js';
-import { garantirDePara, acharDePara, salvarDePara, sugerirPapel, normDesc, datalistItensHtml, selectPapelHtml } from './dePara.js';
+import { garantirDePara, acharDePara, salvarDePara, sugerirPapel, sugerirNome, normDesc, datalistItensHtml, selectPapelHtml } from './dePara.js';
 import { carregarOrigensEstoque, salvarPendente } from './db.js';
 import { toast } from './toast.js';
 
@@ -14,7 +14,11 @@ let nomeArquivo = '';
 let semCabecalho = false; // linhas coladas sem cabeçalho: colunas na ordem padrão da planilha
 let existentes = { rascunhos: new Map(), historico: new Set() }; // chave do envio -> rascunho / já gerado
 let marcados = new Set();
+let descartes = new Map(); // chave do envio -> origens (código/descrição do estoque) dos itens descartados
 let aoConcluir = null;
+
+const descartado = (g, it) => it.origens.every(o => descartes.get(g.chave)?.has(o));
+const itensMantidos = g => g.itens.filter(it => !descartado(g, it));
 
 // Campos que você preenche à mão no rascunho: reimportar não apaga o que já foi digitado
 const CAMPOS_MANUAIS = ['dest_doc', 'dest_addr1', 'dest_addr2', 'dest_phone', 'total_vol', 'carrier', 'receiver',
@@ -65,13 +69,17 @@ function reagrupar() {
     marcados = new Set(grupos.filter(g => g.status === 'novo' || g.status === 'atualizar').map(g => g.chave));
 }
 
-// Itens sem de-para em qualquer envio (um por código, ou por descrição quando não há código)
+// Itens sem de-para nos envios marcados (um por código, ou por descrição quando não há código).
+// Item descartado não precisa de de-para.
 function itensNovos() {
     const mapa = new Map();
-    grupos.forEach(g => g.novos.forEach(n => {
-        const k = n.cod || normDesc(n.descEstoque);
-        if (!mapa.has(k)) mapa.set(k, n);
-    }));
+    grupos.filter(g => marcados.has(g.chave)).forEach(g => {
+        const usadas = new Set(itensMantidos(g).filter(it => it.novo).flatMap(it => it.origens));
+        g.novos.forEach(n => {
+            const k = n.cod || normDesc(n.descEstoque);
+            if (usadas.has(k) && !mapa.has(k)) mapa.set(k, n);
+        });
+    });
     return [...mapa.values()];
 }
 
@@ -98,6 +106,12 @@ async function receber(grade, bruta, origem) {
         rascunhos: new Map((origens?.rascunhos || []).map(r => [r.dados_completos?.origem?.chave, r])),
         historico: new Set((origens?.historico || []).map(h => h.origem?.chave))
     };
+    // Reimportação: os itens descartados da última vez continuam descartados
+    descartes = new Map();
+    existentes.rascunhos.forEach((r, chave) => {
+        const d = r.dados_completos?.origem?.descartados;
+        if (chave && d?.length) descartes.set(chave, new Set(d));
+    });
     registros = lido.registros;
     ignoradas = lido.ignoradas;
     nomeArquivo = origem;
@@ -117,14 +131,34 @@ function mostrarEtapa() {
     }
 }
 
-function resumoItens(itens) {
-    return itens.map(it => `${it.qty}× ${it.desc}${it.imeis.length ? ` (${it.imeis.length} IMEI${it.imeis.length > 1 ? 's' : ''})` : ''}`
-        + (it.imeis.some(i => i.chip) ? ' + chip' : '')).join(', ');
+// Itens do envio, cada um com ✕ para descartar (não vai para o rascunho) ou ↺ para trazer de volta
+function itensHtml(g, i) {
+    return `<div class="estoque-itens">${g.itens.map((it, j) => {
+        const fora = descartado(g, it);
+        const texto = `${it.qty}× ${it.desc}${it.imeis.length ? ` (${it.imeis.length} IMEI${it.imeis.length > 1 ? 's' : ''})` : ''}`
+            + (it.imeis.some(x => x.chip) ? ' + chip' : '');
+        return `<span class="estoque-item${fora ? ' descartado' : ''}${it.novo ? ' novo' : ''}">
+            ${escapeHtml(texto)}
+            <button type="button" class="estoque-item-btn" title="${fora ? 'Trazer de volta' : 'Descartar: não vai para o rascunho'}"
+                    onclick="event.preventDefault(); event.stopPropagation(); alternarItemEstoque(${i}, ${j})">${fora ? '↺' : '✕'}</button>
+        </span>`;
+    }).join('')}</div>`;
 }
+
+window.alternarItemEstoque = function (i, j) {
+    const g = grupos[i];
+    const it = g?.itens[j];
+    if (!it) return;
+    if (!descartes.has(g.chave)) descartes.set(g.chave, new Set());
+    const set = descartes.get(g.chave);
+    const fora = descartado(g, it);
+    it.origens.forEach(o => fora ? set.delete(o) : set.add(o));
+    render();
+};
 
 function render() {
     const novos = itensNovos();
-    const qtdMarcados = grupos.filter(g => marcados.has(g.chave)).length;
+    const qtdMarcados = grupos.filter(g => marcados.has(g.chave) && itensMantidos(g).length).length;
     const linhasLidas = registros.length;
 
     $('estoque_info').innerHTML = `${escapeHtml(nomeArquivo)} &middot; ${linhasLidas} linha(s) &middot; ${grupos.length} envio(s)` +
@@ -150,7 +184,7 @@ function render() {
                         ${n.cod ? `<span class="depara-cod">${escapeHtml(n.cod)}</span>` : ''}
                         <span>${escapeHtml(n.descEstoque)}</span>
                     </div>
-                    <input type="text" class="novo-nome" list="estoque_itens_catalogo" value="${escapeHtml(n.descEstoque.toUpperCase())}">
+                    <input type="text" class="novo-nome" list="estoque_itens_catalogo" value="${escapeHtml(sugerirNome(n.descEstoque))}">
                     ${selectPapelHtml(n.papelSugerido, 'class="novo-papel"')}
                 </div>`).join('')}
             <div class="estoque-novos-acoes">
@@ -179,7 +213,8 @@ function render() {
                         <span class="estoque-status ${classe}">${rotulo}</span>
                     </div>
                     <div class="imp-meta">${meta.map(escapeHtml).join(' &middot; ')}</div>
-                    <div class="imp-itens">${escapeHtml(resumoItens(g.itens))}</div>
+                    ${itensHtml(g, i)}
+                    ${marcados.has(g.chave) && !itensMantidos(g).length ? '<div class="estoque-aviso">⚠ Todos os itens descartados: este envio não vira rascunho.</div>' : ''}
                     ${g.kitsPossiveis ? `<div class="estoque-aviso kit">🔧 ${g.rastreadores} rastreador(es) e ${g.teclados} teclado(s): podem formar até ${g.kitsPossiveis} kit(s) na planilha de envio</div>` : ''}
                     ${g.avisos.map(a => `<div class="estoque-aviso">⚠ ${escapeHtml(a)}</div>`).join('')}
                 </div>
@@ -240,8 +275,12 @@ function montarDados(g) {
         dest_phone: g.cad?.contato || '',
         total_vol: '', carrier: '', receiver: '', doc_type: ''
     };
-    const dados = grupoEstoqueParaFormulario(g, base);
-    dados.origem = { ...dados.origem, arquivo: nomeArquivo, importado_em: new Date().toISOString() };
+    // Só os itens mantidos vão para o rascunho; os descartados ficam anotados para a próxima reimportação
+    const dados = grupoEstoqueParaFormulario({ ...g, itens: itensMantidos(g) }, base);
+    dados.origem = {
+        ...dados.origem, arquivo: nomeArquivo, importado_em: new Date().toISOString(),
+        descartados: [...(descartes.get(g.chave) || [])]
+    };
 
     const existente = existentes.rascunhos.get(g.chave)?.dados_completos;
     if (existente) {
@@ -254,7 +293,7 @@ function montarDados(g) {
 }
 
 window.criarRascunhosEstoque = async function () {
-    const escolhidos = grupos.filter(g => marcados.has(g.chave) && g.status !== 'gerado');
+    const escolhidos = grupos.filter(g => marcados.has(g.chave) && g.status !== 'gerado' && itensMantidos(g).length);
     if (!escolhidos.length || itensNovos().length) return;
 
     const atualizacoes = escolhidos.filter(g => g.status !== 'novo').length;

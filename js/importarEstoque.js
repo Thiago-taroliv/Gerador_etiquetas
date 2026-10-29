@@ -234,8 +234,10 @@ export function montarItensEstoque(linhas, resolverItem) {
         resolvidas.forEach(s => {
             if (s.papel === 'ignorar' || s.papel === 'chip') return;
             const chave = s.desc + '|' + s.papel;
-            if (!itens.has(chave)) itens.set(chave, { desc: s.desc, papel: s.papel, novo: !!s.novo, imeis: [], semImei: 0 });
+            if (!itens.has(chave)) itens.set(chave, { desc: s.desc, papel: s.papel, novo: !!s.novo, imeis: [], semImei: 0, origens: new Set() });
             const it = itens.get(chave);
+            // De onde o item veio (código do estoque, ou a descrição sem código): não muda quando o de-para muda
+            it.origens.add(s.cod || norm(s.descEstoque));
 
             const comImei = (s.papel === 'rastreador' || s.papel === 'teclado') && s.imei;
             if (comImei) {
@@ -266,7 +268,8 @@ export function montarItensEstoque(linhas, resolverItem) {
             client: '',
             papel: it.papel,
             novo: it.novo,
-            imeis: it.imeis
+            imeis: it.imeis,
+            origens: [...it.origens]
         })),
         novos: [...novos.values()],
         avisosItens
