@@ -166,39 +166,143 @@ function montarRegistroHistorico(dados) {
     };
 }
 
+// --- FASES DO PEDIDO (KANBAN) ---
+
+// Colunas do kanban, na ordem do fluxo. 'cancelado' é uma fase válida, mas fica fora das colunas.
+export const FASES = [
+    { chave: 'rascunho',      rotulo: 'Rascunho' },
+    { chave: 'aguardando_nf', rotulo: 'Aguardando NF' },
+    { chave: 'nf_emitida',    rotulo: 'NF emitida' },
+    { chave: 'pronto',        rotulo: 'Pronto p/ envio' },
+    { chave: 'despachado',    rotulo: 'Despachado' },
+    { chave: 'entregue',      rotulo: 'Entregue' }
+];
+
+export const ordemFase = chave => FASES.findIndex(f => f.chave === chave);
+export const rotuloFase = chave => chave === 'cancelado' ? 'Cancelado' : (FASES.find(f => f.chave === chave)?.rotulo || chave);
+
+// Fase que as ações já feitas (e-mail, etiqueta, romaneio) indicam
+export function faseSugerida(status = {}) {
+    if (status.etiqueta && status.romaneio) return 'pronto';
+    if (status.email) return 'aguardando_nf';
+    return 'rascunho';
+}
+
+// Só avança: reimprimir algo de um pedido já despachado não o faz voltar. Cancelado não muda.
+export function proximaFase(faseAtual, status) {
+    if (faseAtual === 'cancelado') return faseAtual;
+    const sugerida = faseSugerida(status);
+    return ordemFase(sugerida) > ordemFase(faseAtual) ? sugerida : faseAtual;
+}
+
+// Move o pedido para outra fase. extras: outros campos a gravar junto, ex. { rastreio }
+export async function moverFase(id, fase, extras = {}) {
+    const { error } = await supabaseClient
+        .from('historico')
+        .update({ fase, fase_em: new Date().toISOString(), ...extras })
+        .eq('id', id);
+
+    if (error) {
+        console.error('Erro ao mover fase:', error.message);
+        return false;
+    }
+    return true;
+}
+
+export async function atualizarRastreio(id, rastreio) {
+    const { error } = await supabaseClient.from('historico').update({ rastreio }).eq('id', id);
+    if (error) {
+        console.error('Erro ao salvar rastreio:', error.message);
+        return false;
+    }
+    return true;
+}
+
+// Cancela o pedido. mescladoEm: id do envio que absorveu este (junção de pedidos)
+export async function cancelarPedido(id, mescladoEm = null) {
+    return moverFase(id, 'cancelado', mescladoEm ? { mesclado_em: mescladoEm } : {});
+}
+
+// Pedidos do kanban: tudo que não foi entregue nem cancelado, mais os entregues dos últimos 30 dias
+export async function carregarKanban() {
+    const desde = new Date(Date.now() - 30 * 864e5).toISOString();
+    const { data, error } = await supabaseClient
+        .from('historico')
+        .select('*')
+        .neq('fase', 'cancelado')
+        .or(`fase.neq.entregue,fase_em.gte."${desde}"`)
+        .order('fase_em', { ascending: false });
+
+    if (error) {
+        console.error('Erro ao buscar kanban:', error.message);
+        return null;
+    }
+    return data || [];
+}
+
+// Pedidos sem NF emitida mexidos desde a data informada (candidatos a junção)
+export async function carregarCandidatosJuncao(desde) {
+    const [hist, rasc] = await Promise.all([
+        supabaseClient.from('historico').select('*')
+            .in('fase', ['rascunho', 'aguardando_nf'])
+            .is('mesclado_em', null)
+            .or(`created_at.gte."${desde}",fase_em.gte."${desde}"`),
+        supabaseClient.from('pedidos_pendentes').select('*').gte('created_at', desde)
+    ]);
+    if (hist.error || rasc.error) {
+        console.error('Erro ao buscar pedidos para junção:', (hist.error || rasc.error).message);
+        return null;
+    }
+    // Rascunho já gerado aparece pelo registro do histórico
+    return {
+        historico: hist.data || [],
+        rascunhos: (rasc.data || []).filter(r => !r.dados_completos?.historico_id)
+    };
+}
+
 // Cria ou atualiza o registro do envio no histórico.
 // historicoId: registro já criado para este envio (evita duplicar ao gerar de novo).
 // etapas: o que acabou de ser feito, ex. { etiqueta: true } — soma ao status existente.
-// Retorna o id do registro, ou null em caso de erro.
+// Retorna { id, fase, faseAnterior, faseEmAnterior }, ou null em caso de erro.
 export async function registrarNoHistorico(dados, historicoId = null, etapas = {}) {
     const registro = montarRegistroHistorico(dados);
 
     if (historicoId) {
         const { data: atual } = await supabaseClient
-            .from('historico').select('status').eq('id', historicoId).single();
+            .from('historico').select('status, fase, fase_em, dados_completos').eq('id', historicoId).single();
 
         if (atual) {
+            // Reimprimir depois de uma junção não pode apagar o registro dos pedidos juntados
+            const mesclados = atual.dados_completos?.mesclados;
+            if (mesclados && !registro.dados_completos.mesclados) registro.dados_completos.mesclados = mesclados;
+
             const status = { email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas };
+            const faseAnterior = atual.fase || 'rascunho';
+            const fase = proximaFase(faseAnterior, status);
+            const update = { ...registro, status, fase };
+            if (fase !== faseAnterior) update.fase_em = new Date().toISOString();
+
             const { error } = await supabaseClient
-                .from('historico').update({ ...registro, status }).eq('id', historicoId);
+                .from('historico').update(update).eq('id', historicoId);
             if (error) {
                 console.error('Erro ao atualizar histórico:', error.message);
                 return null;
             }
-            return historicoId;
+            return { id: historicoId, fase, faseAnterior, faseEmAnterior: atual.fase_em };
         }
         // Registro foi apagado: cai para criar um novo
     }
 
     const status = { email: false, etiqueta: false, romaneio: false, ...etapas };
+    const fase = faseSugerida(status);
     const { data, error } = await supabaseClient
-        .from('historico').insert([{ ...registro, status }]).select();
+        .from('historico').insert([{ ...registro, status, fase }]).select();
 
     if (error) {
         console.error('Erro ao salvar no histórico:', error.message);
         return null;
     }
-    return data[0].id;
+    return { id: data[0].id, fase, faseAnterior: 'rascunho', faseEmAnterior: null };
 }
 
 export const HISTORICO_POR_PAGINA = 50;
@@ -219,17 +323,24 @@ export async function carregarHistorico(pagina = 0) {
     return data || [];
 }
 
-export async function atualizarStatusHistorico(id, novoStatus) {
+// Grava os checkboxes de status e avança a fase se for o caso (desmarcar não faz voltar).
+// Retorna { fase, faseAnterior, faseEmAnterior, fase_em } ou null em caso de erro.
+export async function atualizarStatusHistorico(reg, novoStatus) {
+    const faseAnterior = reg.fase || 'rascunho';
+    const fase = proximaFase(faseAnterior, novoStatus);
+    const update = { status: novoStatus, fase };
+    if (fase !== faseAnterior) update.fase_em = new Date().toISOString();
+
     const { error } = await supabaseClient
         .from('historico')
-        .update({ status: novoStatus })
-        .eq('id', id);
+        .update(update)
+        .eq('id', reg.id);
 
     if (error) {
         console.error('Erro ao atualizar status:', error.message);
-        return false;
+        return null;
     }
-    return true;
+    return { fase, faseAnterior, faseEmAnterior: reg.fase_em, fase_em: update.fase_em || reg.fase_em };
 }
 
 // --- FUNÇÕES DE PEDIDOS EM ANDAMENTO (RASCUNHOS) ---
@@ -276,8 +387,8 @@ export async function carregarPendentes() {
     return data || [];
 }
 
-export async function deletarPendente(id) {
-    if (!confirm('Você tem certeza que deseja excluir ESTE RASCUNHO?')) return false;
+export async function deletarPendente(id, confirmar = true) {
+    if (confirmar && !confirm('Você tem certeza que deseja excluir ESTE RASCUNHO?')) return false;
 
     const { error } = await supabaseClient.from('pedidos_pendentes').delete().eq('id', id);
 

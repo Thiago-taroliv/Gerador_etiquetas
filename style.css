@@ -861,6 +861,19 @@ button.secondary:hover {
 .toast-error   { background: var(--brand); }
 .toast-warning { background: #b26a00; }
 .toast-hide    { opacity: 0; transform: translateY(10px); }
+.toast-acao {
+    margin: 0 0 0 12px;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.6);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    box-shadow: none;
+    cursor: pointer;
+}
+.toast-acao:hover { background: rgba(255,255,255,0.35); }
 
 /* --- MODAIS (edição e detalhe do histórico) --- */
 .modal-overlay {
@@ -1317,4 +1330,145 @@ button.secondary:hover {
 @media (max-width: 600px) {
     .imp-item { flex-direction: column; align-items: stretch; }
     .import-toolbar { flex-wrap: wrap; }
+}
+
+/* --- KANBAN DE PEDIDOS --- */
+.kanban-topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.kanban-acoes { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; }
+.kanban-acoes input { margin: 0; max-width: 380px; }
+.kanban-acoes button { margin: 0; white-space: nowrap; }
+
+.kanban-board {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(210px, 1fr));
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+}
+.kanban-col {
+    background: var(--bg-light);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 10px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.15s, background 0.15s;
+}
+.kanban-col.drag-over { border-color: var(--brand); border-style: dashed; background: #fbecec; }
+.kanban-col-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #555;
+    margin-bottom: 10px;
+}
+.kanban-count {
+    background: #fff;
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    padding: 1px 8px;
+    font-size: 11px;
+    color: #333;
+}
+.kanban-col-body { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.kanban-vazio { font-size: 12px; color: #aaa; text-align: center; padding: 16px 0; }
+.kanban-nota { font-size: 11px; color: #aaa; text-align: center; margin-top: auto; padding-top: 8px; }
+
+.kanban-card {
+    background: var(--paper);
+    border: 1px solid var(--border-light);
+    border-left: 4px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: box-shadow 0.15s, transform 0.15s;
+}
+.kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+.kanban-card[draggable="true"] { cursor: grab; }
+.kanban-card.arrastando { opacity: 0.45; }
+.kanban-card.atraso-1 { border-left-color: #e0a800; }
+.kanban-card.atraso-2 { border-left-color: var(--brand); }
+.kanban-card.destaque { box-shadow: 0 0 0 2px #1a73e8; }
+.kanban-card-rascunho { border-style: dashed; border-left-style: solid; background: #fdfdfd; }
+.kanban-card-titulo { font-weight: 700; color: #222; line-height: 1.3; }
+.kanban-card-sub { color: #555; margin-top: 2px; }
+.kanban-card-ref { color: var(--brand); font-weight: 600; margin-top: 4px; }
+.kanban-card-meta { color: #888; font-size: 11.5px; margin-top: 4px; }
+.kanban-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.kanban-card-tags:empty { display: none; }
+.kanban-tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.kanban-tag.juncao { background: #e8f0fe; color: #1a56b0; }
+.kanban-tag.rasc { background: #fff8e1; color: #8a6d00; }
+.kanban-card-rodape { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 8px; }
+.kanban-dias { font-size: 11px; color: #999; white-space: nowrap; }
+
+/* Selo da fase (lista do Histórico e modal) */
+.fase-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #eef1f6;
+    color: #4a5568;
+    white-space: nowrap;
+}
+.fase-badge.fase-entregue { background: #dcf5e3; color: #1e8e3e; }
+.fase-badge.fase-cancelado { background: #fde8e8; color: var(--brand); }
+
+/* Modal de detalhe: fase, rastreio e junção */
+.detalhe-fase { margin-top: 20px; }
+.detalhe-fase select { margin: 0; }
+.detalhe-rastreio { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: #555; }
+.detalhe-rastreio button { margin: 0; }
+.detalhe-juncao {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #e8f0fe;
+    color: #1a56b0;
+    border-radius: 8px;
+    font-size: 12.5px;
+}
+
+/* Modal de junção de pedidos */
+.juncao-aviso { font-size: 13.5px; color: #333; margin: 0 0 14px; line-height: 1.5; }
+.juncao-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.juncao-item input { width: auto; margin: 2px 0 0; }
+.juncao-item small { color: #888; }
+.juncao-acoes { flex-wrap: wrap; }
+
+@media (max-width: 700px) {
+    .kanban-board { grid-template-columns: repeat(6, 82vw); scroll-snap-type: x mandatory; }
+    .kanban-col { scroll-snap-align: start; min-height: 200px; }
+    .kanban-acoes { min-width: 0; }
+    .kanban-acoes input { max-width: none; }
 }

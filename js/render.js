@@ -280,6 +280,12 @@ export function buildEmailBody(d) {
         emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} referente a(o) ${refTypeLabel} ${ref}.\n`;
     }
 
+    // Junção: pedidos que já tinham pedido NF ao financeiro e agora seguem neste envio
+    const substituidos = (d.mesclados || []).filter(m => m.pediuNF);
+    if (substituidos.length) {
+        emailText += `\nEste pedido substitui as solicitações anteriores: ${substituidos.map(m => m.referencia || m.unidade || 'sem referência').join(', ')}. Favor desconsiderá-las.\n`;
+    }
+
     const lines = [
         emailText,
         'Serão:', `${itemsLines}`, '',

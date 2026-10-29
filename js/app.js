@@ -1,6 +1,8 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente } from './db.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarRastreio, cancelarPedido } from './db.js';
+import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF } from './kanban.js';
+import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao } from './juncao.js';
 import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
 import { toast } from './toast.js';
@@ -56,7 +58,9 @@ window.switchTab = function (tabName) {
     if (activeBtn) activeBtn.classList.add('active');
 
     // Carregar dados específicos da aba (ESCALÁVEL: Fácil adicionar novas abas aqui)
-    if (tabName === 'tab-envios') {
+    if (tabName === 'tab-pedidos') {
+        carregarViewKanban();
+    } else if (tabName === 'tab-envios') {
         // Por padrão, abre os Rascunhos.
         switchSubTab('sub-andamento');
     } else if (tabName === 'tab-dados') {
@@ -249,6 +253,7 @@ window.renderHistoricoLista = function () {
             <td class="col-ref">${escapeHtml(reg.referencia) || '—'}</td>
             <td>
                 <div class="status-badges">
+                    <span class="fase-badge fase-${escapeHtml(reg.fase)}">${escapeHtml(rotuloFase(reg.fase))}</span>
                     ${selo(st.email, 'E-mail')}${selo(st.romaneio, 'Romaneio')}${selo(st.etiqueta, 'Etiqueta')}
                 </div>
             </td>
@@ -266,14 +271,26 @@ window.renderHistoricoLista = function () {
 };
 
 window.abrirDetalheHistorico = function (id) {
-    const historico = window.__historicoCache || [];
-    const reg = historico.find(r => String(r.id) === String(id));
+    const reg = acharPedido(id);
     if (!reg) return;
 
     window.__detalheHistoricoAtual = reg;
     const st = reg.status || { email: false, etiqueta: false, romaneio: false };
     const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${escapeHtml(it.qty)} × ${escapeHtml(it.desc)}</li>`).join('');
     const dataFormatada = new Date(reg.created_at).toLocaleString('pt-BR');
+    const cancelado = reg.fase === 'cancelado';
+
+    // Junção de pedidos: este foi absorvido por outro envio, ou absorveu outros
+    const mesclados = reg.dados_completos?.mesclados || [];
+    let juncaoInfo = '';
+    if (reg.mesclado_em) {
+        const destino = acharPedido(reg.mesclado_em);
+        juncaoInfo = `<div class="detalhe-juncao">🔗 Juntado ao envio
+            ${destino ? `<a href="#" onclick="event.preventDefault(); abrirDetalheHistorico('${reg.mesclado_em}')">${escapeHtml(destino.referencia || destino.destinatario)}</a>` : `#${escapeHtml(reg.mesclado_em)}`}
+            — os itens seguiram nele.</div>`;
+    } else if (mesclados.length) {
+        juncaoInfo = `<div class="detalhe-juncao">🔗 Inclui os pedidos: ${mesclados.map(m => escapeHtml(m.referencia || m.unidade || 'sem referência')).join(', ')}</div>`;
+    }
 
     function statusItem(campo, label, feito, tipo) {
         const cor = feito ? '#22c55e' : '#e5e7eb';
@@ -318,7 +335,24 @@ window.abrirDetalheHistorico = function (id) {
             </div>
         </div>
 
+        <div class="detalhe-fase">
+            <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Fase</div>
+            ${cancelado
+                ? `<span class="fase-badge fase-cancelado">Cancelado</span>`
+                : `<select onchange="mudarFaseDoModal('${id}', this.value)">
+                    ${FASES.map(f => `<option value="${f.chave}"${f.chave === reg.fase ? ' selected' : ''}>${f.rotulo}</option>`).join('')}
+                   </select>`}
+            <div class="detalhe-rastreio">
+                Rastreio: <strong>${escapeHtml(reg.rastreio) || '—'}</strong>
+                <button class="btn-sm btn-neutral" onclick="editarRastreioDoModal('${id}')">Editar</button>
+            </div>
+            ${juncaoInfo}
+        </div>
+
         <div class="modal-actions">
+            ${cancelado
+                ? `<button class="btn-neutral" onclick="reativarPedidoDoModal('${id}')">Reativar pedido</button>`
+                : `<button class="btn-danger" onclick="cancelarPedidoDoModal('${id}')">Cancelar pedido</button>`}
             <button class="btn-neutral" onclick="copiarPlanilhaDoHistorico('${id}')">Linhas p/ Planilha</button>
         </div>
     `;
@@ -329,7 +363,9 @@ window.abrirDetalheHistorico = function (id) {
 window.fecharDetalheHistorico = function () {
     document.getElementById('modal-historico-detalhe').style.display = 'none';
     window.__detalheHistoricoAtual = null;
-    loadHistoricoView(); // Atualiza a lista para refletir novos status
+    // Atualiza a tela de onde o modal foi aberto para refletir novos status
+    if (kanbanVisivel()) renderKanban();
+    else loadHistoricoView();
 };
 
 window.toggleStatusHistorico = async function (id, campo) {
@@ -337,13 +373,53 @@ window.toggleStatusHistorico = async function (id, campo) {
     if (!reg) return;
     const novoStatus = { ...(reg.status || { email: false, etiqueta: false, romaneio: false }) };
     novoStatus[campo] = !novoStatus[campo];
-    const ok = await atualizarStatusHistorico(id, novoStatus);
-    if (ok) {
-        reg.status = novoStatus;
-        const cached = (window.__historicoCache || []).find(r => String(r.id) === String(id));
-        if (cached) cached.status = novoStatus;
+    const resultado = await atualizarStatusHistorico(reg, novoStatus);
+    if (resultado) {
+        atualizarCaches(id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
+        avisarProntoSemNF(id, resultado);
         abrirDetalheHistorico(id); // Recarrega o modal com status atualizado
     }
+};
+
+window.mudarFaseDoModal = async function (id, fase) {
+    await moverPedidoPara(id, fase);
+    abrirDetalheHistorico(id); // mostra a fase gravada (ou a anterior, se cancelou/falhou)
+};
+
+window.editarRastreioDoModal = async function (id) {
+    const reg = acharPedido(id);
+    if (!reg) return;
+    const codigo = prompt('Código de rastreio:', reg.rastreio || '');
+    if (codigo === null) return;
+    const rastreio = codigo.trim() || null;
+    if (await atualizarRastreio(id, rastreio)) {
+        atualizarCaches(id, { rastreio });
+        abrirDetalheHistorico(id);
+    } else {
+        toast('Não foi possível salvar o rastreio.', 'error');
+    }
+};
+
+window.cancelarPedidoDoModal = async function (id) {
+    const reg = acharPedido(id);
+    if (!reg || !confirm(`Cancelar o pedido de "${reg.destinatario}"?\n\nEle sai do quadro de Pedidos, mas continua no Histórico.`)) return;
+    if (await cancelarPedido(id)) {
+        atualizarCaches(id, { fase: 'cancelado', fase_em: new Date().toISOString() });
+        toast('Pedido cancelado.');
+        abrirDetalheHistorico(id);
+    } else {
+        toast('Não foi possível cancelar o pedido.', 'error');
+    }
+};
+
+// Volta para a fase que as ações já feitas indicam
+window.reativarPedidoDoModal = async function (id) {
+    const reg = acharPedido(id);
+    if (!reg) return;
+    if (await moverPedidoPara(id, faseSugerida(reg.status), { mesclado_em: null })) {
+        toast(`Pedido reativado em "${rotuloFase(reg.fase)}".`);
+    }
+    abrirDetalheHistorico(id);
 };
 
 window.gerarDoHistorico = function (id, tipo) {
@@ -413,19 +489,25 @@ AppState.currentHistoricoId = null;
 
 // Grava/atualiza o envio atual no histórico, marcando as etapas feitas.
 // Se houver rascunho aberto, guarda nele o vínculo para que "Concluir" não duplique o registro.
+// Retorna o id do registro, ou null se falhou.
 async function registrarEnvio(dados, etapas) {
-    const id = await registrarNoHistorico(dados, AppState.currentHistoricoId, etapas);
-    if (!id) {
+    const resultado = await registrarNoHistorico(dados, AppState.currentHistoricoId, etapas);
+    if (!resultado) {
         toast('Não foi possível registrar no histórico.', 'error', 5000);
-        return;
+        return null;
     }
+    const { id } = resultado;
     const novo = !AppState.currentHistoricoId;
     AppState.currentHistoricoId = String(id);
     toast(novo ? 'Envio registrado no histórico.' : 'Registro do histórico atualizado.');
 
+    // Impresso antes da NF: avança mesmo assim, mas avisa e permite voltar
+    avisarProntoSemNF(id, resultado);
+
     if (AppState.currentDraftId) {
         await salvarPendente({ ...dados, historico_id: AppState.currentHistoricoId }, AppState.currentDraftId, true);
     }
+    return id;
 }
 
 // Mostra/oculta o aviso de que o formulário está editando um rascunho existente
@@ -460,6 +542,7 @@ window.novoEnvio = function() {
     limparFormulario();
     AppState.currentDraftId = null;
     AppState.currentHistoricoId = null;
+    AppState.juncaoPendente = [];
     atualizarIndicadorRascunho();
 };
 
@@ -514,6 +597,7 @@ window.editarRascunho = function(id) {
         // Seta o ID atual (e o registro do histórico, se este rascunho já foi gerado antes)
         AppState.currentDraftId = String(id);
         AppState.currentHistoricoId = rascunho.dados_completos?.historico_id || null;
+        AppState.juncaoPendente = [];
         atualizarIndicadorRascunho();
 
         // Vai para a aba do romaneio
@@ -576,7 +660,7 @@ window.copiarParaPlanilha = function () {
 
 // Botão no detalhe do histórico (data de envio = data do registro)
 window.copiarPlanilhaDoHistorico = function (id) {
-    const reg = (window.__historicoCache || []).find(r => String(r.id) === String(id));
+    const reg = acharPedido(id);
     if (!reg || !reg.dados_completos) {
         toast('Este registro antigo não tem os dados completos para gerar as linhas.', 'warning');
         return;
@@ -612,6 +696,7 @@ function preencherComEnvioImportado(grupo) {
     // É um envio novo: não vincula a rascunho nem a registro do histórico anteriores
     AppState.currentDraftId = null;
     AppState.currentHistoricoId = null;
+    AppState.juncaoPendente = [];
     atualizarIndicadorRascunho();
     window.switchTab('tab-romaneio');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -716,14 +801,20 @@ function copyEmailBody() {
         .catch(err => alert('Erro ao copiar: ' + err));
 }
 
-function enviarEmailViaMailtoUsingData() {
+async function enviarEmailViaMailtoUsingData() {
     const d = collectData();
     if (!validarAntesDeGerar(d)) return;
+
+    // Outro pedido do mesmo técnico sem NF? Oferece juntar antes de pedir a nota
+    if (!(await verificarJuncao(d))) return;
+    if (AppState.juncaoPendente.length) d.mesclados = AppState.juncaoPendente;
+
     const emails = EMAILS_FINANCEIRO;
     const assunto = buildEmailSubject(d);
     const body = buildEmailBody(d);
     window.location.href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
-    registrarEnvio(d, { email: true });
+    const id = await registrarEnvio(d, { email: true });
+    if (id) await finalizarJuncao(id);
 }
 
 function toggleReferenceInput() {
@@ -920,6 +1011,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         // Fecha só o modal de cima (o da planilha pode estar aberto sobre o do histórico)
+        if (juncaoAberta()) { fecharJuncao(); return; }
         if (previewPlanilhaAberto()) { fecharPreviewPlanilha(); return; }
         if (importarPlanilhaAberto()) { fecharImportarPlanilha(); return; }
         if (aberto('modal-preview')) fecharModalPreview();

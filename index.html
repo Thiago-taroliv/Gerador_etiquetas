@@ -41,7 +41,8 @@
                 <img src="./img/logo.png" alt="Ranor" class="nav-logo">
             </div>
             <div class="nav-center">
-                <button class="nav-tab active" data-tab="tab-romaneio" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
+                <button class="nav-tab active" data-tab="tab-pedidos" onclick="switchTab('tab-pedidos')">Pedidos</button>
+                <button class="nav-tab" data-tab="tab-romaneio" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
                 <button class="nav-tab" data-tab="tab-dados" onclick="switchTab('tab-dados')">Gerenciar Dados</button>
                 <button class="nav-tab" data-tab="tab-envios" onclick="switchTab('tab-envios')">Envios</button>
             </div>
@@ -51,8 +52,28 @@
         </nav>
 
         <div class="container">
-            <!-- ABA 1: ROMANEIO (ATUAL) -->
-            <div id="tab-romaneio" class="tab-content" style="display: block;">
+            <!-- ABA PRINCIPAL: PEDIDOS (KANBAN) -->
+            <div id="tab-pedidos" class="tab-content" style="display: block;">
+                <div class="card">
+                    <div class="kanban-topo">
+                        <div>
+                            <strong>Pedidos</strong>
+                            <div class="small">Arraste os cards entre as colunas para mudar a fase. Clique em um card para ver detalhes.</div>
+                        </div>
+                        <div class="kanban-acoes">
+                            <input id="kanban_search" type="text" placeholder="Filtrar por destinatário, unidade, referência ou rastreio..."
+                                oninput="renderKanban()">
+                            <button class="btn-outline" onclick="carregarViewKanban()">🔄 Atualizar</button>
+                        </div>
+                    </div>
+                    <div id="kanban_board" class="kanban-board">
+                        <div class="empty-state">Carregando pedidos...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ABA: ROMANEIO -->
+            <div id="tab-romaneio" class="tab-content" style="display: none;">
                 <div class="grid">
                     <div class="card">
                         <div id="draft_indicator"
@@ -476,6 +497,22 @@
         </div>
     </div>
 
+
+    <!-- MODAL: PEDIDOS DO MESMO TÉCNICO (JUNÇÃO) -->
+    <div id="modal-juncao" class="modal-overlay">
+        <div class="modal-card wide">
+            <div class="modal-header">
+                <strong>Pedidos do mesmo técnico</strong>
+                <button class="modal-close" onclick="responderJuncao('voltar')" title="Voltar">&times;</button>
+            </div>
+            <div id="modal-juncao-body"></div>
+            <div class="modal-actions juncao-acoes">
+                <button class="btn-neutral" onclick="responderJuncao('voltar')">Voltar</button>
+                <button class="btn-neutral" onclick="responderJuncao('so_este')">Enviar só este</button>
+                <button onclick="responderJuncao('juntar')">Juntar neste envio</button>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL: IMPORTAR ENVIO DA PLANILHA DE CONTROLE -->
     <div id="modal-importar" class="modal-overlay">

@@ -7,9 +7,11 @@ export async function checkSession() {
     if (session) {
         $('auth_container').style.display = 'none';
         $('app_content').style.display = 'block';
-        carregarDestinatarios(); 
+        carregarDestinatarios();
         // Items só podem ser lidos depois do login (RLS)
         initializeItems().then(() => renderItemsCRUD('items_list'));
+        // Abre na aba principal (Pedidos), que carrega o kanban
+        window.switchTab?.('tab-pedidos');
     } else {
         $('auth_container').style.display = 'flex';
         $('app_content').style.display = 'none';
