@@ -1,5 +1,5 @@
 // Kanban de pedidos: uma coluna por fase, cards arrastáveis entre elas
-import { $, escapeHtml } from './config.js';
+import { $, escapeHtml, supabaseClient } from './config.js';
 import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase } from './db.js';
 import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao } from './juncao.js';
 import { toast } from './toast.js';
@@ -11,10 +11,41 @@ let pedidos = [];          // registros do histórico
 let rascunhos = [];        // rascunhos que ainda não têm registro no histórico
 let rascunhoDoPedido = {}; // historico_id -> id do rascunho aberto para ele
 let destacado = null;      // card cujo grupo "mesmo técnico" está destacado
+let filtroResumo = null;   // 'atrasados' | 'juncao' | null — escolhido no resumo do topo
+let arrastando = false;    // não redesenha o quadro no meio de um arraste
 
 export const kanbanVisivel = () => $('tab-pedidos')?.style.display === 'block';
 
+// --- Tempo real: recarrega quando um pedido muda em outra aba ou aparelho ---
+let canalTempoReal = null;
+let recargaAgendada = null;
+
+function agendarRecarga() {
+    clearTimeout(recargaAgendada);
+    // Agrupa rajadas de eventos (ex. junção cancelando vários pedidos) numa recarga só
+    recargaAgendada = setTimeout(() => {
+        if (!kanbanVisivel()) return; // ao abrir a aba ele recarrega de qualquer forma
+        if (arrastando) { agendarRecarga(); return; }
+        carregarViewKanban();
+    }, 800);
+}
+
+function ligarTempoReal() {
+    if (canalTempoReal) return;
+    canalTempoReal = supabaseClient.channel('kanban-pedidos')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'historico' }, agendarRecarga)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos_pendentes' }, agendarRecarga)
+        .subscribe();
+}
+
+export function desligarTempoReal() {
+    if (!canalTempoReal) return;
+    supabaseClient.removeChannel(canalTempoReal);
+    canalTempoReal = null;
+}
+
 export async function carregarViewKanban() {
+    ligarTempoReal();
     const board = $('kanban_board');
     if (!pedidos.length && !rascunhos.length) board.innerHTML = '<div class="empty-state">Carregando pedidos...</div>';
 
@@ -118,16 +149,55 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
         </div>`;
 }
 
+const atrasado = r => nivelAtraso(r.fase, diasDesde(r.fase_em)) > 0;
+
+// Contas do topo do quadro; cada linha clicável vira um filtro
+function renderResumo(grupos) {
+    const el = $('kanban_resumo');
+    if (!el) return;
+
+    const andamento = rascunhos.length + pedidos.filter(r => r.fase !== 'entregue').length;
+    const atrasadosPorFase = Object.keys(LIMITES_ATRASO)
+        .map(fase => ({ fase, qtd: pedidos.filter(r => r.fase === fase && atrasado(r)).length }))
+        .filter(x => x.qtd);
+    const totalAtrasados = atrasadosPorFase.reduce((s, x) => s + x.qtd, 0);
+    const paraJuntar = Object.keys(grupos).length;
+
+    const chip = (filtro, classe, texto) => `
+        <button class="resumo-chip ${classe}${filtroResumo === filtro ? ' ativo' : ''}"
+                onclick="filtrarResumoKanban('${filtro}')" title="Clique para mostrar só estes">${texto}</button>`;
+
+    el.innerHTML = `
+        <span class="resumo-chip neutro">${andamento} em andamento</span>
+        ${atrasadosPorFase.map(({ fase, qtd }) => chip('atrasados', 'alerta',
+            `${qtd} em ${rotuloFase(fase)} há ${LIMITES_ATRASO[fase][0]}+ dia${LIMITES_ATRASO[fase][0] > 1 ? 's' : ''}`)).join('')}
+        ${paraJuntar ? chip('juncao', 'juncao', `🔗 ${paraJuntar} pedidos podem ser juntados`) : ''}
+        ${!totalAtrasados && !paraJuntar ? '<span class="resumo-chip ok">Nada atrasado</span>' : ''}
+        ${filtroResumo ? `<button class="resumo-chip limpar" onclick="filtrarResumoKanban(null)">Mostrar todos</button>` : ''}`;
+}
+
+window.filtrarResumoKanban = function (filtro) {
+    filtroResumo = filtroResumo === filtro ? null : filtro;
+    renderKanban();
+};
+
 export function renderKanban() {
     const board = $('kanban_board');
     if (!board) return;
     const termo = ($('kanban_search')?.value || '').trim().toLowerCase();
-    const bate = r => !termo || [r.destinatario, r.unidade, r.referencia, r.rastreio].join(' ').toLowerCase().includes(termo);
     const grupos = gruposMesmoTecnico();
+    const bate = (r, chave, rascunho = false) => {
+        if (termo && ![r.destinatario, r.unidade, r.referencia, r.rastreio].join(' ').toLowerCase().includes(termo)) return false;
+        if (filtroResumo === 'atrasados') return !rascunho && atrasado(r);
+        if (filtroResumo === 'juncao') return !!grupos[chave];
+        return true;
+    };
+
+    renderResumo(grupos);
 
     board.innerHTML = FASES.map(({ chave: fase, rotulo }) => {
-        const doHistorico = pedidos.filter(r => r.fase === fase && bate(r));
-        const dosRascunhos = fase === 'rascunho' ? rascunhos.filter(bate) : [];
+        const doHistorico = pedidos.filter(r => r.fase === fase && bate(r, 'h:' + r.id));
+        const dosRascunhos = fase === 'rascunho' ? rascunhos.filter(r => bate(r, 'r:' + r.id, true)) : [];
         const cards = [
             ...dosRascunhos.map(r => cardHtml(r, 'r:' + r.id, grupos, { rascunho: true })),
             ...doHistorico.map(r => cardHtml(r, 'h:' + r.id, grupos))
@@ -204,8 +274,12 @@ window.kanbanDragStart = function (ev, id) {
     ev.dataTransfer.setData('text/plain', id);
     ev.dataTransfer.effectAllowed = 'move';
     ev.currentTarget.classList.add('arrastando');
+    arrastando = true;
 };
-window.kanbanDragEnd = ev => ev.currentTarget.classList.remove('arrastando');
+window.kanbanDragEnd = ev => {
+    ev.currentTarget.classList.remove('arrastando');
+    arrastando = false;
+};
 window.kanbanDragOver = function (ev) {
     ev.preventDefault();
     ev.currentTarget.classList.add('drag-over');

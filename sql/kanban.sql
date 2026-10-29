@@ -38,3 +38,16 @@ begin
 end $$;
 
 create index if not exists historico_fase_idx on public.historico (fase, fase_em desc);
+
+-- Tempo real: o kanban se atualiza sozinho quando um pedido muda (em outra aba ou aparelho)
+do $$
+begin
+    if not exists (select 1 from pg_publication_tables
+                   where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'historico') then
+        alter publication supabase_realtime add table public.historico;
+    end if;
+    if not exists (select 1 from pg_publication_tables
+                   where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'pedidos_pendentes') then
+        alter publication supabase_realtime add table public.pedidos_pendentes;
+    end if;
+end $$;

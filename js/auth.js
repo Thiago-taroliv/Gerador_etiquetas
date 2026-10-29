@@ -1,6 +1,7 @@
 import { supabaseClient, $ } from './config.js';
 import { carregarDestinatarios, popularSelectDestinatarios } from './db.js';
 import { initializeItems, renderItemsCRUD } from './items.js';
+import { desligarTempoReal } from './kanban.js';
 
 export async function checkSession() {
     const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -51,6 +52,7 @@ export async function handleLogin() {
 }
 
 export async function handleLogout() {
+    desligarTempoReal();
     const { error } = await supabaseClient.auth.signOut();
     if(error) alert("Erro ao sair: " + error.message);
     else checkSession();
