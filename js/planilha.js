@@ -18,18 +18,19 @@ export const COLUNAS = [
     'OS/Ticket', 'Cliente', 'Unidade', 'Tipo', 'Equip', 'Data Recebimento', 'Nome Config',
     'IMEI Equipamento', 'IMEI Teclado', 'ICCID Chip', 'Cartões', 'Bloqueio (S/N)', 'FW Equip', 'FW Tcl',
     'FW Sensor', 'Checklist', 'Observação Configuração',
-    'Destinatário', 'Endereço', 'CEP', 'Bairro', 'Cidade', 'UF', 'Contato', 'Data Envio'
+    'Destinatário', 'Endereço', 'CEP', 'Bairro', 'Cidade', 'UF', 'Contato', 'Data Envio',
+    'Código Rastreio', 'Qtde Caixa', 'Data Recebido', 'Valor do frete'
 ];
 export const GRUPOS = [
     { id: 'dados', nome: 'Dados', de: 0, ate: 3 },
     { id: 'config', nome: 'Configuração', de: 4, ate: 16 },
-    { id: 'envio', nome: 'Envio', de: 17, ate: 24 }
+    { id: 'envio', nome: 'Envio', de: 17, ate: 28 }
 ];
 export const TIPOS = ['INS', 'COR', 'MAN', 'FOR'];
-export const COL = { IMEI_EQUIP: 7, IMEI_TECLADO: 8, ICCID: 9 };
+export const COL = { IMEI_EQUIP: 7, IMEI_TECLADO: 8, ICCID: 9, RASTREIO: 25 };
 
 // Colunas que o Excel deve tratar como texto (números longos perdem dígitos ou viram 8,68E+14)
-const COLUNAS_TEXTO = new Set([COL.IMEI_EQUIP, COL.IMEI_TECLADO, COL.ICCID]);
+const COLUNAS_TEXTO = new Set([COL.IMEI_EQUIP, COL.IMEI_TECLADO, COL.ICCID, COL.RASTREIO]);
 
 const semAcento = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
@@ -87,6 +88,10 @@ function hoje() {
     return new Date().toLocaleDateString('pt-BR');
 }
 
+// 25.9 -> "25,90" (vazio se não informado)
+export const formatarFrete = v =>
+    v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 // Acessórios que podem ter "KIT" no nome sem serem kit de rastreador (ex. "SUPORTE ... KIT ÂNCORA")
 const ACESSORIO = /SUPORTE|LACRE|CHICOTE|ANCORA|ÂNCORA|CABO|PARAFUSO|ABRA[CÇ]ADEIRA|FUS[IÍ]VEL|CHIP/;
 
@@ -135,9 +140,10 @@ function descricaoKit(descRastreador) {
 // ICCID só vai para a planilha quando há número; sem número a coluna fica vazia
 const iccidDe = im => (im.iccid && /\d{6,}/.test(im.iccid) ? String(im.iccid).trim() : '');
 
-// Monta as linhas (array de arrays, 25 colunas) a partir dos dados do formulário/rascunho/histórico.
+// Monta as linhas (array de arrays, uma posição por coluna) a partir dos dados do formulário/rascunho/histórico.
 // montarKits: junta rastreador + teclado avulsos da mesma unidade numa linha só (na ordem dos IMEIs)
-export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = !!dados.montar_kits } = {}) {
+// envio: o que o pedido já tem depois de despachado — { rastreio, frete, recebido }
+export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = !!dados.montar_kits, envio = {} } = {}) {
     const end = separarEnderecoLinha2(dados.dest_addr2);
     const os = dados.reference_type === 'none' ? '' : String(dados.reference || '').trim();
     const linhas = [];
@@ -172,6 +178,10 @@ export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = !!
         l[22] = end.uf;
         l[23] = (dados.dest_phone || '').trim();
         l[24] = dataEnvio;
+        l[25] = envio.rastreio || '';
+        l[26] = String(dados.total_vol || '').trim();
+        l[27] = envio.recebido || '';
+        l[28] = formatarFrete(envio.frete);
         return l;
     };
 

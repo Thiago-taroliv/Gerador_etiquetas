@@ -5,7 +5,7 @@ import { COLUNAS, GRUPOS, TIPOS, COL, copiarLinhasPlanilha } from './planilha.js
 import { toast } from './toast.js';
 
 // Largura de cada coluna (px), na ordem de COLUNAS
-const LARGURAS = [70, 90, 190, 64, 150, 100, 120, 150, 100, 180, 70, 80, 70, 70, 76, 80, 160, 200, 240, 90, 150, 130, 50, 150, 96];
+const LARGURAS = [70, 90, 190, 64, 150, 100, 120, 150, 100, 180, 70, 80, 70, 70, 76, 80, 160, 200, 240, 90, 150, 130, 50, 150, 96, 130, 70, 96, 90];
 
 let linhas = [];      // estado atual (editado)
 let original = [];    // como foi gerado, para "Restaurar"

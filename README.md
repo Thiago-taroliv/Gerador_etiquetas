@@ -59,7 +59,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 
 ## Banco de dados
 
-O kanban usa as colunas `fase`, `fase_em`, `rastreio` e `mesclado_em` da tabela `historico`. Para criá-las, rode [`sql/kanban.sql`](sql/kanban.sql) no SQL Editor do Supabase (pode ser executado mais de uma vez).
+O kanban usa as colunas `fase`, `fase_em`, `rastreio`, `frete` e `mesclado_em` da tabela `historico`. Para criá-las, rode [`sql/kanban.sql`](sql/kanban.sql) no SQL Editor do Supabase (pode ser executado mais de uma vez).
 
 A importação da planilha de estoque usa a tabela `de_para_itens`: rode [`sql/estoque.sql`](sql/estoque.sql) da mesma forma.
 

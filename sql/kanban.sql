@@ -1,4 +1,4 @@
--- Kanban de pedidos: fase do envio, rastreio e junção de pedidos.
+-- Kanban de pedidos: fase do envio, rastreio, frete e junção de pedidos.
 -- Rodar no SQL Editor do Supabase. Pode ser executado mais de uma vez.
 
 do $$
@@ -14,7 +14,8 @@ begin
     alter table public.historico
         add column if not exists fase     text        not null default 'rascunho',
         add column if not exists fase_em  timestamptz not null default now(),
-        add column if not exists rastreio text;
+        add column if not exists rastreio text,
+        add column if not exists frete    numeric(10,2);
 
     -- mesclado_em usa o mesmo tipo de historico.id (uuid ou bigint)
     select format_type(a.atttypid, a.atttypmod) into tipo_id

@@ -209,8 +209,9 @@ export async function moverFase(id, fase, extras = {}) {
     return true;
 }
 
-export async function atualizarRastreio(id, rastreio) {
-    const { error } = await supabaseClient.from('historico').update({ rastreio }).eq('id', id);
+// campos: { rastreio, frete }
+export async function atualizarDespacho(id, campos) {
+    const { error } = await supabaseClient.from('historico').update(campos).eq('id', id);
     if (error) {
         console.error('Erro ao salvar rastreio:', error.message);
         return false;

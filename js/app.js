@@ -1,7 +1,7 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarRastreio, cancelarPedido, gravarEscolhaKits } from './db.js';
-import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF } from './kanban.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits } from './db.js';
+import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
 import { pendenciasEnvio } from './importarEstoque.js';
@@ -13,7 +13,7 @@ import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clear
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
-import { gerarLinhasPlanilha, contarKits } from './planilha.js';
+import { gerarLinhasPlanilha, contarKits, formatarFrete } from './planilha.js';
 import { grupoParaFormulario } from './importarPlanilha.js';
 import { abrirImportarPlanilha, fecharImportarPlanilha, importarPlanilhaAberto, novaBaseImportada, limparBaseImportada, escolherArquivoImportar, usarEnvioImportado } from './importarPlanilhaModal.js';
 import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto, alternarKitsPlanilha } from './planilhaPreview.js';
@@ -350,6 +350,7 @@ window.abrirDetalheHistorico = function (id) {
                    </select>`}
             <div class="detalhe-rastreio">
                 Rastreio: <strong>${escapeHtml(reg.rastreio) || '—'}</strong>
+                · Frete: <strong>${reg.frete != null ? 'R$ ' + formatarFrete(reg.frete) : '—'}</strong>
                 <button class="btn-sm btn-neutral" onclick="editarRastreioDoModal('${id}')">Editar</button>
             </div>
             ${juncaoInfo}
@@ -395,14 +396,13 @@ window.mudarFaseDoModal = async function (id, fase) {
 window.editarRastreioDoModal = async function (id) {
     const reg = acharPedido(id);
     if (!reg) return;
-    const codigo = prompt('Código de rastreio:', reg.rastreio || '');
-    if (codigo === null) return;
-    const rastreio = codigo.trim() || null;
-    if (await atualizarRastreio(id, rastreio)) {
-        atualizarCaches(id, { rastreio });
+    const despacho = pedirDadosDespacho(reg);
+    if (!despacho) return;
+    if (await atualizarDespacho(id, despacho)) {
+        atualizarCaches(id, despacho);
         abrirDetalheHistorico(id);
     } else {
-        toast('Não foi possível salvar o rastreio.', 'error');
+        toast('Não foi possível salvar o rastreio e o frete.', 'error');
     }
 };
 
@@ -686,9 +686,15 @@ window.confirmarCopiaPlanilha = confirmarCopiaPlanilha;
 window.alternarKitsPlanilha = alternarKitsPlanilha;
 
 // aoMudarKits(montar): grava a escolha de "Montar kits" no envio de onde as linhas vieram
-function abrirLinhas(dados, dataEnvio, titulo, aoMudarKits) {
+// reg: registro do histórico, para preencher rastreio, frete e data de recebimento
+function abrirLinhas(dados, dataEnvio, titulo, aoMudarKits, reg = null) {
     const marcado = !!dados.montar_kits;
-    const gerar = montar => gerarLinhasPlanilha(dados, dataEnvio, { montarKits: montar });
+    const envio = reg ? {
+        rastreio: reg.rastreio,
+        frete: reg.frete,
+        recebido: reg.fase === 'entregue' ? new Date(reg.fase_em).toLocaleDateString('pt-BR') : ''
+    } : {};
+    const gerar = montar => gerarLinhasPlanilha(dados, dataEnvio, { montarKits: montar, envio });
     const linhas = gerar(marcado);
     if (linhas.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return; }
     const info = contarKits(dados);
@@ -704,7 +710,7 @@ window.copiarParaPlanilha = function () {
         // Rascunho/registro já salvos guardam a escolha na hora; envio novo guarda ao salvar ou gerar
         if (AppState.currentDraftId) await salvarRascunhoAtual(true);
         if (AppState.currentHistoricoId) await gravarEscolhaKits(AppState.currentHistoricoId, montar);
-    });
+    }, AppState.currentHistoricoId ? acharPedido(AppState.currentHistoricoId) : null);
 };
 
 // Botão no detalhe do histórico (data de envio = data do registro)
@@ -717,7 +723,7 @@ window.copiarPlanilhaDoHistorico = function (id) {
     abrirLinhas(reg.dados_completos, new Date(reg.created_at).toLocaleDateString('pt-BR'),
         `Linhas para a planilha · ${reg.destinatario || ''}`, async montar => {
             if (await gravarEscolhaKits(id, montar)) atualizarCaches(id, { dados_completos: { ...reg.dados_completos, montar_kits: montar } });
-        });
+        }, reg);
 };
 
 // --- IMPORTAR DA PLANILHA (processo inverso) ---
