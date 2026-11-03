@@ -23,6 +23,7 @@ import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adi
 
 import { config } from './configuracoes.js';
 import { renderConfiguracoes } from './configuracoesTela.js';
+import { abrirLinhasVeiculos } from './veiculosModal.js';
 
 // Anexa todas as funções engatilhadas pelo HTML ao escopo Global (window)
 window.handleLogin = handleLogin;
@@ -364,6 +365,7 @@ window.abrirDetalheHistorico = function (id) {
                 ? `<button class="btn-neutral" onclick="reativarPedidoDoModal('${id}')">Reativar pedido</button>`
                 : `<button class="btn-danger" onclick="cancelarPedidoDoModal('${id}')">Cancelar pedido</button>`}
             <button class="btn-neutral" onclick="copiarPlanilhaDoHistorico('${id}')">Linhas p/ Planilha</button>
+            <button class="btn-neutral" onclick="copiarVeiculosDoHistorico('${id}')">Linhas p/ Veículos</button>
         </div>
     `;
 
@@ -756,6 +758,22 @@ window.copiarPlanilhaDoHistorico = function (id) {
         `Linhas para a planilha · ${reg.destinatario || ''}`, async montar => {
             if (await gravarEscolhaKits(id, montar)) atualizarCaches(id, { dados_completos: { ...reg.dados_completos, montar_kits: montar } });
         }, reg);
+};
+
+// --- PLANILHA DE IMPORTAÇÃO DE VEÍCULOS (um veículo por rastreador) ---
+window.copiarParaVeiculos = function () {
+    const d = collectData();
+    const ref = d.reference_type !== 'none' && d.reference ? ` · ${d.reference_type === 'os' ? 'OS' : 'Ticket'} ${d.reference}` : '';
+    abrirLinhasVeiculos(d, `Linhas para a planilha de veículos${ref}`);
+};
+
+window.copiarVeiculosDoHistorico = function (id) {
+    const reg = acharPedido(id);
+    if (!reg || !reg.dados_completos) {
+        toast('Este registro antigo não tem os dados completos para gerar as linhas.', 'warning');
+        return;
+    }
+    abrirLinhasVeiculos(reg.dados_completos, `Linhas para a planilha de veículos · ${reg.destinatario || ''}`);
 };
 
 // --- IMPORTAR DA PLANILHA (processo inverso) ---

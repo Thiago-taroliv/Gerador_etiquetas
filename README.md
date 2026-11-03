@@ -10,6 +10,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 - **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos dias, configurável) e permite juntar tudo num envio só
 - Geração automática de **etiquetas de envio** (com suporte a múltiplos volumes)
 - Geração de **romaneio de entrega** para impressão
+- **Linhas p/ Veículos**: um veículo por rastreador no padrão da planilha de importação de veículos da plataforma (cliente na plataforma lembrado por unidade, placa provisória "RA24 52-01", ICCID e operadora do chip)
 - **Envio de e-mail ao financeiro** solicitando emissão de nota fiscal, com os itens separados por OS e conferência/edição antes de enviar
 - **Cadastro de destinatários na nuvem** com persistência segura via Supabase
 - **Importação e exportação de base** em formato JSON (backup/restore)

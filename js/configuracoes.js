@@ -27,7 +27,10 @@ export const PADROES = {
     juncao_dias: 7,
     transportadora_padrao: 'Jadlog',
     // Textos fixos do e-mail ao financeiro
-    email_textos: { assunto: 'Nota fiscal para envio', saudacao: 'Olá financeiro,' }
+    email_textos: { assunto: 'Nota fiscal para envio', saudacao: 'Olá financeiro,' },
+    // Planilha de importação de veículos: Chip_Telefone fixo e o nome do cliente na plataforma por unidade
+    veiculos_telefone: '1111111111111',
+    plataforma_clientes: []
 };
 
 let salvas = new Map(); // chave -> { valor, atualizado_por, atualizado_em }

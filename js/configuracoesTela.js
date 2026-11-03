@@ -114,6 +114,28 @@ const CARTOES = {
             <input type="text" value="${escapeHtml(v.saudacao)}" oninput="cfgCampo('email_textos', null, 'saudacao', this.value)">`,
         limpar: v => ({ assunto: v.assunto.trim(), saudacao: v.saudacao.trim() }),
         validar: v => v.assunto && v.saudacao ? null : 'Preencha o assunto e a saudação.'
+    },
+    veiculos_telefone: {
+        titulo: 'Planilha de veículos: telefone do chip',
+        ajuda: 'Valor da coluna Chip_Telefone nas "Linhas p/ Veículos".',
+        campos: v => `<input type="text" value="${escapeHtml(v)}" oninput="cfgValor('veiculos_telefone', this.value)">`,
+        limpar: v => String(v || '').trim(),
+        validar: v => v ? null : 'Informe o telefone.'
+    },
+    plataforma_clientes: {
+        titulo: 'Planilha de veículos: cliente na plataforma',
+        ajuda: 'Nome do cliente na plataforma para cada Cliente/Unidade do pedido. É preenchido sozinho quando você corrige o nome na prévia das "Linhas p/ Veículos".',
+        campos: v => `${v.length ? '' : '<div class="small">Nenhum nome guardado ainda.</div>'}${v.map((r, i) => `
+            <div class="cfg-linha">
+                <input type="text" placeholder="Cliente/Unidade do pedido" value="${escapeHtml(r.unidade)}" oninput="cfgCampo('plataforma_clientes', ${i}, 'unidade', this.value)">
+                →
+                <input type="text" placeholder="Nome na plataforma" value="${escapeHtml(r.cliente)}" oninput="cfgCampo('plataforma_clientes', ${i}, 'cliente', this.value)">
+                <button type="button" class="btn-sm btn-neutral" onclick="cfgRemover('plataforma_clientes', ${i})">✕</button>
+            </div>`).join('')}
+            <button type="button" class="btn-sm btn-neutral" onclick="cfgAdicionar('plataforma_clientes')">+ Cliente</button>`,
+        novo: () => ({ unidade: '', cliente: '' }),
+        limpar: v => v.map(r => ({ unidade: r.unidade.trim(), cliente: r.cliente.trim() })).filter(r => r.unidade && r.cliente),
+        validar: () => null
     }
 };
 
