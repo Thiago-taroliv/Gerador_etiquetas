@@ -4,9 +4,8 @@ import { AppState, $, escapeHtml } from './config.js';
 import { carregarCandidatosJuncao, cancelarPedido, deletarPendente, FASES } from './db.js';
 import { preencherFormulario } from './ui.js';
 import { toast } from './toast.js';
+import { config } from './configuracoes.js';
 
-// Só procura pedidos criados ou mexidos nestes últimos dias
-export const JANELA_JUNCAO_DIAS = 7;
 // Fases em que a NF ainda não foi emitida
 export const FASES_SEM_NF = ['rascunho', 'aguardando_nf'];
 
@@ -27,7 +26,8 @@ export function mesmoTecnico(a, b) {
     return !!nomeA && nomeA === normNome(b.nome);
 }
 
-export const inicioJanelaJuncao = () => new Date(Date.now() - JANELA_JUNCAO_DIAS * 864e5).toISOString();
+// Só procura pedidos criados ou mexidos nestes últimos dias (Gerenciar Dados > Configurações)
+export const inicioJanelaJuncao = () => new Date(Date.now() - (Number(config('juncao_dias')) || 7) * 864e5).toISOString();
 
 const diasDesde = data => Math.floor((Date.now() - new Date(data)) / 864e5);
 const rotuloFase = chave => FASES.find(f => f.chave === chave)?.rotulo || chave;

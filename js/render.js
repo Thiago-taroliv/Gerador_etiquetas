@@ -1,4 +1,5 @@
 import { escapeHtml, AppState } from './config.js';
+import { config } from './configuracoes.js';
 
 // Escapa e preserva quebras de linha (ex: endereço do remetente)
 function escapeMultiline(s) {
@@ -252,7 +253,7 @@ function getRefInfo(d) {
 // Assunto do e-mail ao financeiro (única fonte para preview, cópia e mailto)
 export function buildEmailSubject(d) {
     const { refType, refTypeLabel, ref } = getRefInfo(d);
-    const assuntoBase = 'Nota fiscal para envio';
+    const assuntoBase = config('email_textos')?.assunto || 'Nota fiscal para envio';
     if (refType !== 'none' && d.reference && d.reference.trim()) {
         return `${assuntoBase} - ${refTypeLabel} ${ref}`;
     }
@@ -304,7 +305,7 @@ export function buildEmailBody(d) {
     const { refType, refTypeLabel, ref } = getRefInfo(d);
     const itemsLines = (Array.isArray(d.items) && d.items.length) ? linhasItensEmail(d.items, refTypeLabel) : '- (sem itens informados) -';
 
-    let emailText = `Olá financeiro,\n\n`;
+    let emailText = `${config('email_textos')?.saudacao || 'Olá financeiro,'}\n\n`;
     if (refType === 'none') {
         emailText += `Preciso de uma nota fiscal de envio para ${unitDisplay} (envio para fornecedor).\n`;
     } else {

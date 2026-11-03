@@ -5,9 +5,10 @@ import { formatarFrete } from './planilha.js';
 import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao } from './juncao.js';
 import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
+import { config } from './configuracoes.js';
 
-// Dias parado na fase a partir dos quais o card fica amarelo / vermelho
-const LIMITES_ATRASO = { aguardando_nf: [2, 5], nf_emitida: [2, 5], pronto: [1, 3] };
+// Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Gerenciar Dados > Configurações)
+const limitesAtraso = () => config('kanban_atraso') || {};
 
 let pedidos = [];          // registros do histórico
 let rascunhos = [];        // rascunhos que ainda não têm registro no histórico
@@ -81,7 +82,7 @@ const diasDesde = data => Math.max(0, Math.floor((Date.now() - new Date(data)) /
 const textoDias = n => n === 0 ? 'hoje' : `há ${n} dia${n > 1 ? 's' : ''}`;
 
 function nivelAtraso(fase, dias) {
-    const [amarelo, vermelho] = LIMITES_ATRASO[fase] || [];
+    const [amarelo, vermelho] = limitesAtraso()[fase] || [];
     if (vermelho !== undefined && dias >= vermelho) return 2;
     if (amarelo !== undefined && dias >= amarelo) return 1;
     return 0;
@@ -165,7 +166,8 @@ function renderResumo(grupos) {
     if (!el) return;
 
     const andamento = rascunhos.length + pedidos.filter(r => r.fase !== 'entregue').length;
-    const atrasadosPorFase = Object.keys(LIMITES_ATRASO)
+    const limites = limitesAtraso();
+    const atrasadosPorFase = Object.keys(limites)
         .map(fase => ({ fase, qtd: pedidos.filter(r => r.fase === fase && atrasado(r)).length }))
         .filter(x => x.qtd);
     const totalAtrasados = atrasadosPorFase.reduce((s, x) => s + x.qtd, 0);
@@ -178,7 +180,7 @@ function renderResumo(grupos) {
     el.innerHTML = `
         <span class="resumo-chip neutro">${andamento} em andamento</span>
         ${atrasadosPorFase.map(({ fase, qtd }) => chip('atrasados', 'alerta',
-            `${qtd} em ${rotuloFase(fase)} há ${LIMITES_ATRASO[fase][0]}+ dia${LIMITES_ATRASO[fase][0] > 1 ? 's' : ''}`)).join('')}
+            `${qtd} em ${rotuloFase(fase)} há ${limites[fase][0]}+ dia${limites[fase][0] > 1 ? 's' : ''}`)).join('')}
         ${paraJuntar ? chip('juncao', 'juncao', `🔗 ${paraJuntar} pedidos podem ser juntados`) : ''}
         ${!totalAtrasados && !paraJuntar ? '<span class="resumo-chip ok">Nada atrasado</span>' : ''}
         ${filtroResumo ? `<button class="resumo-chip limpar" onclick="filtrarResumoKanban(null)">Mostrar todos</button>` : ''}`;

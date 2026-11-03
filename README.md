@@ -5,15 +5,17 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 ## Funcionalidades
 
 - **Kanban de pedidos** (aba principal): cada envio aparece na coluna da sua fase — Rascunho, Aguardando NF, NF emitida, Pronto p/ envio, Despachado e Entregue. Os cards podem ser arrastados entre colunas, e as ações do sistema (e-mail, etiqueta, romaneio) avançam a fase sozinhas
-- **Importação da planilha de estoque**: o responsável do estoque sobe a planilha de saída e cada envio vira um rascunho no kanban, com aviso do que falta preencher à mão (CPF/CNPJ, endereço, volumes...). Os nomes do estoque viram itens do sistema pela tabela de-para (Gerenciar Dados → De-para Estoque); o chip fica na linha do rastreador na planilha de envio, e rastreador + teclado podem ser montados em kit
-- **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos 7 dias) e permite juntar tudo num envio só
+- **Importação da planilha de estoque**: o responsável do estoque sobe a planilha de saída e cada envio vira um rascunho no kanban, com aviso do que falta preencher à mão (CPF/CNPJ, endereço, volumes...). Os nomes do estoque viram itens do sistema pela tabela de-para (Gerenciar Dados → De-para Estoque); o chip fica na linha do rastreador na planilha de envio. Linhas do mesmo dia, destinatário e unidade viram um envio só, mesmo com várias OS (a prévia permite separar por OS ou juntar envios)
+- **Montar kit** (prévia da importação e formulário): sugere qual item é cada componente da receita (ex. KIT RA24) e quantos kits dá por OS; tudo ajustável antes de montar, e o kit pode ser desmontado
+- **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos dias, configurável) e permite juntar tudo num envio só
 - Geração automática de **etiquetas de envio** (com suporte a múltiplos volumes)
 - Geração de **romaneio de entrega** para impressão
-- **Envio de e-mail ao financeiro** solicitando emissão de nota fiscal
+- **Envio de e-mail ao financeiro** solicitando emissão de nota fiscal, com os itens separados por OS e conferência/edição antes de enviar
 - **Cadastro de destinatários na nuvem** com persistência segura via Supabase
 - **Importação e exportação de base** em formato JSON (backup/restore)
 - **Autenticação com login e senha** para proteger dados sensíveis (CPF, CNPJ, endereços)
-- Seleção rápida de remetente (Ranor / Nortrack / Personalizado)
+- Seleção rápida de remetente (cadastrados em Configurações, ou Personalizado)
+- **Configurações** (Gerenciar Dados → Configurações): e-mails do financeiro, remetentes, motivo → tipo, prazos de atraso do kanban, janela da junção, transportadora padrão, textos do e-mail e receitas de kit
 
 ## Tecnologias
 
@@ -44,6 +46,12 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
     ├── importarEstoque.js      # Leitor da planilha de estoque (agrupa linhas em envios)
     ├── importarEstoqueModal.js # Prévia da importação e criação dos rascunhos
     ├── dePara.js       # De-para: item do estoque -> item do sistema + papel
+    ├── kit.js          # Sugestão, montagem e desmontagem de kits
+    ├── kitModal.js     # Tela "Montar kit"
+    ├── kitReceitas.js  # Receitas de kit no Supabase
+    ├── conferencia.js  # Conferência do e-mail e resumo antes de concluir
+    ├── configuracoes.js     # Configurações editáveis (padrões + Supabase)
+    ├── configuracoesTela.js # Tela Gerenciar Dados → Configurações
     └── app.js          # Inicialização, bindagem de eventos e orquestração
 ```
 
@@ -62,6 +70,8 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 O kanban usa as colunas `fase`, `fase_em`, `rastreio`, `frete` e `mesclado_em` da tabela `historico`. Para criá-las, rode [`sql/kanban.sql`](sql/kanban.sql) no SQL Editor do Supabase (pode ser executado mais de uma vez).
 
 A importação da planilha de estoque usa a tabela `de_para_itens`: rode [`sql/estoque.sql`](sql/estoque.sql) da mesma forma.
+
+As receitas de kit ficam na tabela `kit_receitas` ([`sql/kit.sql`](sql/kit.sql)) e as configurações na tabela `configuracoes` ([`sql/configuracoes.sql`](sql/configuracoes.sql)). Sem essas tabelas o sistema funciona com os valores padrão, mas não salva as alterações.
 
 ## Segurança
 

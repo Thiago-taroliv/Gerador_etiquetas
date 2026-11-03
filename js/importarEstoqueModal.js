@@ -1,8 +1,9 @@
 // Modal "Importar planilha de estoque": lê o arquivo (ou linhas coladas), mostra a prévia dos envios,
 // pede o de-para dos itens novos e cria um rascunho por envio (aparecem na coluna Rascunho do kanban).
-import { $, escapeHtml, SENDERS } from './config.js';
+import { $, escapeHtml } from './config.js';
+import { config, remetentePadrao } from './configuracoes.js';
 import { parseTSV } from './importarPlanilha.js';
-import { lerLinhasEstoque, agruparEnviosEstoque, grupoEstoqueParaFormulario, lerArquivoEstoque, chaveDeAgrupamento } from './importarEstoque.js';
+import { lerLinhasEstoque, agruparEnviosEstoque, grupoEstoqueParaFormulario, lerArquivoEstoque, chaveDeAgrupamento, definirMotivoTipo } from './importarEstoque.js';
 import { sugerirKit, montarKit, totalKits } from './kit.js';
 import { abrirMontarKit } from './kitModal.js';
 import { carregarReceitas } from './kitReceitas.js';
@@ -94,6 +95,7 @@ const ROTULO_STATUS = {
 };
 
 function reagrupar() {
+    definirMotivoTipo(config('motivo_tipo'));
     grupos = agruparEnviosEstoque(registros, resolverItem, chaveDoReg).map(g => ({ ...g, ...acharCadastro(g.destinatario), status: null }));
     grupos.forEach(g => { aplicarKit(g); g.status = statusDoGrupo(g); });
     marcados = new Set(grupos.filter(g => g.status === 'novo' || g.status === 'atualizar').map(g => g.chave));
@@ -417,7 +419,7 @@ window.salvarNovosEstoque = async function (btn) {
 
 // Dados de um rascunho a partir do envio; numa atualização, mantém o que já foi digitado à mão
 function montarDados(g) {
-    const ranor = SENDERS.ranor;
+    const ranor = remetentePadrao() || {};
     const base = {
         sender_company: ranor.company, sender_cnpj: ranor.cnpj, sender_address: ranor.address,
         dest_doc: g.cad?.cpf_cnpj || '',

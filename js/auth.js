@@ -2,12 +2,19 @@ import { supabaseClient, $ } from './config.js';
 import { carregarDestinatarios, popularSelectDestinatarios } from './db.js';
 import { initializeItems, renderItemsCRUD } from './items.js';
 import { desligarTempoReal } from './kanban.js';
+import { carregarConfiguracoes, config } from './configuracoes.js';
+import { popularSelectRemetentes, onSenderChange } from './ui.js';
 
 export async function checkSession() {
     const { data: { session }, error } = await supabaseClient.auth.getSession();
     if (session) {
         $('auth_container').style.display = 'none';
         $('app_content').style.display = 'block';
+        // Configurações antes do kanban (prazos de atraso) e do formulário (remetentes, transportadora)
+        await carregarConfiguracoes();
+        popularSelectRemetentes();
+        onSenderChange();
+        if (!$('carrier').value.trim() || $('carrier').value === 'Jadlog') $('carrier').value = config('transportadora_padrao');
         carregarDestinatarios();
         // Items só podem ser lidos depois do login (RLS)
         initializeItems().then(() => renderItemsCRUD('items_list'));

@@ -100,11 +100,8 @@
                             <legend>Remetente</legend>
 
                             <label>Selecionar remetente</label>
-                            <select id="sender_select">
-                                <option value="ranor">Ranor Rastreamento</option>
-                                <option value="nortrack">NORTRACK OPERAÇÕES LTDA</option>
-                                <option value="custom">Personalizado</option>
-                            </select>
+                            <!-- Opções geradas por popularSelectRemetentes (Gerenciar Dados > Configurações) -->
+                            <select id="sender_select"></select>
 
                             <label>Empresa</label>
                             <input id="sender_company" type="text" readonly>
@@ -315,6 +312,7 @@
                     <button class="sub-tab active" id="btn-sub-destinatarios" onclick="switchSubTab('sub-destinatarios')">Destinatários</button>
                     <button class="sub-tab" id="btn-sub-itens" onclick="switchSubTab('sub-itens')">Itens / Produtos</button>
                     <button class="sub-tab" id="btn-sub-depara" onclick="switchSubTab('sub-depara')">De-para Estoque</button>
+                    <button class="sub-tab" id="btn-sub-config" onclick="switchSubTab('sub-config')">Configurações</button>
                 </div>
 
             <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
@@ -445,6 +443,16 @@
                     </fieldset>
                 </div>
                 </div> <!-- Fim de sub-depara -->
+
+                <!-- SUB-ABA: CONFIGURAÇÕES (conteúdo em js/configuracoesTela.js) -->
+                <div id="sub-config" style="display: none;">
+                    <div class="card">
+                        <strong>Configurações</strong>
+                        <div class="small">Dados que mudam com o tempo. Sem alteração salva, vale o padrão do sistema
+                            ("Restaurar padrão" volta a ele). Valem para todos os usuários.</div>
+                        <div id="config_conteudo"></div>
+                    </div>
+                </div>
             </div> <!-- Fim de tab-dados -->
             <!-- ABA: ENVIOS (Unificada) -->
             <div id="tab-envios" class="tab-content" style="display: none;">

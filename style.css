@@ -1657,3 +1657,17 @@ input.campo-pendente, select.campo-pendente {
 .estoque-acoes .btn-sm { margin: 0; }
 .estoque-juntar { font-size: 12px; padding: 2px 4px; margin: 0; max-width: 260px; }
 .conferir-email-corpo { width: 100%; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+
+/* Gerenciar Dados > Configurações */
+.cfg-cartao { margin-top: 14px; }
+.cfg-campos { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.cfg-campos textarea { width: 100%; box-sizing: border-box; }
+.cfg-linha { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cfg-linha input[type="text"] { flex: 1; min-width: 160px; margin: 0; }
+.cfg-linha input, .cfg-linha select { margin: 0; }
+.cfg-bloco { border: 1px solid #e3e3e3; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.cfg-bloco textarea { width: 100%; box-sizing: border-box; font-family: inherit; }
+.cfg-rotulo { min-width: 140px; font-size: 13px; }
+.cfg-check { display: inline-flex; align-items: center; gap: 4px; font-weight: 400; margin: 0; }
+.cfg-rodape { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.cfg-rodape .btn-sm { margin: 0; }

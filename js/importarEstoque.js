@@ -22,16 +22,18 @@ const ehImei = n => /^[ei]mei/.test(n);
 const ehCod = n => n.startsWith('cod');
 const ehQtd = n => n.startsWith('qt');
 
-// Motivo -> Tipo da planilha de envio
-const TIPOS = [
-    ['MAN', n => n.startsWith('manut')],
-    ['INS', n => n.startsWith('instal')],
-    ['COR', n => n.startsWith('correc') || n.startsWith('corret')],
-    ['FOR', n => n.startsWith('fornec')]
+// Motivo -> Tipo da planilha de envio: o motivo (sem acento) "começa com". As regras vêm de
+// Gerenciar Dados > Configurações (definirMotivoTipo); estas são as padrão.
+let regrasMotivo = [
+    { comeca: 'manut', tipo: 'MAN' }, { comeca: 'instal', tipo: 'INS' }, { comeca: 'correc', tipo: 'COR' },
+    { comeca: 'corret', tipo: 'COR' }, { comeca: 'fornec', tipo: 'FOR' }
 ];
+export function definirMotivoTipo(regras) {
+    if (Array.isArray(regras)) regrasMotivo = regras;
+}
 export function motivoParaTipo(motivo) {
     const n = norm(motivo);
-    return n ? (TIPOS.find(([, teste]) => teste(n))?.[0] || '') : '';
+    return n ? (regrasMotivo.find(r => norm(r.comeca) && n.startsWith(norm(r.comeca)))?.tipo || '') : '';
 }
 
 // "-------" e afins contam como vazio

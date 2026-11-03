@@ -9,7 +9,7 @@ import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } fr
 
 // Depois de criar os rascunhos, o kanban mostra os novos cards
 window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisivel()) carregarViewKanban(); });
-import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
+import { onSenderChange, popularSelectRemetentes, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject, avisosEmail } from './render.js';
 import { conferirEmail, resumoDoPedido } from './conferencia.js';
 import { abrirMontarKit } from './kitModal.js';
@@ -21,8 +21,8 @@ import { grupoParaFormulario } from './importarPlanilha.js';
 import { abrirImportarPlanilha, fecharImportarPlanilha, importarPlanilhaAberto, novaBaseImportada, limparBaseImportada, escolherArquivoImportar, usarEnvioImportado } from './importarPlanilhaModal.js';
 import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto, alternarKitsPlanilha } from './planilhaPreview.js';
 
-// E-mails do financeiro que recebem o pedido de nota fiscal
-const EMAILS_FINANCEIRO = 'michele.miranda@ranor.com.br;jaqueline.cristiane@ranor.com.br';
+import { config } from './configuracoes.js';
+import { renderConfiguracoes } from './configuracoesTela.js';
 
 // Anexa todas as funções engatilhadas pelo HTML ao escopo Global (window)
 window.handleLogin = handleLogin;
@@ -908,7 +908,8 @@ async function enviarEmailViaMailtoUsingData() {
     // Confere (e edita, se precisar) o e-mail antes de abrir
     const conferido = await conferirEmail({ assunto: buildEmailSubject(d), corpo: buildEmailBody(d), avisos: avisosEmail(d) });
     if (!conferido) return;
-    const emails = EMAILS_FINANCEIRO;
+    // E-mails do financeiro que recebem o pedido de nota fiscal (Gerenciar Dados > Configurações)
+    const emails = config('financeiro_emails').join(';');
     const { assunto, corpo: body } = conferido;
     window.location.href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
     const id = await registrarEnvio(d, { email: true });
@@ -1093,7 +1094,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Inicialização Visual
-    $('sender_select').value = 'ranor';
+    // Remetentes padrão até o login carregar as configurações (auth.js popula de novo)
+    popularSelectRemetentes();
     onSenderChange();
     toggleReferenceInput();
     addItem(); // Adicionar um item padrão
@@ -1131,7 +1133,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.switchSubTab = function(subTabName) {
     // 1. Esconder TODAS as sub-abas conhecidas
-    const idsToHide = ['sub-andamento', 'sub-historico', 'sub-destinatarios', 'sub-itens', 'sub-depara'];
+    const idsToHide = ['sub-andamento', 'sub-historico', 'sub-destinatarios', 'sub-itens', 'sub-depara', 'sub-config'];
     idsToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -1164,6 +1166,8 @@ window.switchSubTab = function(subTabName) {
         window.switchTabToItens();
     } else if (subTabName === 'sub-depara') {
         renderDeParaCRUD();
+    } else if (subTabName === 'sub-config') {
+        renderConfiguracoes();
     }
 };
 

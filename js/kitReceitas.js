@@ -36,3 +36,13 @@ export async function salvarReceita({ nome, componentes }) {
     await carregarReceitas(true);
     return true;
 }
+
+export async function excluirReceita(nome) {
+    const { error } = await supabaseClient.from('kit_receitas').delete().eq('nome', nome);
+    if (error) {
+        console.error('Erro ao excluir receita de kit:', error.message);
+        return false;
+    }
+    await carregarReceitas(true);
+    return true;
+}

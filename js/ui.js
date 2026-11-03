@@ -1,6 +1,17 @@
-import { $, escapeHtml, SENDERS, AppState } from './config.js';
+import { $, escapeHtml, AppState } from './config.js';
+import { config, remetentes, remetentePadrao, remetentePorId, remetentePorCnpj } from './configuracoes.js';
 import { searchItems, getItems, addItem as addItemToDB } from './items.js';
 import { toast } from './toast.js';
+
+// Opções do select de remetente (Gerenciar Dados > Configurações) + "Personalizado"; mantém a escolha atual
+export function popularSelectRemetentes() {
+    const sel = $('sender_select');
+    if (!sel) return;
+    const atual = sel.value;
+    sel.innerHTML = remetentes().map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.company)}</option>`).join('')
+        + '<option value="custom">Personalizado</option>';
+    sel.value = [...sel.options].some(o => o.value === atual) ? atual : (remetentePadrao()?.id || 'custom');
+}
 
 export function onSenderChange() {
     const v = $('sender_select').value;
@@ -12,7 +23,8 @@ export function onSenderChange() {
         $('sender_cnpj').value = '';
         $('sender_address').value = '';
     } else {
-        const s = SENDERS[v];
+        const s = remetentePorId(v);
+        if (!s) return;
         $('sender_company').value = s.company;
         $('sender_cnpj').value = s.cnpj;
         $('sender_address').value = s.address;
@@ -243,10 +255,8 @@ export function preencherFormulario(dados) {
     if (!dados) return;
 
     // 1. Remetente
-    // Encontrar se o remetente é um dos fixos (ranor, nortrack) ou customizado
-    let senderKey = 'custom';
-    if(dados.sender_cnpj === SENDERS['ranor'].cnpj) senderKey = 'ranor';
-    if(dados.sender_cnpj === SENDERS['nortrack'].cnpj) senderKey = 'nortrack';
+    // Remetente cadastrado com o mesmo CNPJ, ou Personalizado
+    const senderKey = remetentePorCnpj(dados.sender_cnpj)?.id || 'custom';
 
     $('sender_select').value = senderKey;
     $('sender_company').value = dados.sender_company || '';
@@ -355,7 +365,7 @@ export function preencherFormulario(dados) {
     try { window.toggleReferenceInput(); } catch(e){}
     $('reference').value = String(dados.reference || '');
     $('total_vol').value = dados.total_vol === '' ? '' : (dados.total_vol || 1);
-    $('carrier').value = dados.carrier || 'Jadlog';
+    $('carrier').value = dados.carrier || config('transportadora_padrao');
     $('receiver').value = dados.receiver || '';
     if ($('doc-selector')) $('doc-selector').value = dados.doc_type || '';
     if ($('planilha_cliente')) $('planilha_cliente').value = dados.planilha_cliente || '';
@@ -365,7 +375,7 @@ export function preencherFormulario(dados) {
 // Volta o formulário ao estado inicial (novo envio)
 export function limparFormulario() {
     AppState.extrasEnvio = {};
-    $('sender_select').value = 'ranor';
+    $('sender_select').value = remetentePadrao()?.id || 'custom';
     onSenderChange();
 
     window.filtrarSeletorDestinatarios?.(''); // tira o filtro do seletor
@@ -384,7 +394,7 @@ export function limparFormulario() {
     try { window.toggleReferenceInput(); } catch(e){}
     $('reference').value = '';
     $('total_vol').value = 1;
-    $('carrier').value = 'Jadlog';
+    $('carrier').value = config('transportadora_padrao');
     $('doc-selector').value = '';
 }
 
