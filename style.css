@@ -1671,3 +1671,6 @@ input.campo-pendente, select.campo-pendente {
 .cfg-check { display: inline-flex; align-items: center; gap: 4px; font-weight: 400; margin: 0; }
 .cfg-rodape { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .cfg-rodape .btn-sm { margin: 0; }
+
+/* Linhas p/ Veículos: cabeçalho de uma linha só (sem a linha de grupos da planilha de envio) */
+.veiculos-table tr.nomes th { top: 0; background: #f3f4f6; padding: 6px 8px; border-bottom: 2px solid #d0d4da; }

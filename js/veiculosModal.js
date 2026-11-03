@@ -18,7 +18,7 @@ function garantirModal() {
                     <button class="modal-close" onclick="fecharVeiculos()" title="Fechar">&times;</button>
                 </div>
                 <div id="veiculos_clientes"></div>
-                <div class="planilha-wrap"><table class="planilha-table" id="veiculos_tabela"></table></div>
+                <div class="planilha-wrap"><table class="planilha-table veiculos-table" id="veiculos_tabela"></table></div>
                 <div id="veiculos_resumo" class="small" style="margin-top:8px"></div>
                 <div class="modal-actions">
                     <label class="cfg-check" style="margin-right:auto"><input type="checkbox" id="veiculos_cabecalho"> Copiar com o cabeçalho</label>
