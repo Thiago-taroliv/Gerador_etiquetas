@@ -15,7 +15,7 @@ let ignoradas = [];
 let grupos = [];
 let nomeArquivo = '';
 let semCabecalho = false; // linhas coladas sem cabeçalho: colunas na ordem padrão da planilha
-let existentes = { rascunhos: new Map(), historico: new Set() }; // chave do envio -> rascunho / já gerado
+let existentes = { rascunhos: new Map(), historico: new Set(), historicoIds: new Set() }; // chave do envio -> rascunho / já gerado
 let marcados = new Set();
 let descartes = new Map(); // chave do envio -> origens (código/descrição do estoque) dos itens descartados
 let aoConcluir = null;
@@ -78,7 +78,11 @@ function statusDoGrupo(g) {
     if (existentes.historico.has(g.chave)) return 'gerado';
     const r = existentes.rascunhos.get(g.chave);
     if (!r) return 'novo';
-    if (r.dados_completos?.historico_id) return 'gerado';
+    const histId = r.dados_completos?.historico_id;
+    if (histId && existentes.historicoIds.has(String(histId))) return 'gerado';
+    // Rascunho ligado a um registro do histórico que foi apagado ou cancelado: some do kanban;
+    // reimportar regrava o rascunho sem o vínculo e ele volta a aparecer
+    if (histId) return 'atualizar';
     return r.dados_completos?.origem?.versao === versaoDoEnvio(g) ? 'igual' : 'atualizar';
 }
 
@@ -128,9 +132,12 @@ async function receber(grade, bruta, origem) {
     }
     if (!origens) toast('Não foi possível conferir os envios já importados: todos aparecem como novos.', 'warning', 7000);
 
+    // Pedido cancelado no histórico não bloqueia: o envio pode ser importado de novo
+    const historicoAtivo = (origens?.historico || []).filter(h => h.fase !== 'cancelado');
     existentes = {
         rascunhos: new Map((origens?.rascunhos || []).map(r => [r.dados_completos?.origem?.chave, r])),
-        historico: new Set((origens?.historico || []).map(h => h.origem?.chave))
+        historico: new Set(historicoAtivo.map(h => h.origem?.chave)),
+        historicoIds: new Set(historicoAtivo.map(h => String(h.id)))
     };
     // Reimportação: os itens descartados e o kit confirmado da última vez continuam valendo
     descartes = new Map();
