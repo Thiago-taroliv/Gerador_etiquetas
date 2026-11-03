@@ -166,37 +166,50 @@ function hash(texto) {
     return h.toString(16).padStart(8, '0');
 }
 
+// Envio padrão de uma linha: mesmo dia + destinatário + unidade é um envio só, mesmo com várias OS/tickets
+export const chaveDeAgrupamento = reg => [reg.data, norm(reg.destinatario), norm(reg.clienteFinal)].join('|');
+
 // resolverItem(cod, descEstoque) -> { desc, papel, novo }: nome no romaneio e papel (do de-para ou sugerido)
-export function agruparEnviosEstoque(registros, resolverItem) {
+// chaveDoReg (opcional): troca o agrupamento padrão (a prévia usa para separar/juntar envios)
+export function agruparEnviosEstoque(registros, resolverItem, chaveDoReg = chaveDeAgrupamento) {
     const grupos = new Map();
     registros.forEach(reg => {
-        const chave = [reg.data, reg.ticket || reg.os, norm(reg.destinatario), norm(reg.clienteFinal)].join('|');
+        const chave = chaveDoReg(reg);
         if (!grupos.has(chave)) grupos.set(chave, []);
         grupos.get(chave).push(reg);
     });
 
-    return [...grupos.entries()].map(([chaveBase, linhas]) => {
+    return [...grupos.entries()].map(([agrupamento, linhas]) => {
         const p = linhas[0];
         const avisos = [];
-        const motivos = [...new Set(linhas.map(l => l.motivo).filter(Boolean))];
+        const unicos = vs => [...new Set(vs.filter(Boolean))];
+        const tickets = unicos(linhas.map(l => l.ticket));
+        const oss = unicos(linhas.map(l => l.os));
+        const refs = unicos(linhas.map(l => l.ticket || l.os));
+        // Envio com uma referência só mantém a chave antiga (rascunhos já importados continuam reconhecidos)
+        const chaveBase = [p.data, ...(refs.length > 1 ? [] : [refs[0] || '']), norm(p.destinatario), norm(p.clienteFinal)].join('|');
+        const motivos = unicos(linhas.map(l => l.motivo));
         if (motivos.length > 1) avisos.push(`Motivos diferentes no mesmo envio (${motivos.join(', ')}): usado "${motivos[0]}".`);
         const tipo = motivoParaTipo(motivos[0]);
         if (motivos[0] && !tipo) avisos.push(`Motivo "${motivos[0]}" sem Tipo correspondente: preencha o Tipo à mão.`);
+        const destinos = unicos(linhas.map(l => l.destinatario));
+        if (destinos.length > 1) avisos.push(`Destinatários diferentes no mesmo envio (${destinos.join(', ')}): usado "${p.destinatario}".`);
 
         const { itens, novos, avisosItens } = montarItensEstoque(linhas, resolverItem);
         avisos.push(...avisosItens);
 
         // versao muda quando os itens mudam (linha acrescentada na planilha, quantidade corrigida...)
         const versao = hash(itens.map(it => [it.desc, it.papel, it.qty, ...it.imeis.map(i => i.imei)].join(',')).sort().join(';'));
-        const rastreadores = itens.filter(it => it.papel === 'rastreador').reduce((s, it) => s + it.imeis.length, 0);
-        const teclados = itens.filter(it => it.papel === 'teclado').reduce((s, it) => s + it.imeis.length, 0);
 
         return {
             chave: hash(chaveBase), // identifica o envio numa reimportação
+            agrupamento,      // chave de agrupamento (a prévia usa para separar/juntar envios)
             versao,
             data: p.data,
-            ticket: p.ticket,
-            os: p.os,
+            ticket: tickets.join(' / '),
+            os: oss.join(' / '),
+            referencia: refs.join(' / '),
+            refs,
             produto: p.produto,
             clienteInicial: p.clienteInicial,
             clienteFinal: p.clienteFinal,
@@ -207,16 +220,14 @@ export function agruparEnviosEstoque(registros, resolverItem) {
             linhas: linhas.map(l => l.linha),
             itens,
             novos,            // itens sem de-para (precisam ser mapeados antes de criar o rascunho)
-            kitsPossiveis: Math.min(rastreadores, teclados),
-            rastreadores,
-            teclados,
             avisos
         };
     });
 }
 
 // Itens do formulário: mesmo nome + papel vira um item; rastreador/teclado levam os IMEIs;
-// o chip não vira item: fica preso ao rastreador da mesma linha (para a planilha de envio)
+// o chip não vira item: fica preso ao rastreador da mesma linha (para a planilha de envio).
+// Cada item guarda quanto veio de cada OS/ticket (por_ref) e cada IMEI a sua (ref): usados no kit e no e-mail.
 export function montarItensEstoque(linhas, resolverItem) {
     const itens = new Map();
     const novos = new Map();
@@ -230,19 +241,21 @@ export function montarItensEstoque(linhas, resolverItem) {
             if (!novos.has(k)) novos.set(k, { cod: s.cod, descEstoque: s.descEstoque, papelSugerido: s.papel });
         });
 
+        const ref = l.ticket || l.os || '';
         const imeiRastreadorDaLinha = [];
         resolvidas.forEach(s => {
             if (s.papel === 'ignorar' || s.papel === 'chip') return;
             const chave = s.desc + '|' + s.papel;
-            if (!itens.has(chave)) itens.set(chave, { desc: s.desc, papel: s.papel, novo: !!s.novo, imeis: [], semImei: 0, origens: new Set() });
+            if (!itens.has(chave)) itens.set(chave, { desc: s.desc, papel: s.papel, novo: !!s.novo, imeis: [], semImei: 0, origens: new Set(), por_ref: {} });
             const it = itens.get(chave);
             // De onde o item veio (código do estoque, ou a descrição sem código): não muda quando o de-para muda
             it.origens.add(s.cod || norm(s.descEstoque));
 
             const comImei = (s.papel === 'rastreador' || s.papel === 'teclado') && s.imei;
+            if (ref) it.por_ref[ref] = (it.por_ref[ref] || 0) + (comImei ? 1 : s.qtd);
             if (comImei) {
                 if (imeiCorrompido(s.imei)) avisosItens.push(`Linha ${l.linha}: IMEI "${s.imei}" em notação científica (dígitos perdidos). Corrija na planilha.`);
-                const entrada = { tipo: 'simples', imei: s.imei };
+                const entrada = { tipo: 'simples', imei: s.imei, ...(ref ? { ref } : {}) };
                 it.imeis.push(entrada);
                 if (s.papel === 'rastreador') imeiRastreadorDaLinha.push(entrada);
             } else {
@@ -269,7 +282,8 @@ export function montarItensEstoque(linhas, resolverItem) {
             papel: it.papel,
             novo: it.novo,
             imeis: it.imeis,
-            origens: [...it.origens]
+            origens: [...it.origens],
+            por_ref: it.por_ref
         })),
         novos: [...novos.values()],
         avisosItens
@@ -308,17 +322,20 @@ export async function lerArquivoEstoque(arquivo) {
 
 // Dados no formato do formulário. Os campos que a planilha não tem ficam com o valor de base.
 export function grupoEstoqueParaFormulario(grupo, base = {}) {
-    const referencia = grupo.ticket || grupo.os;
     return {
         ...base,
         dest_name: grupo.destinatario,
         unit_name: grupo.clienteFinal,
-        reference: referencia,
+        reference: grupo.referencia,
         reference_type: grupo.ticket ? 'ticket' : grupo.os ? 'os' : (base.reference_type || 'ticket'),
         planilha_cliente: grupo.clienteInicial,
         planilha_tipo: grupo.tipo,
         client_mode: 'single',
-        items: grupo.itens.map(({ desc, qty, client, papel, imeis }) => ({ desc, qty, client, papel, imeis })),
+        // Várias OS/tickets no mesmo envio: cada item guarda quanto é de cada um (o financeiro emite a nota separando)
+        items: grupo.itens.map(({ desc, qty, client, papel, imeis, por_ref, kit }) => ({
+            desc, qty, client, papel, imeis, ...(kit ? { kit } : {}),
+            ...(grupo.referencia?.includes(' / ') && por_ref ? { por_ref } : {})
+        })),
         origem: { perfil: 'estoque', chave: grupo.chave, versao: grupo.versao, linhas: grupo.linhas }
     };
 }

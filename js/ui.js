@@ -190,6 +190,8 @@ export function collectData() {
                         const chip = {};
                         if (item.dataset.chip) chip.chip = item.dataset.chip;
                         if (item.dataset.iccid) chip.iccid = item.dataset.iccid;
+                        // OS/ticket de onde o IMEI veio (envio com várias OS)
+                        if (item.dataset.ref) chip.ref = item.dataset.ref;
                         // Verificar se é kit (contém |)
                         if (imeiValue.includes('|')) {
                             const [rastreador, teclado] = imeiValue.split('|');
@@ -202,7 +204,12 @@ export function collectData() {
             }
 
             // papel (rastreador, teclado, acessório...) vem do de-para da planilha de estoque
-            return { desc, qty, client, imeis, ...(card.dataset.papel ? { papel: card.dataset.papel } : {}) };
+            // por_ref: quantidade de cada OS/ticket quando o envio junta várias (e-mail ao financeiro)
+            const porRef = card.dataset.porRef ? JSON.parse(card.dataset.porRef) : null;
+            // kit: componentes do kit montado pelo programa (para poder desmontar)
+            const kit = card.dataset.kit ? JSON.parse(card.dataset.kit) : null;
+            return { desc, qty, client, imeis, ...(card.dataset.papel ? { papel: card.dataset.papel } : {}),
+                ...(porRef ? { por_ref: porRef } : {}), ...(kit ? { kit } : {}) };
         })
         .filter(it => it.desc.trim() !== '');
 
@@ -288,6 +295,8 @@ export function preencherFormulario(dados) {
 
             if(lastCard) {
                 if (it.papel) lastCard.dataset.papel = it.papel;
+                if (it.por_ref) lastCard.dataset.porRef = JSON.stringify(it.por_ref);
+                if (it.kit) lastCard.dataset.kit = JSON.stringify(it.kit);
                 const descInput = lastCard.querySelector('.it-desc');
                 if(descInput) descInput.value = it.desc || '';
 
@@ -321,9 +330,9 @@ export function preencherFormulario(dados) {
                                 labelHtml = '<div>IMEI: <strong>'+escapeHtml(imeiObj.imei)+'</strong></div>';
                             }
                             // Chip preso ao rastreador: guardado nos atributos para não se perder ao salvar de novo
-                            let chipAttr = '';
+                            let chipAttr = imeiObj.ref ? ' data-ref="'+escapeHtml(imeiObj.ref)+'"' : '';
                             if(imeiObj.chip) {
-                                chipAttr = ' data-chip="'+escapeHtml(imeiObj.chip)+'"' + (imeiObj.iccid ? ' data-iccid="'+escapeHtml(imeiObj.iccid)+'"' : '');
+                                chipAttr += ' data-chip="'+escapeHtml(imeiObj.chip)+'"' + (imeiObj.iccid ? ' data-iccid="'+escapeHtml(imeiObj.iccid)+'"' : '');
                                 labelHtml += '<span class="imei-chip" title="'+escapeHtml(imeiObj.chip + (imeiObj.iccid ? ' — ICCID ' + imeiObj.iccid : ''))+'">+ chip</span>';
                             }
                             imeisHtml += '<div class="imei-item" data-imei="'+escapeHtml(valA)+'"'+chipAttr+'>'+labelHtml+'</div>';

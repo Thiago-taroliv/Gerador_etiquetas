@@ -10,7 +10,10 @@ import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } fr
 // Depois de criar os rascunhos, o kanban mostra os novos cards
 window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisivel()) carregarViewKanban(); });
 import { onSenderChange, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
-import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject } from './render.js';
+import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject, avisosEmail } from './render.js';
+import { conferirEmail, resumoDoPedido } from './conferencia.js';
+import { abrirMontarKit } from './kitModal.js';
+import { montarKit, desmontarKit, totalKits } from './kit.js';
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
 import { gerarLinhasPlanilha, contarKits, formatarFrete } from './planilha.js';
@@ -655,7 +658,11 @@ window.excluirRascunhoUI = async function(id) {
 };
 
 window.concluirRascunhoUI = async function(id) {
-    if(!confirm("Concluir Rascunho?\n\nEle será transferido para o Histórico DEFINITIVO e apagado daqui. As informações atuais do banco serão salvas.")) return;
+    // Resumo do que vai para o Histórico (o rascunho aberto na tela vale pelo formulário)
+    const aberto = AppState.currentDraftId === String(id);
+    const dados = aberto ? collectData() : (window.__rascunhosCache || []).find(r => String(r.id) === String(id))?.dados_completos;
+    const resumo = dados ? resumoDoPedido(dados) + '\n\n' : '';
+    if(!confirm(`Concluir Rascunho?\n\n${resumo}Ele será transferido para o Histórico DEFINITIVO e apagado daqui. As informações atuais do banco serão salvas.`)) return;
 
     // Certifique-se de que se o usuário clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
     if (AppState.currentDraftId === String(id)) {
@@ -674,6 +681,31 @@ window.concluirRascunhoUI = async function(id) {
     }
 };
 
+
+// --- KIT NO FORMULÁRIO ---
+// Monta kits com os itens do formulário (confere na tela "Montar kit" antes)
+window.montarKitNoFormulario = async function () {
+    const d = collectData();
+    if (!d.items.length) { toast('Adicione os itens primeiro.', 'warning'); return; }
+    const escolha = await abrirMontarKit(d.items, { rotuloRef: d.reference_type === 'ticket' ? 'Ticket' : 'OS' });
+    if (!escolha) return;
+    preencherFormulario({ ...d, items: montarKit(d.items, escolha) });
+    toast(`${totalKits(escolha.kitsPorRef)} ${escolha.nome} montado(s). Confira os itens.`);
+};
+
+// Volta os kits montados pelo programa aos componentes
+window.desmontarKitNoFormulario = function () {
+    const d = collectData();
+    const kits = d.items.filter(it => it.kit?.componentes);
+    if (!kits.length) { toast('Nenhum kit montado pelo programa neste envio.', 'warning'); return; }
+    if (!confirm(`Desmontar ${kits.map(k => `${k.qty} x ${k.desc}`).join(', ')}?\n\nOs componentes voltam como itens separados.`)) return;
+    let items = d.items;
+    for (let i = items.findIndex(it => it.kit?.componentes); i >= 0; i = items.findIndex(it => it.kit?.componentes)) {
+        items = desmontarKit(items, i);
+    }
+    preencherFormulario({ ...d, items });
+    toast('Kit desmontado. Confira os itens.');
+};
 
 // --- PLANILHA DE CONTROLE ---
 // Os botões abrem um preview editável; a cópia acontece no botão "Copiar linhas" do modal
@@ -873,9 +905,11 @@ async function enviarEmailViaMailtoUsingData() {
     if (!(await verificarJuncao(d))) return;
     if (AppState.juncaoPendente.length) d.mesclados = AppState.juncaoPendente;
 
+    // Confere (e edita, se precisar) o e-mail antes de abrir
+    const conferido = await conferirEmail({ assunto: buildEmailSubject(d), corpo: buildEmailBody(d), avisos: avisosEmail(d) });
+    if (!conferido) return;
     const emails = EMAILS_FINANCEIRO;
-    const assunto = buildEmailSubject(d);
-    const body = buildEmailBody(d);
+    const { assunto, corpo: body } = conferido;
     window.location.href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
     const id = await registrarEnvio(d, { email: true });
     if (id) await finalizarJuncao(id);

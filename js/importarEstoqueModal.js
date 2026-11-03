@@ -2,7 +2,10 @@
 // pede o de-para dos itens novos e cria um rascunho por envio (aparecem na coluna Rascunho do kanban).
 import { $, escapeHtml, SENDERS } from './config.js';
 import { parseTSV } from './importarPlanilha.js';
-import { lerLinhasEstoque, agruparEnviosEstoque, grupoEstoqueParaFormulario, lerArquivoEstoque } from './importarEstoque.js';
+import { lerLinhasEstoque, agruparEnviosEstoque, grupoEstoqueParaFormulario, lerArquivoEstoque, chaveDeAgrupamento } from './importarEstoque.js';
+import { sugerirKit, montarKit, totalKits } from './kit.js';
+import { abrirMontarKit } from './kitModal.js';
+import { carregarReceitas } from './kitReceitas.js';
 import { garantirDePara, acharDePara, salvarDePara, sugerirPapel, sugerirNome, normDesc, datalistItensHtml, selectPapelHtml } from './dePara.js';
 import { carregarOrigensEstoque, salvarPendente } from './db.js';
 import { toast } from './toast.js';
@@ -16,9 +19,32 @@ let existentes = { rascunhos: new Map(), historico: new Set() }; // chave do env
 let marcados = new Set();
 let descartes = new Map(); // chave do envio -> origens (código/descrição do estoque) dos itens descartados
 let aoConcluir = null;
+let kits = new Map();      // chave do envio -> kit confirmado na tela "Montar kit"
+let separados = new Set(); // agrupamentos separados por OS/ticket
+let juntar = new Map();    // agrupamento -> agrupamento com que foi juntado
+let receitaSugestao = null;
 
 const descartado = (g, it) => it.origens.every(o => descartes.get(g.chave)?.has(o));
-const itensMantidos = g => g.itens.filter(it => !descartado(g, it));
+// Com kit confirmado, os componentes viram o item kit (g.itensKit); a sobra continua avulsa
+const itensDoEnvio = g => g.itensKit || g.itens;
+const itensMantidos = g => itensDoEnvio(g).filter(it => !descartado(g, it));
+// O kit faz parte da versão: montar/alterar o kit atualiza o rascunho já importado
+const versaoDoEnvio = g => g.versao + (kits.has(g.chave) ? '+kit' + JSON.stringify(kits.get(g.chave).kitsPorRef) : '');
+
+function aplicarKit(g) {
+    const escolha = kits.get(g.chave);
+    g.itensKit = escolha
+        ? montarKit(g.itens, escolha).map(it => ({ ...it, origens: it.origens || [`kit:${it.desc}`], novo: !!it.novo }))
+        : null;
+}
+
+// Agrupamento da linha com as separações/junções feitas na prévia
+function chaveDoReg(reg) {
+    let k = chaveDeAgrupamento(reg);
+    if (separados.has(k)) k += '|' + (reg.ticket || reg.os || '');
+    for (let i = 0; i < 20 && juntar.has(k); i++) k = juntar.get(k);
+    return k;
+}
 
 // Campos que você preenche à mão no rascunho: reimportar não apaga o que já foi digitado
 const CAMPOS_MANUAIS = ['dest_doc', 'dest_addr1', 'dest_addr2', 'dest_phone', 'total_vol', 'carrier', 'receiver',
@@ -53,7 +79,7 @@ function statusDoGrupo(g) {
     const r = existentes.rascunhos.get(g.chave);
     if (!r) return 'novo';
     if (r.dados_completos?.historico_id) return 'gerado';
-    return r.dados_completos?.origem?.versao === g.versao ? 'igual' : 'atualizar';
+    return r.dados_completos?.origem?.versao === versaoDoEnvio(g) ? 'igual' : 'atualizar';
 }
 
 const ROTULO_STATUS = {
@@ -64,8 +90,8 @@ const ROTULO_STATUS = {
 };
 
 function reagrupar() {
-    grupos = agruparEnviosEstoque(registros, resolverItem).map(g => ({ ...g, ...acharCadastro(g.destinatario), status: null }));
-    grupos.forEach(g => { g.status = statusDoGrupo(g); });
+    grupos = agruparEnviosEstoque(registros, resolverItem, chaveDoReg).map(g => ({ ...g, ...acharCadastro(g.destinatario), status: null }));
+    grupos.forEach(g => { aplicarKit(g); g.status = statusDoGrupo(g); });
     marcados = new Set(grupos.filter(g => g.status === 'novo' || g.status === 'atualizar').map(g => g.chave));
 }
 
@@ -106,12 +132,18 @@ async function receber(grade, bruta, origem) {
         rascunhos: new Map((origens?.rascunhos || []).map(r => [r.dados_completos?.origem?.chave, r])),
         historico: new Set((origens?.historico || []).map(h => h.origem?.chave))
     };
-    // Reimportação: os itens descartados da última vez continuam descartados
+    // Reimportação: os itens descartados e o kit confirmado da última vez continuam valendo
     descartes = new Map();
+    kits = new Map();
+    separados = new Set();
+    juntar = new Map();
     existentes.rascunhos.forEach((r, chave) => {
         const d = r.dados_completos?.origem?.descartados;
         if (chave && d?.length) descartes.set(chave, new Set(d));
+        const kit = r.dados_completos?.origem?.kit;
+        if (chave && kit?.componentes) kits.set(chave, kit);
     });
+    receitaSugestao = (await carregarReceitas())[0];
     registros = lido.registros;
     ignoradas = lido.ignoradas;
     nomeArquivo = origem;
@@ -133,7 +165,7 @@ function mostrarEtapa() {
 
 // Itens do envio, cada um com ✕ para descartar (não vai para o rascunho) ou ↺ para trazer de volta
 function itensHtml(g, i) {
-    return `<div class="estoque-itens">${g.itens.map((it, j) => {
+    return `<div class="estoque-itens">${itensDoEnvio(g).map((it, j) => {
         const fora = descartado(g, it);
         const texto = `${it.qty}× ${it.desc}${it.imeis.length ? ` (${it.imeis.length} IMEI${it.imeis.length > 1 ? 's' : ''})` : ''}`
             + (it.imeis.some(x => x.chip) ? ' + chip' : '');
@@ -147,7 +179,7 @@ function itensHtml(g, i) {
 
 window.alternarItemEstoque = function (i, j) {
     const g = grupos[i];
-    const it = g?.itens[j];
+    const it = g && itensDoEnvio(g)[j];
     if (!it) return;
     if (!descartes.has(g.chave)) descartes.set(g.chave, new Set());
     const set = descartes.get(g.chave);
@@ -194,7 +226,7 @@ function render() {
 
     const enviosHtml = grupos.map((g, i) => {
         const [rotulo, classe] = ROTULO_STATUS[g.status];
-        const ref = g.ticket ? `Ticket ${g.ticket}` : g.os ? `OS ${g.os}` : 'Sem referência';
+        const ref = g.referencia ? `${g.ticket ? 'Ticket' : 'OS'} ${g.referencia}` : 'Sem referência';
         const cadastro = g.cad
             ? `<span class="estoque-tag ok" title="${escapeHtml(g.cad.nome)}">✓ cadastro</span>`
             : `<span class="estoque-tag falta">${g.parecidos > 1 ? `${g.parecidos} cadastros parecidos` : 'fora do cadastro'}: preencher à mão</span>`;
@@ -215,7 +247,8 @@ function render() {
                     <div class="imp-meta">${meta.map(escapeHtml).join(' &middot; ')}</div>
                     ${itensHtml(g, i)}
                     ${marcados.has(g.chave) && !itensMantidos(g).length ? '<div class="estoque-aviso">⚠ Todos os itens descartados: este envio não vira rascunho.</div>' : ''}
-                    ${g.kitsPossiveis ? `<div class="estoque-aviso kit">🔧 ${g.rastreadores} rastreador(es) e ${g.teclados} teclado(s): podem formar até ${g.kitsPossiveis} kit(s) na planilha de envio</div>` : ''}
+                    ${kitHtml(g, i)}
+                    ${agrupamentoHtml(g, i)}
                     ${g.avisos.map(a => `<div class="estoque-aviso">⚠ ${escapeHtml(a)}</div>`).join('')}
                 </div>
             </label>`;
@@ -228,6 +261,117 @@ function render() {
     btn.textContent = `Criar ${qtdMarcados} rascunho(s)`;
     btn.title = novos.length ? 'Defina o de-para dos itens novos primeiro' : '';
 }
+
+// Botões dentro do <label> do envio: o clique não pode marcar/desmarcar o envio
+const botao = (texto, acao, titulo = '') =>
+    `<button type="button" class="btn-sm btn-neutral" title="${escapeHtml(titulo)}"
+             onclick="event.preventDefault(); event.stopPropagation(); ${acao}">${texto}</button>`;
+
+const rotuloRef = g => g.ticket ? 'Ticket' : 'OS';
+const detalheKits = (g, porRef) => {
+    const refs = Object.keys(porRef).filter(Boolean);
+    return refs.length > 1 ? ` (${refs.map(r => `${porRef[r]} da ${rotuloRef(g)} ${r}`).join(', ')})` : '';
+};
+
+// Kit: confirmado (alterar/desfazer) ou sugerido pela receita (abre a tela para conferir)
+function kitHtml(g, i) {
+    const escolha = kits.get(g.chave);
+    if (escolha) {
+        return `<div class="estoque-aviso kit estoque-acoes">✓ ${totalKits(escolha.kitsPorRef)} ${escapeHtml(escolha.nome)} montado(s)${escapeHtml(detalheKits(g, escolha.kitsPorRef))}
+            ${botao('Alterar', `montarKitEstoque(${i})`)} ${botao('Desfazer kit', `desfazerKitEstoque(${i})`)}</div>`;
+    }
+    const temRastreador = g.itens.some(it => it.papel === 'rastreador');
+    if (!receitaSugestao || !temRastreador) return '';
+    const s = sugerirKit(g.itens, receitaSugestao);
+    const total = totalKits(s.max);
+    return `<div class="estoque-aviso kit estoque-acoes">🔧 ${total
+        ? `Dá para montar até ${total} ${escapeHtml(s.nome)}${escapeHtml(detalheKits(g, s.max))}`
+        : 'Rastreadores sem kit completo pela receita'}
+        ${botao('Montar kit…', `montarKitEstoque(${i})`, 'Conferir os componentes e quantos kits montar')}</div>`;
+}
+
+window.montarKitEstoque = async function (i) {
+    const g = grupos[i];
+    if (!g) return;
+    const escolha = await abrirMontarKit(g.itens, { rotuloRef: rotuloRef(g), escolhaAnterior: kits.get(g.chave) || null });
+    if (!escolha) return;
+    kits.set(g.chave, escolha);
+    atualizarGrupo(g);
+};
+
+window.desfazerKitEstoque = function (i) {
+    const g = grupos[i];
+    if (!g) return;
+    kits.delete(g.chave);
+    atualizarGrupo(g);
+};
+
+// Depois de mudar o kit: refaz os itens e o status (rascunho já importado passa a "Atualizar")
+function atualizarGrupo(g) {
+    aplicarKit(g);
+    const antes = g.status;
+    g.status = statusDoGrupo(g);
+    if (g.status !== antes) {
+        if (g.status === 'novo' || g.status === 'atualizar') marcados.add(g.chave);
+        else if (g.status === 'igual') marcados.delete(g.chave);
+    }
+    render();
+}
+
+// Separar um envio por OS/ticket, juntar com outro envio, e desfazer
+function agrupamentoHtml(g, i) {
+    if (g.status === 'gerado') return '';
+    const base = [...separados].find(b => g.agrupamento.startsWith(b + '|'));
+    const juntados = [...juntar.values()].includes(g.agrupamento);
+    const outros = grupos.map((o, j) => ({ o, j })).filter(({ o }) => o !== g && o.status !== 'gerado');
+    const acoes = [
+        g.refs.length > 1 ? botao(`Separar por ${rotuloRef(g)}`, `separarEnvioEstoque(${i})`, 'Um envio para cada OS/ticket') : '',
+        base ? botao(`Juntar as ${rotuloRef(g)} de novo`, `reunirEnvioEstoque(${i})`) : '',
+        juntados ? botao('Desfazer junção', `desfazerJuncaoEstoque(${i})`) : '',
+        outros.length ? `<select class="estoque-juntar" onclick="event.stopPropagation()" onchange="juntarEnvioEstoque(${i}, this.value)">
+            <option value="">Juntar com outro envio…</option>
+            ${outros.map(({ o, j }) => `<option value="${j}">${escapeHtml(o.referencia || 'Sem referência')} · ${escapeHtml(o.destinatario || '')} · ${escapeHtml(o.data || '')}</option>`).join('')}
+        </select>` : ''
+    ].filter(Boolean);
+    return acoes.length ? `<div class="estoque-acoes">${acoes.join(' ')}</div>` : '';
+}
+
+window.separarEnvioEstoque = function (i) {
+    const g = grupos[i];
+    if (!g) return;
+    separados.add(g.agrupamento);
+    reagrupar();
+    render();
+};
+
+window.reunirEnvioEstoque = function (i) {
+    const g = grupos[i];
+    const base = g && [...separados].find(b => g.agrupamento.startsWith(b + '|'));
+    if (!base) return;
+    separados.delete(base);
+    reagrupar();
+    render();
+};
+
+window.juntarEnvioEstoque = function (i, j) {
+    const g = grupos[i], alvo = grupos[parseInt(j)];
+    if (!g || !alvo) return;
+    // Não deixa formar ciclo (A -> B -> A)
+    let destino = alvo.agrupamento;
+    for (let n = 0; n < 20 && juntar.has(destino); n++) destino = juntar.get(destino);
+    if (destino === g.agrupamento) return;
+    juntar.set(g.agrupamento, alvo.agrupamento);
+    reagrupar();
+    render();
+};
+
+window.desfazerJuncaoEstoque = function (i) {
+    const g = grupos[i];
+    if (!g) return;
+    [...juntar.entries()].filter(([, alvo]) => alvo === g.agrupamento).forEach(([origem]) => juntar.delete(origem));
+    reagrupar();
+    render();
+};
 
 window.marcarEnvioEstoque = function (i, marcado) {
     const g = grupos[i];
@@ -276,9 +420,9 @@ function montarDados(g) {
         total_vol: '', carrier: '', receiver: '', doc_type: ''
     };
     // Só os itens mantidos vão para o rascunho; os descartados ficam anotados para a próxima reimportação
-    const dados = grupoEstoqueParaFormulario({ ...g, itens: itensMantidos(g) }, base);
+    const dados = grupoEstoqueParaFormulario({ ...g, itens: itensMantidos(g), versao: versaoDoEnvio(g) }, base);
     dados.origem = {
-        ...dados.origem, arquivo: nomeArquivo, importado_em: new Date().toISOString(),
+        ...dados.origem, kit: kits.get(g.chave) || null, arquivo: nomeArquivo, importado_em: new Date().toISOString(),
         descartados: [...(descartes.get(g.chave) || [])]
     };
 

@@ -259,6 +259,37 @@ export function buildEmailSubject(d) {
     return assuntoBase;
 }
 
+// Itens do e-mail. Envio com várias OS/tickets (por_ref vindo da planilha de estoque): separa por referência.
+// Item cuja quantidade foi mexida no formulário (soma por_ref ≠ qty) vai para "Sem OS separada" com o total.
+export function linhasItensEmail(items, refTypeLabel) {
+    const linha = (qty, it) => `${qty} x ${it.desc}`;
+    const separaveis = it => it.por_ref && Object.values(it.por_ref).reduce((s, q) => s + q, 0) === (parseInt(it.qty) || 0);
+    if (!items.some(separaveis)) return items.map(it => linha(it.qty, it)).join('\n');
+
+    const porRef = new Map();
+    items.filter(separaveis).forEach(it => Object.entries(it.por_ref).forEach(([ref, qty]) => {
+        if (!porRef.has(ref)) porRef.set(ref, []);
+        porRef.get(ref).push(linha(qty, it));
+    }));
+    const blocos = [...porRef.entries()].map(([ref, linhas]) => [`${refTypeLabel} ${ref}:`, ...linhas].join('\n'));
+    const resto = items.filter(it => !separaveis(it));
+    if (resto.length) blocos.push([`Sem ${refTypeLabel} separada:`, ...resto.map(it => linha(it.qty, it))].join('\n'));
+    return blocos.join('\n\n');
+}
+
+// O que conferir antes de mandar o e-mail: itens que não deu para separar por OS/ticket
+export function avisosEmail(d) {
+    const { refTypeLabel } = getRefInfo(d);
+    const itens = d.items || [];
+    if (!itens.some(it => it.por_ref)) return [];
+    return itens.filter(it => {
+        const soma = Object.values(it.por_ref || {}).reduce((s, q) => s + q, 0);
+        return soma !== (parseInt(it.qty) || 0);
+    }).map(it => it.por_ref
+        ? `${it.qty} x ${it.desc}: a quantidade mudou depois da importação e não dá para saber de qual ${refTypeLabel} é (vai em "Sem ${refTypeLabel} separada").`
+        : `${it.qty} x ${it.desc}: sem ${refTypeLabel} de origem (vai em "Sem ${refTypeLabel} separada").`);
+}
+
 // Corpo do e-mail ao financeiro (única fonte para preview, cópia e mailto)
 export function buildEmailBody(d) {
     let unitDisplay;
@@ -271,7 +302,7 @@ export function buildEmailBody(d) {
         unitDisplay = d.unit_name?.trim() || d.dest_name?.trim() || '[destinatário não preenchido]';
     }
     const { refType, refTypeLabel, ref } = getRefInfo(d);
-    const itemsLines = (Array.isArray(d.items) && d.items.length) ? d.items.map(it => `${it.qty} x ${it.desc}`).join('\n') : '- (sem itens informados) -';
+    const itemsLines = (Array.isArray(d.items) && d.items.length) ? linhasItensEmail(d.items, refTypeLabel) : '- (sem itens informados) -';
 
     let emailText = `Olá financeiro,\n\n`;
     if (refType === 'none') {
