@@ -209,6 +209,16 @@ export async function moverFase(id, fase, extras = {}) {
     return true;
 }
 
+// Fase atual gravada no banco (null se falhou)
+export async function faseDoPedido(id) {
+    const { data, error } = await supabaseClient.from('historico').select('fase').eq('id', id).single();
+    if (error) {
+        console.error('Erro ao buscar fase:', error.message);
+        return null;
+    }
+    return data.fase;
+}
+
 // campos: { rastreio, frete }
 export async function atualizarDespacho(id, campos) {
     const { error } = await supabaseClient.from('historico').update(campos).eq('id', id);

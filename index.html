@@ -80,9 +80,13 @@
                     <div class="card">
                         <div id="draft_indicator"
                             style="display:none; justify-content:space-between; align-items:center; gap:12px; padding:10px 14px; margin-bottom:14px; background:#fff8e1; border:1px solid #ffc107; border-radius:8px; font-size:13px;">
-                            <span>Editando um rascunho salvo. "Salvar Rascunho" atualiza este rascunho.</span>
-                            <button class="secondary" type="button" onclick="novoEnvio()"
-                                style="font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Novo Envio</button>
+                            <span id="draft_indicator_texto">Editando um rascunho salvo. "Salvar Rascunho" atualiza este rascunho.</span>
+                            <div style="display:flex; gap:8px;">
+                                <button id="btn_salvar_no_pedido" type="button" onclick="salvarNoPedido()"
+                                    style="display:none; font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Salvar no pedido</button>
+                                <button class="secondary" type="button" onclick="novoEnvio()"
+                                    style="font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Novo Envio</button>
+                            </div>
                         </div>
                         <!-- Envio importado da planilha de estoque: o que falta preencher à mão -->
                         <div id="pendencias_banner" class="pendencias-banner" style="display:none;"></div>

@@ -92,6 +92,14 @@ function hoje() {
 export const formatarFrete = v =>
     v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// "25,90", "R$ 1.234,56" ou "25.90" -> número; '' -> null; inválido -> NaN
+export function lerValor(texto) {
+    let t = String(texto).replace(/[^\d,.]/g, '');
+    if (!t) return null;
+    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+    return /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+}
+
 // Acessórios que podem ter "KIT" no nome sem serem kit de rastreador (ex. "SUPORTE ... KIT ÂNCORA")
 const ACESSORIO = /SUPORTE|LACRE|CHICOTE|ANCORA|ÂNCORA|CABO|PARAFUSO|ABRA[CÇ]ADEIRA|FUS[IÍ]VEL|CHIP/;
 

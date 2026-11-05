@@ -12,6 +12,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 - Geração de **romaneio de entrega** para impressão
 - **Linhas p/ Veículos**: um veículo por rastreador no padrão da planilha de importação de veículos da plataforma (cliente na plataforma lembrado por unidade, placa provisória "RA24 52-01", ICCID e operadora do chip)
 - **Envio de e-mail ao financeiro** solicitando emissão de nota fiscal, com os itens separados por OS e conferência/edição antes de enviar
+- **Pedido de PIX do frete ao financeiro**: oferecido ao despachar e no detalhe de pedidos enviados, com o formulário preenchido a partir do pedido e conferência antes de abrir o e-mail
 - **Cadastro de destinatários na nuvem** com persistência segura via Supabase
 - **Importação e exportação de base** em formato JSON (backup/restore)
 - **Autenticação com login e senha** para proteger dados sensíveis (CPF, CNPJ, endereços)

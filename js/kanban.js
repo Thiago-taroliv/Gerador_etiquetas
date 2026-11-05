@@ -1,7 +1,8 @@
 // Kanban de pedidos: uma coluna por fase, cards arrastáveis entre elas
 import { $, escapeHtml, supabaseClient, AppState } from './config.js';
 import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente } from './db.js';
-import { formatarFrete } from './planilha.js';
+import { formatarFrete, lerValor } from './planilha.js';
+import { oferecerPixFrete } from './pixFrete.js';
 import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao } from './juncao.js';
 import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
@@ -12,7 +13,7 @@ const limitesAtraso = () => config('kanban_atraso') || {};
 
 let pedidos = [];          // registros do histórico
 let rascunhos = [];        // rascunhos que ainda não têm registro no histórico
-let rascunhoDoPedido = {}; // historico_id -> id do rascunho aberto para ele
+let rascunhoPorPedido = {}; // historico_id -> id do rascunho aberto para ele
 let destacado = null;      // card cujo grupo "mesmo técnico" está destacado
 let filtroResumo = null;   // 'atrasados' | 'juncao' | null — escolhido no resumo do topo
 let arrastando = false;    // não redesenha o quadro no meio de um arraste
@@ -60,10 +61,13 @@ export async function carregarViewKanban() {
     pedidos = regs;
     window.__rascunhosCache = pendentes; // usado por editarRascunho
     rascunhos = pendentes.filter(r => !r.dados_completos?.historico_id);
-    rascunhoDoPedido = {};
-    pendentes.forEach(r => { if (r.dados_completos?.historico_id) rascunhoDoPedido[r.dados_completos.historico_id] = r.id; });
+    rascunhoPorPedido = {};
+    pendentes.forEach(r => { if (r.dados_completos?.historico_id) rascunhoPorPedido[r.dados_completos.historico_id] = r.id; });
     renderKanban();
 }
+
+// Id do rascunho aberto para o pedido do histórico, se houver
+export const rascunhoDoPedido = id => rascunhoPorPedido[id] || null;
 
 // Registro do histórico por id, venha do kanban ou da lista do Histórico
 export function acharPedido(id) {
@@ -127,7 +131,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     if (atraso) classes.push('atraso-' + atraso);
     if (destacado && (destacado === chave || (grupos[destacado] || []).includes(chave))) classes.push('destaque');
 
-    const idDraft = rascunho ? reg.id : rascunhoDoPedido[reg.id];
+    const idDraft = rascunho ? reg.id : rascunhoPorPedido[reg.id];
     // Rascunho criado da planilha de estoque: etiqueta e o que ainda falta preencher
     const doEstoque = reg.dados_completos?.origem?.perfil === 'estoque';
     const falta = rascunho && doEstoque ? pendenciasEnvio(reg.dados_completos) : [];
@@ -258,16 +262,10 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
         atualizarCaches(id, antes);
         if (kanbanVisivel()) renderKanban();
         toast('Não foi possível mudar a fase. Verifique a conexão.', 'error', 5000);
+    } else if (fase === 'despachado') {
+        oferecerPixFrete(reg);
     }
     return ok;
-}
-
-// "25,90", "R$ 1.234,56" ou "25.90" -> número; '' -> null; inválido -> NaN
-function lerValor(texto) {
-    let t = String(texto).replace(/[^\d,.]/g, '');
-    if (!t) return null;
-    if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
-    return /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
 }
 
 // Pergunta rastreio e valor do frete (ambos opcionais). null se cancelou.
@@ -307,6 +305,7 @@ async function moverRascunhoPara(draftId, fase) {
     if (String(AppState.currentDraftId) === String(draftId)) AppState.currentHistoricoId = String(salvo.id);
 
     await carregarViewKanban();
+    if (fase === 'despachado') oferecerPixFrete(acharPedido(salvo.id));
     return true;
 }
 

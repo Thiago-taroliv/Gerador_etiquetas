@@ -1,7 +1,7 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits } from './db.js';
-import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho } from './kanban.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido } from './db.js';
+import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
 import { pendenciasEnvio } from './importarEstoque.js';
@@ -12,6 +12,7 @@ window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisiv
 import { onSenderChange, popularSelectRemetentes, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject, avisosEmail } from './render.js';
 import { conferirEmail, resumoDoPedido } from './conferencia.js';
+import { abrirPixFrete } from './pixFrete.js';
 import { abrirMontarKit } from './kitModal.js';
 import { montarKit, desmontarKit, totalKits } from './kit.js';
 import { toast } from './toast.js';
@@ -332,7 +333,12 @@ window.abrirDetalheHistorico = function (id) {
         </div>
 
         <div style="margin-bottom:20px;">
-            <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Itens</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <div style="font-weight:700; font-size:12px; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Itens</div>
+                ${podeEditarItens(reg)
+                    ? `<button class="btn-sm btn-neutral" onclick="editarPedidoNoFormulario('${id}')">Editar itens</button>`
+                    : FASES_ENVIADO.includes(reg.fase) ? '<span style="font-size:11px; color:#aaa;">Enviado: itens bloqueados</span>' : ''}
+            </div>
             <ul style="margin:0; padding-left:18px; font-size:13px; color:#555; line-height:1.8;">${itens || '<li style="color:#bbb;">Sem itens registrados</li>'}</ul>
         </div>
 
@@ -356,6 +362,7 @@ window.abrirDetalheHistorico = function (id) {
                 Rastreio: <strong>${escapeHtml(reg.rastreio) || '—'}</strong>
                 · Frete: <strong>${reg.frete != null ? 'R$ ' + formatarFrete(reg.frete) : '—'}</strong>
                 <button class="btn-sm btn-neutral" onclick="editarRastreioDoModal('${id}')">Editar</button>
+                ${FASES_ENVIADO.includes(reg.fase) ? `<button class="btn-sm btn-neutral" onclick="pedirPixFrete('${id}')">Pedir PIX do frete</button>` : ''}
             </div>
             ${juncaoInfo}
         </div>
@@ -410,6 +417,8 @@ window.editarRastreioDoModal = async function (id) {
         toast('Não foi possível salvar o rastreio e o frete.', 'error');
     }
 };
+
+window.pedirPixFrete = id => abrirPixFrete(acharPedido(id));
 
 window.cancelarPedidoDoModal = async function (id) {
     const reg = acharPedido(id);
@@ -511,6 +520,7 @@ async function registrarEnvio(dados, etapas) {
     const novo = !AppState.currentHistoricoId;
     AppState.currentHistoricoId = String(id);
     toast(novo ? 'Envio registrado no histórico.' : 'Registro do histórico atualizado.');
+    atualizarIndicadorRascunho();
 
     // Impresso antes da NF: avança mesmo assim, mas avisa e permite voltar
     avisarProntoSemNF(id, resultado);
@@ -524,8 +534,70 @@ async function registrarEnvio(dados, etapas) {
 // Mostra/oculta o aviso de que o formulário está editando um rascunho existente
 function atualizarIndicadorRascunho() {
     const el = $('draft_indicator');
-    if (el) el.style.display = AppState.currentDraftId ? 'flex' : 'none';
+    if (!el) return;
+    const pedido = AppState.currentHistoricoId;
+    el.style.display = AppState.currentDraftId || pedido ? 'flex' : 'none';
+    $('btn_salvar_no_pedido').style.display = pedido ? '' : 'none';
+    const reg = pedido ? acharPedido(pedido) : null;
+    $('draft_indicator_texto').textContent = pedido
+        ? `Editando o pedido${reg ? ` "${reg.referencia || reg.destinatario}"` : ''} do quadro. "Salvar no pedido" grava as alterações nele.`
+        : 'Editando um rascunho salvo. "Salvar Rascunho" atualiza este rascunho.';
 }
+
+// Pedido despachado ou entregue já saiu: os itens não mudam mais
+const FASES_ENVIADO = ['despachado', 'entregue'];
+const podeEditarItens = reg => !!reg?.dados_completos && reg.fase !== 'cancelado' && !FASES_ENVIADO.includes(reg.fase);
+
+// Abre um pedido do kanban no formulário para mudar itens (ou qualquer outro dado)
+window.editarPedidoNoFormulario = function (id) {
+    const reg = acharPedido(id);
+    if (!reg) return;
+    if (!podeEditarItens(reg)) {
+        toast(reg.dados_completos ? 'Pedido já enviado: os itens não podem mais ser alterados.' : 'Registro antigo sem os dados do formulário.', 'warning');
+        return;
+    }
+    fecharDetalheHistorico();
+    // Rascunho aberto para este pedido: edita por ele, para não ficar com duas versões
+    const draftId = rascunhoDoPedido(id);
+    if (draftId) { editarRascunho(draftId); return; }
+
+    preencherFormulario(reg.dados_completos);
+    AppState.currentDraftId = null;
+    AppState.currentHistoricoId = String(reg.id);
+    AppState.juncaoPendente = [];
+    AppState.extrasEnvio = extrasDoEnvio(reg.dados_completos);
+    atualizarIndicadorRascunho();
+    atualizarPendencias();
+    window.switchTab('tab-romaneio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+// Grava o formulário no pedido vinculado, sem marcar etapas nem mudar a fase
+window.salvarNoPedido = async function () {
+    const id = AppState.currentHistoricoId;
+    if (!id) return;
+    const dados = collectData();
+    if (!dados.items.length) { toast('Adicione pelo menos um item.', 'warning'); return; }
+
+    // Confere no banco: o pedido pode ter sido despachado em outra aba ou aparelho
+    const fase = await faseDoPedido(id);
+    if (fase === null) { toast('Não foi possível conferir o pedido. Verifique a conexão.', 'error', 5000); return; }
+    if (FASES_ENVIADO.includes(fase) || fase === 'cancelado') {
+        toast(`Pedido em "${rotuloFase(fase)}": os itens não podem mais ser alterados.`, 'warning', 6000);
+        return;
+    }
+    if (!confirm(`Salvar as alterações no pedido?
+
+${resumoDoPedido(dados)}`)) return;
+
+    const resultado = await registrarNoHistorico(dados, id);
+    if (!resultado) { toast('Não foi possível salvar no pedido.', 'error', 5000); return; }
+    if (AppState.currentDraftId) {
+        await salvarPendente({ ...dados, historico_id: id }, AppState.currentDraftId, true);
+    }
+    toast('Pedido atualizado.');
+    if (kanbanVisivel()) carregarViewKanban();
+};
 
 // Dados do envio que não têm campo no formulário e precisam sobreviver a "Salvar rascunho"
 function extrasDoEnvio(dados) {

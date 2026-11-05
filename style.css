@@ -1657,6 +1657,7 @@ input.campo-pendente, select.campo-pendente {
 .estoque-acoes .btn-sm { margin: 0; }
 .estoque-juntar { font-size: 12px; padding: 2px 4px; margin: 0; max-width: 260px; }
 .conferir-email-corpo { width: 100%; font-family: monospace; font-size: 12px; box-sizing: border-box; }
+.pix-frete-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 
 /* Gerenciar Dados > Configurações */
 .cfg-cartao { margin-top: 14px; }
