@@ -116,32 +116,62 @@ export function papelDoItem(it) {
 const unidadeDoItem = (dados, it) =>
     ((dados.client_mode === 'multi' ? it.client : '') || dados.unit_name || dados.dest_name || '');
 
-// IMEIs avulsos (não kit) de rastreadores e teclados, por unidade, na ordem do formulário
-function imeisPorUnidade(dados, papel) {
-    const mapa = new Map();
+// Unidades avulsas de um item, uma por linha da planilha: os IMEIs informados
+// ou, sem nenhum IMEI, uma unidade vazia por quantidade (o número é preenchido depois)
+function unidadesAvulsas(it) {
+    const imeis = it.imeis || [];
+    if (imeis.length) return imeis.filter(im => im.tipo !== 'kit' && im.imei);
+    return Array.from({ length: Math.max(1, parseInt(it.qty, 10) || 1) }, () => ({ imei: '' }));
+}
+
+// Junta rastreador + teclado avulsos da mesma unidade, na ordem do formulário (vale qualquer ordem dos itens).
+// Item "KIT" já traz o teclado físico: só recebe de outro item o número de um teclado que tenha IMEI.
+// Devolve { unidades: item -> unidades, pares: unidade -> teclado, emKit: teclados usados, rastreadores, teclados }.
+function formarPares(dados) {
+    const unidades = new Map();
+    const porUnidade = new Map();
+    let rastreadores = 0, teclados = 0;
+
     (dados.items || []).forEach(it => {
-        if (papelDoItem(it) !== papel) return;
+        const papel = papelDoItem(it);
+        if (!['rastreador', 'teclado', 'kit'].includes(papel)) return;
+        const lista = unidadesAvulsas(it);
+        unidades.set(it, lista);
         const un = unidadeDoItem(dados, it);
-        if (!mapa.has(un)) mapa.set(un, []);
-        (it.imeis || []).filter(im => im.tipo !== 'kit' && im.imei).forEach(im => mapa.get(un).push(im));
+        if (!porUnidade.has(un)) porUnidade.set(un, { lado: [], fila: [] });
+        const grupo = porUnidade.get(un);
+        if (papel === 'teclado') {
+            grupo.fila.push(...lista);
+            teclados += lista.length;
+        } else {
+            grupo.lado.push(...lista.map(u => ({ u, ehKit: papel === 'kit' })));
+            rastreadores += lista.length;
+        }
     });
-    return mapa;
+
+    const pares = new Map();
+    const emKit = new Set();
+    porUnidade.forEach(({ lado, fila }) => {
+        lado.forEach(({ u, ehKit }) => {
+            const tecl = fila.find(t => !emKit.has(t) && (!ehKit || t.imei));
+            if (!tecl) return;
+            pares.set(u, tecl);
+            emKit.add(tecl);
+        });
+    });
+    return { unidades, pares, emKit, rastreadores, teclados };
 }
 
 // Quantos kits dá para montar juntando rastreador + teclado avulsos da mesma unidade
 export function contarKits(dados) {
-    const rast = imeisPorUnidade(dados, 'rastreador');
-    const tecl = imeisPorUnidade(dados, 'teclado');
-    let kits = 0, rastreadores = 0, teclados = 0;
-    rast.forEach(l => { rastreadores += l.length; });
-    tecl.forEach(l => { teclados += l.length; });
-    rast.forEach((l, un) => { kits += Math.min(l.length, (tecl.get(un) || []).length); });
-    return { kits, rastreadores, teclados };
+    const { pares, rastreadores, teclados } = formarPares(dados);
+    return { kits: pares.size, rastreadores, teclados };
 }
 
 // "RASTREADOR RA24" -> "KIT RA24" (nome da linha do kit montado; editável no preview)
 function descricaoKit(descRastreador) {
     const d = String(descRastreador || '').trim().toUpperCase();
+    if (/\bKIT\b/.test(d)) return d;
     return /RASTREADOR|EQUIPAMENTO/.test(d) ? d.replace(/RASTREADOR|EQUIPAMENTO/, 'KIT').replace(/\s+/g, ' ') : `KIT ${d}`;
 }
 
@@ -149,26 +179,18 @@ function descricaoKit(descRastreador) {
 const iccidDe = im => (im.iccid && /\d{6,}/.test(im.iccid) ? String(im.iccid).trim() : '');
 
 // Monta as linhas (array de arrays, uma posição por coluna) a partir dos dados do formulário/rascunho/histórico.
-// montarKits: junta rastreador + teclado avulsos da mesma unidade numa linha só (na ordem dos IMEIs)
+// montarKits: junta rastreador + teclado avulsos da mesma unidade numa linha só (na ordem dos IMEIs).
+// É o padrão: só fica separado quando a pessoa desmarca "Montar kits" (montar_kits === false).
 // envio: o que o pedido já tem depois de despachado — { rastreio, frete, recebido }
-export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = !!dados.montar_kits, envio = {} } = {}) {
+export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = dados.montar_kits !== false, envio = {} } = {}) {
     const end = separarEnderecoLinha2(dados.dest_addr2);
     const os = dados.reference_type === 'none' ? '' : String(dados.reference || '').trim();
     const linhas = [];
 
-    // Pares rastreador -> teclado formados antes de gerar as linhas (vale qualquer ordem dos itens)
-    const parDoRastreador = new Map();
-    const tecladosEmKit = new Set();
-    if (montarKits) {
-        const tecl = imeisPorUnidade(dados, 'teclado');
-        imeisPorUnidade(dados, 'rastreador').forEach((rast, un) => {
-            const fila = tecl.get(un) || [];
-            rast.slice(0, fila.length).forEach((im, i) => {
-                parDoRastreador.set(im, fila[i]);
-                tecladosEmKit.add(fila[i]);
-            });
-        });
-    }
+    // Pares rastreador -> teclado formados antes de gerar as linhas
+    const juncao = formarPares(dados);
+    const parDoRastreador = montarKits ? juncao.pares : new Map();
+    const tecladosEmKit = montarKits ? juncao.emKit : new Set();
 
     const linha = (unidade, equip, campos = {}) => {
         const l = new Array(COLUNAS.length).fill('');
@@ -204,24 +226,29 @@ export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = !!
         const qtd = Math.max(1, parseInt(it.qty, 10) || 1);
         const obs = ehTeclado ? { 16: 'Somente teclado' } : {};
 
-        if (it.imeis && it.imeis.length) {
-            // Uma linha por equipamento identificado (chip com ICCID vai na mesma linha do rastreador)
-            it.imeis.forEach(im => {
-                if (im.tipo === 'kit') {
-                    linhas.push(linha(unidade, `1 ${desc}`, { 7: im.rastreador || '', 8: im.teclado || '', 9: iccidDe(im) }));
-                } else if (ehTeclado) {
-                    if (tecladosEmKit.has(im)) return; // já saiu na linha de um kit montado
-                    linhas.push(linha(unidade, `1 ${desc}`, { ...obs, 8: im.imei }));
-                } else if (parDoRastreador.has(im)) {
-                    const tecl = parDoRastreador.get(im);
-                    linhas.push(linha(unidade, `1 ${descricaoKit(desc)}`, { 7: im.imei, 8: tecl.imei, 9: iccidDe(im) }));
+        if (ehEquipamento) {
+            // Pares já prontos (rastreador|teclado) saem como estão
+            (it.imeis || []).filter(im => im.tipo === 'kit').forEach(im => {
+                linhas.push(linha(unidade, `1 ${desc}`, { 7: im.rastreador || '', 8: im.teclado || '', 9: iccidDe(im) }));
+            });
+            // Uma linha por unidade, com ou sem IMEI (chip com ICCID vai na mesma linha do rastreador)
+            juncao.unidades.get(it).forEach(u => {
+                if (ehTeclado) {
+                    if (tecladosEmKit.has(u)) return; // já saiu na linha de um kit
+                    linhas.push(linha(unidade, `1 ${desc}`, { ...obs, 8: u.imei }));
+                } else if (parDoRastreador.has(u)) {
+                    linhas.push(linha(unidade, `1 ${descricaoKit(desc)}`, { 7: u.imei, 8: parDoRastreador.get(u).imei, 9: iccidDe(u) }));
                 } else {
-                    linhas.push(linha(unidade, `1 ${desc}`, { 7: im.imei, 9: iccidDe(im) }));
+                    linhas.push(linha(unidade, `1 ${desc}`, { 7: u.imei, 9: iccidDe(u) }));
                 }
             });
-        } else if (ehEquipamento) {
-            // Equipamento sem IMEI informado: uma linha por unidade para preencher
-            for (let i = 0; i < qtd; i++) linhas.push(linha(unidade, `1 ${desc}`, obs));
+        } else if (it.imeis && it.imeis.length) {
+            // Acessório com número: uma linha por número identificado
+            it.imeis.forEach(im => {
+                linhas.push(im.tipo === 'kit'
+                    ? linha(unidade, `1 ${desc}`, { 7: im.rastreador || '', 8: im.teclado || '', 9: iccidDe(im) })
+                    : linha(unidade, `1 ${desc}`, { 7: im.imei, 9: iccidDe(im) }));
+            });
         } else {
             // Acessório (conversor, chicote...): uma linha com a quantidade
             linhas.push(linha(unidade, `${qtd} ${desc}`));

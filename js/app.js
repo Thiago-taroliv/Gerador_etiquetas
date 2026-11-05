@@ -903,7 +903,8 @@ window.alternarKitsPlanilha = alternarKitsPlanilha;
 // aoMudarKits(montar): grava a escolha de "Montar kits" no envio de onde as linhas vieram
 // reg: registro do histórico, para preencher rastreio, frete e data de recebimento
 function abrirLinhas(dados, dataEnvio, titulo, aoMudarKits, reg = null) {
-    const marcado = !!dados.montar_kits;
+    // Kit fica numa linha só por padrão; separado apenas se a pessoa desmarcar
+    const marcado = dados.montar_kits !== false;
     const envio = reg ? {
         rastreio: reg.rastreio,
         frete: reg.frete,
