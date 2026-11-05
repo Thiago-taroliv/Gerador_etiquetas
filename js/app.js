@@ -9,7 +9,9 @@ import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } fr
 
 // Depois de criar os rascunhos, o kanban mostra os novos cards
 window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisivel()) carregarViewKanban(); });
-import { onSenderChange, popularSelectRemetentes, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep } from './ui.js';
+import { onSenderChange, popularSelectRemetentes, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep, marcarFormularioSalvo, formularioAlterado } from './ui.js';
+import { confirmar } from './dialogo.js';
+import './imeis.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject, avisosEmail } from './render.js';
 import { conferirEmail, resumoDoPedido } from './conferencia.js';
 import { abrirPixFrete } from './pixFrete.js';
@@ -129,7 +131,7 @@ window.salvarModalEdit = async function () {
         .eq('id', id);
 
     if (error) {
-        alert('Erro ao atualizar: ' + error.message);
+        toast('Erro ao atualizar: ' + error.message, 'error');
         return;
     }
 
@@ -336,8 +338,8 @@ window.abrirDetalheHistorico = function (id) {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                 <div style="font-weight:700; font-size:12px; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Itens</div>
                 ${podeEditarItens(reg)
-                    ? `<button class="btn-sm btn-neutral" onclick="editarPedidoNoFormulario('${id}')">Editar itens</button>`
-                    : FASES_ENVIADO.includes(reg.fase) ? '<span style="font-size:11px; color:#aaa;">Enviado: itens bloqueados</span>' : ''}
+                    ? `<button class="btn-sm btn-neutral" onclick="editarPedidoNoFormulario('${id}')" title="Abre no formulário para mudar itens, ou substituir ou excluir um número">Editar itens / números</button>`
+                    : FASES_ENVIADO.includes(reg.fase) ? '<span style="font-size:11px; color:#888;" title="Depois de despachado, os itens não mudam mais. Se o pedido ainda não saiu de fato, volte a fase dele.">Enviado: itens bloqueados</span>' : ''}
             </div>
             <ul style="margin:0; padding-left:18px; font-size:13px; color:#555; line-height:1.8;">${itens || '<li style="color:#bbb;">Sem itens registrados</li>'}</ul>
         </div>
@@ -395,7 +397,7 @@ window.toggleStatusHistorico = async function (id, campo) {
     const resultado = await atualizarStatusHistorico(reg, novoStatus);
     if (resultado) {
         atualizarCaches(id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
-        avisarProntoSemNF(id, resultado);
+        await avisarProntoSemNF(id, resultado);
         abrirDetalheHistorico(id); // Recarrega o modal com status atualizado
     }
 };
@@ -408,7 +410,7 @@ window.mudarFaseDoModal = async function (id, fase) {
 window.editarRastreioDoModal = async function (id) {
     const reg = acharPedido(id);
     if (!reg) return;
-    const despacho = pedirDadosDespacho(reg);
+    const despacho = await pedirDadosDespacho(reg);
     if (!despacho) return;
     if (await atualizarDespacho(id, despacho)) {
         atualizarCaches(id, despacho);
@@ -422,7 +424,15 @@ window.pedirPixFrete = id => abrirPixFrete(acharPedido(id));
 
 window.cancelarPedidoDoModal = async function (id) {
     const reg = acharPedido(id);
-    if (!reg || !confirm(`Cancelar o pedido de "${reg.destinatario}"?\n\nEle sai do quadro de Pedidos, mas continua no Histórico.`)) return;
+    if (!reg) return;
+    const ok = await confirmar({
+        titulo: 'Cancelar este pedido?',
+        mensagem: `"${reg.destinatario}" sai do quadro de Pedidos, mas continua no Histórico e pode ser reativado depois.`,
+        tipo: 'perigo',
+        sim: 'Cancelar pedido',
+        nao: 'Manter pedido'
+    });
+    if (!ok) return;
     if (await cancelarPedido(id)) {
         atualizarCaches(id, { fase: 'cancelado', fase_em: new Date().toISOString() });
         toast('Pedido cancelado.');
@@ -445,7 +455,7 @@ window.reativarPedidoDoModal = async function (id) {
 window.gerarDoHistorico = function (id, tipo) {
     const reg = window.__detalheHistoricoAtual;
     if (!reg || !reg.dados_completos) {
-        alert('Snapshot de dados não disponível para este registro antigo. Gere um novo documento pelo formulário.');
+        toast('Este registro antigo não guardou os dados do envio. Gere um novo documento pelo formulário.', 'warning');
         return;
     }
     const dados = reg.dados_completos;
@@ -458,7 +468,7 @@ window.gerarDoHistorico = function (id, tipo) {
     const baseHref = location.origin + location.pathname;
     const fullHtml = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><base href="${baseHref}"><title>Documentos para Impressão</title>${linksHtml}<style>body{margin:0;padding:0;background:#f3f3f3;}.page{page-break-before:always;break-before:page;}.page:first-child{page-break-before:avoid;break-before:avoid;}@media print{body{background:#fff;}.page{margin:0;box-shadow:none;page-break-after:always;}}</style></head><body><div style="padding:16px;">${documentsHtml}</div></body></html>`;
     const win = window.open('', '_blank');
-    if (!win) { alert('Bloqueador de popups ativo – permita e tente novamente.'); return; }
+    if (!win) { toast('O navegador bloqueou a nova aba. Permita pop-ups para este site e tente de novo.', 'warning'); return; }
     win.document.open(); win.document.write(fullHtml); win.document.close(); win.focus();
 
     // Marca automaticamente a etapa como feita
@@ -482,7 +492,14 @@ window.deleteDestinatario = async function (idx) {
     const dests = window.__destinatariosSupabase || [];
     const d = dests[idx];
     if (!d) return;
-    if (!confirm(`Tem certeza que deseja deletar "${d.nome}"?`)) return;
+    const ok = await confirmar({
+        titulo: 'Deletar este destinatário?',
+        mensagem: `"${d.nome}" sai do cadastro. Envios já feitos não mudam.`,
+        tipo: 'perigo',
+        sim: 'Deletar',
+        nao: 'Manter'
+    });
+    if (!ok) return;
 
     const { supabaseClient } = await import('./config.js');
     const { error } = await supabaseClient
@@ -491,7 +508,7 @@ window.deleteDestinatario = async function (idx) {
         .eq('id', d.id);
 
     if (error) {
-        alert('Erro ao deletar: ' + error.message);
+        toast('Erro ao deletar: ' + error.message, 'error');
         return;
     }
 
@@ -520,6 +537,7 @@ async function registrarEnvio(dados, etapas) {
     const novo = !AppState.currentHistoricoId;
     AppState.currentHistoricoId = String(id);
     toast(novo ? 'Envio registrado no histórico.' : 'Registro do histórico atualizado.');
+    marcarFormularioSalvo();
     atualizarIndicadorRascunho();
 
     // Impresso antes da NF: avança mesmo assim, mas avisa e permite voltar
@@ -539,9 +557,58 @@ function atualizarIndicadorRascunho() {
     el.style.display = AppState.currentDraftId || pedido ? 'flex' : 'none';
     $('btn_salvar_no_pedido').style.display = pedido ? '' : 'none';
     const reg = pedido ? acharPedido(pedido) : null;
-    $('draft_indicator_texto').textContent = pedido
-        ? `Editando o pedido${reg ? ` "${reg.referencia || reg.destinatario}"` : ''} do quadro. "Salvar no pedido" grava as alterações nele.`
-        : 'Editando um rascunho salvo. "Salvar Rascunho" atualiza este rascunho.';
+    const alterado = formularioAlterado();
+    const destino = pedido ? 'Salvar no pedido' : 'Salvar Rascunho';
+    const assunto = pedido
+        ? `Editando o pedido${reg ? ` "${reg.referencia || reg.destinatario}"` : ''} do quadro.`
+        : 'Editando um rascunho salvo.';
+    $('draft_indicator_texto').textContent = alterado
+        ? `${assunto} Há alterações não salvas: clique em "${destino}" para gravar.`
+        : `${assunto} Tudo salvo.`;
+    el.classList.toggle('draft-alterado', alterado);
+}
+
+// Antes de carregar outra coisa no formulário: não perde o que foi digitado sem perguntar
+async function podeTrocarFormulario(mensagem = 'O formulário tem alterações que ainda não foram salvas e elas serão perdidas.') {
+    if (!formularioAlterado()) return true;
+    return confirmar({
+        titulo: 'Descartar alterações não salvas?',
+        mensagem,
+        tipo: 'aviso',
+        sim: 'Descartar e continuar',
+        nao: 'Voltar'
+    });
+}
+
+// O que muda no que já saiu para o papel ou para o financeiro
+const qtdsDosItens = itens => JSON.stringify((itens || []).map(it => [it.desc, String(it.qty)]));
+const numerosDosItens = itens => JSON.stringify((itens || []).map(it => (it.imeis || []).map(im => [im.imei, im.rastreador, im.teclado])));
+
+// Depois de salvar: romaneio impresso e pedido de NF podem ter ficado com dados antigos
+async function orientarDocumentosDesatualizados(reg, dados) {
+    if (!reg?.dados_completos) return;
+    const itensAntes = reg.dados_completos.items;
+    const quantidadeMudou = qtdsDosItens(itensAntes) !== qtdsDosItens(dados.items);
+    const itensMudaram = quantidadeMudou || numerosDosItens(itensAntes) !== numerosDosItens(dados.items);
+    const emailDesatualizado = reg.status?.email && quantidadeMudou;
+    const avisoEmail = emailDesatualizado
+        ? 'O e-mail ao financeiro foi enviado com os itens antigos: avise o financeiro antes da emissão da NF.' : '';
+
+    if (reg.status?.romaneio && itensMudaram) {
+        const gerar = await confirmar({
+            titulo: 'Romaneio impresso ficou desatualizado',
+            mensagem: `Os itens mudaram depois da impressão. Gere o romaneio de novo e troque a via em papel.${avisoEmail ? `\n\n${avisoEmail}` : ''}`,
+            tipo: 'aviso',
+            sim: 'Gerar romaneio agora',
+            nao: 'Fazer depois'
+        });
+        if (gerar) {
+            $('doc-selector').value = 'romaneio';
+            await generateNewTab();
+        }
+    } else if (avisoEmail) {
+        toast(avisoEmail, 'warning');
+    }
 }
 
 // Pedido despachado ou entregue já saiu: os itens não mudam mais
@@ -549,23 +616,31 @@ const FASES_ENVIADO = ['despachado', 'entregue'];
 const podeEditarItens = reg => !!reg?.dados_completos && reg.fase !== 'cancelado' && !FASES_ENVIADO.includes(reg.fase);
 
 // Abre um pedido do kanban no formulário para mudar itens (ou qualquer outro dado)
-window.editarPedidoNoFormulario = function (id) {
+window.editarPedidoNoFormulario = async function (id) {
     const reg = acharPedido(id);
     if (!reg) return;
     if (!podeEditarItens(reg)) {
         toast(reg.dados_completos ? 'Pedido já enviado: os itens não podem mais ser alterados.' : 'Registro antigo sem os dados do formulário.', 'warning');
         return;
     }
+    // Este pedido já está no formulário com alterações: só volta para lá, sem perder nada
+    if (String(AppState.currentHistoricoId) === String(id) && formularioAlterado()) {
+        fecharDetalheHistorico();
+        window.switchTab('tab-romaneio');
+        return;
+    }
+    if (!(await podeTrocarFormulario())) return;
     fecharDetalheHistorico();
     // Rascunho aberto para este pedido: edita por ele, para não ficar com duas versões
     const draftId = rascunhoDoPedido(id);
-    if (draftId) { editarRascunho(draftId); return; }
+    if (draftId) { abrirRascunhoNoFormulario(draftId); return; }
 
     preencherFormulario(reg.dados_completos);
     AppState.currentDraftId = null;
     AppState.currentHistoricoId = String(reg.id);
     AppState.juncaoPendente = [];
     AppState.extrasEnvio = extrasDoEnvio(reg.dados_completos);
+    marcarFormularioSalvo();
     atualizarIndicadorRascunho();
     atualizarPendencias();
     window.switchTab('tab-romaneio');
@@ -586,17 +661,28 @@ window.salvarNoPedido = async function () {
         toast(`Pedido em "${rotuloFase(fase)}": os itens não podem mais ser alterados.`, 'warning', 6000);
         return;
     }
-    if (!confirm(`Salvar as alterações no pedido?
+    const salvar = await confirmar({
+        titulo: 'Salvar as alterações no pedido?',
+        mensagem: 'Confira como o pedido vai ficar:',
+        detalhe: resumoDoPedido(dados),
+        sim: 'Salvar no pedido',
+        nao: 'Continuar editando'
+    });
+    if (!salvar) return;
 
-${resumoDoPedido(dados)}`)) return;
-
+    const regAntes = acharPedido(id);
+    const antes = regAntes ? { dados_completos: regAntes.dados_completos, status: regAntes.status } : null;
     const resultado = await registrarNoHistorico(dados, id);
     if (!resultado) { toast('Não foi possível salvar no pedido.', 'error', 5000); return; }
     if (AppState.currentDraftId) {
         await salvarPendente({ ...dados, historico_id: id }, AppState.currentDraftId, true);
     }
+    atualizarCaches(id, { dados_completos: dados, itens: dados.items });
+    marcarFormularioSalvo();
+    atualizarIndicadorRascunho();
     toast('Pedido atualizado.');
     if (kanbanVisivel()) carregarViewKanban();
+    await orientarDocumentosDesatualizados(antes, dados);
 };
 
 // Dados do envio que não têm campo no formulário e precisam sobreviver a "Salvar rascunho"
@@ -642,6 +728,7 @@ window.salvarRascunhoAtual = async function(silencioso = false) {
     if (salvo) {
         // Guarda o ID que voltou do supabase
         AppState.currentDraftId = String(salvo.id);
+        marcarFormularioSalvo();
         atualizarIndicadorRascunho();
         return true;
     }
@@ -649,8 +736,8 @@ window.salvarRascunhoAtual = async function(silencioso = false) {
 };
 
 // Limpa o formulário e desvincula do rascunho atual (evita sobrescrever rascunho antigo)
-window.novoEnvio = function() {
-    if (!confirm('Iniciar um novo envio? Os dados não salvos do formulário serão perdidos.')) return;
+window.novoEnvio = async function() {
+    if (!(await podeTrocarFormulario('O formulário tem alterações que ainda não foram salvas. Ao iniciar um novo envio, elas serão perdidas.'))) return;
     limparFormulario();
     AppState.currentDraftId = null;
     AppState.currentHistoricoId = null;
@@ -701,7 +788,16 @@ window.carregarViewAndamento = async function() {
     container.innerHTML = html;
 };
 
-window.editarRascunho = function(id) {
+window.editarRascunho = async function(id) {
+    // Este rascunho já está no formulário com alterações: só volta para lá, sem perder nada
+    if (AppState.currentDraftId === String(id) && formularioAlterado()) {
+        window.switchTab('tab-romaneio');
+        return;
+    }
+    if (await podeTrocarFormulario()) abrirRascunhoNoFormulario(id);
+};
+
+function abrirRascunhoNoFormulario(id) {
     const rascunho = (window.__rascunhosCache || []).find(r => String(r.id) === String(id));
     if(rascunho) {
         // Preenche o formulário
@@ -712,13 +808,14 @@ window.editarRascunho = function(id) {
         AppState.currentHistoricoId = rascunho.dados_completos?.historico_id || null;
         AppState.juncaoPendente = [];
         AppState.extrasEnvio = extrasDoEnvio(rascunho.dados_completos);
+        marcarFormularioSalvo();
         atualizarIndicadorRascunho();
         atualizarPendencias();
 
         // Vai para a aba do romaneio
         window.switchTab('tab-romaneio');
     }
-};
+}
 
 window.excluirRascunhoUI = async function(id) {
     const ok = await deletarPendente(id);
@@ -735,8 +832,14 @@ window.concluirRascunhoUI = async function(id) {
     // Resumo do que vai para o Histórico (o rascunho aberto na tela vale pelo formulário)
     const aberto = AppState.currentDraftId === String(id);
     const dados = aberto ? collectData() : (window.__rascunhosCache || []).find(r => String(r.id) === String(id))?.dados_completos;
-    const resumo = dados ? resumoDoPedido(dados) + '\n\n' : '';
-    if(!confirm(`Concluir Rascunho?\n\n${resumo}Ele será transferido para o Histórico DEFINITIVO e apagado daqui. As informações atuais do banco serão salvas.`)) return;
+    const concluir = await confirmar({
+        titulo: 'Concluir este rascunho?',
+        mensagem: 'Ele vai para o Histórico e sai da lista de rascunhos. Confira os dados:',
+        detalhe: dados ? resumoDoPedido(dados) : undefined,
+        sim: 'Concluir',
+        nao: 'Voltar'
+    });
+    if (!concluir) return;
 
     // Certifique-se de que se o usuário clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
     if (AppState.currentDraftId === String(id)) {
@@ -768,11 +871,17 @@ window.montarKitNoFormulario = async function () {
 };
 
 // Volta os kits montados pelo programa aos componentes
-window.desmontarKitNoFormulario = function () {
+window.desmontarKitNoFormulario = async function () {
     const d = collectData();
     const kits = d.items.filter(it => it.kit?.componentes);
     if (!kits.length) { toast('Nenhum kit montado pelo programa neste envio.', 'warning'); return; }
-    if (!confirm(`Desmontar ${kits.map(k => `${k.qty} x ${k.desc}`).join(', ')}?\n\nOs componentes voltam como itens separados.`)) return;
+    const ok = await confirmar({
+        titulo: 'Desmontar o kit?',
+        mensagem: `${kits.map(k => `${k.qty} x ${k.desc}`).join(', ')}\n\nOs componentes voltam como itens separados.`,
+        sim: 'Desmontar',
+        nao: 'Manter kit'
+    });
+    if (!ok) return;
     let items = d.items;
     for (let i = items.findIndex(it => it.kit?.componentes); i >= 0; i = items.findIndex(it => it.kit?.componentes)) {
         items = desmontarKit(items, i);
@@ -858,10 +967,18 @@ window.usarEnvioImportado = usarEnvioImportado;
 const normNome = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // Preenche o formulário com um envio da planilha. Retorna false se o usuário cancelar.
-function preencherComEnvioImportado(grupo) {
+async function preencherComEnvioImportado(grupo) {
     const atual = collectData();
-    if ((atual.dest_name.trim() || atual.items.length) &&
-        !confirm('Substituir os dados do formulário pelo envio da planilha?')) return false;
+    if (atual.dest_name.trim() || atual.items.length) {
+        const ok = await confirmar({
+            titulo: 'Substituir o formulário?',
+            mensagem: 'Os dados que estão no formulário dão lugar ao envio da planilha.',
+            tipo: 'aviso',
+            sim: 'Substituir',
+            nao: 'Cancelar'
+        });
+        if (!ok) return false;
+    }
 
     // Remetente, transportadora, volumes etc. continuam como estão no formulário
     const dados = grupoParaFormulario(grupo, atual);
@@ -892,7 +1009,7 @@ window.abrirImportarPlanilha = () => abrirImportarPlanilha(preencherComEnvioImpo
 
 // Confere os dados mínimos antes de gerar documentos ou e-mail.
 // Erros bloqueiam; avisos perguntam se quer continuar.
-function validarAntesDeGerar(d) {
+async function validarAntesDeGerar(d) {
     if (d.items.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return false; }
     if (!d.dest_name.trim() || !d.dest_addr1.trim()) {
         toast('Preencha o Nome e o Endereço (linha 1) do destinatário.', 'warning');
@@ -906,16 +1023,24 @@ function validarAntesDeGerar(d) {
     const avisos = [];
     if (!validarDoc(d.dest_doc)) avisos.push('- O CPF/CNPJ do destinatário parece inválido');
     if (d.reference_type !== 'none' && !d.reference.trim()) avisos.push('- O número da referência (Ticket/OS) está vazio');
-    if (avisos.length) return confirm('Atenção:\n' + avisos.join('\n') + '\n\nDeseja continuar mesmo assim?');
+    if (avisos.length) {
+        return confirmar({
+            titulo: 'Confira antes de continuar',
+            mensagem: avisos.join('\n'),
+            tipo: 'aviso',
+            sim: 'Continuar mesmo assim',
+            nao: 'Voltar e corrigir'
+        });
+    }
     return true;
 }
 
-function generatePreview() {
+async function generatePreview() {
     const docType = $('doc-selector').value;
     if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return; }
 
     AppState.formData = collectData();
-    if (!validarAntesDeGerar(AppState.formData)) return;
+    if (!(await validarAntesDeGerar(AppState.formData))) return;
 
     const documentElements = composeDocuments(AppState.formData, docType);
     const emailElement = renderEmailPreview(AppState.formData);
@@ -931,12 +1056,12 @@ function generatePreview() {
     abrirModalPreview();
 }
 
-function generateNewTab() {
+async function generateNewTab() {
     const docType = $('doc-selector').value;
     if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return; }
 
     AppState.formData = collectData();
-    if (!validarAntesDeGerar(AppState.formData)) return;
+    if (!(await validarAntesDeGerar(AppState.formData))) return;
 
     const documentElements = composeDocuments(AppState.formData, docType);
     let documentsHtml = '';
@@ -965,7 +1090,7 @@ function generateNewTab() {
 </html>`;
 
     const win = window.open('', '_blank');
-    if (!win) { alert('Não foi possível abrir nova aba – verifique o bloqueador de popups.'); return; }
+    if (!win) { toast('O navegador bloqueou a nova aba. Permita pop-ups para este site e tente de novo.', 'warning'); return; }
     const doc = win.document;
     doc.open();
     doc.write(fullHtml);
@@ -984,12 +1109,12 @@ function copyEmailBody() {
     const body = buildEmailBody(collectData());
     navigator.clipboard.writeText(body)
         .then(() => toast('Corpo do e-mail copiado.'))
-        .catch(err => alert('Erro ao copiar: ' + err));
+        .catch(err => toast('Não foi possível copiar: ' + err, 'error'));
 }
 
 async function enviarEmailViaMailtoUsingData() {
     const d = collectData();
-    if (!validarAntesDeGerar(d)) return;
+    if (!(await validarAntesDeGerar(d))) return;
 
     // Outro pedido do mesmo técnico sem NF? Oferece juntar antes de pedir a nota
     if (!(await verificarJuncao(d))) return;
@@ -1066,93 +1191,6 @@ window.selectItemSuggestion = function (element) {
     suggestionsDiv.style.display = 'none';
 };
 
-function procesarIMEIs(btn) {
-    const card = btn.closest('.item-card');
-    const textarea = card.querySelector('.it-imei-input');
-    const imeiList = card.querySelector('.it-imei-list');
-    const qtdInput = card.querySelector('.it-qty');
-
-    const imeiText = textarea.value.trim();
-    if (!imeiText) {
-        toast('Cole os números/IMEIs primeiro.', 'warning');
-        return;
-    }
-
-    const lines = imeiText.split('\n').map(l => l.trim()).filter(l => l);
-    let imeis = [];
-
-    // Detectar formato (com tab = kit)
-    let isKit = lines.some(l => l.includes('\t'));
-
-    if (isKit) {
-        // Formato: RASTREADOR\tTECLADO
-        lines.forEach(line => {
-            const parts = line.split('\t').map(p => p.trim()).filter(p => p);
-            if (parts.length >= 2) {
-                imeis.push({ tipo: 'kit', rastreador: parts[0], teclado: parts[1] });
-            } else if (parts.length === 1) {
-                imeis.push({ tipo: 'kit', rastreador: parts[0], teclado: '' });
-            }
-        });
-    } else {
-        // Formato simples
-        lines.forEach(line => {
-            imeis.push({ tipo: 'simples', imei: line });
-        });
-    }
-
-    // Remove repetidos (mesmo IMEI ou mesmo par rastreador|teclado)
-    const vistos = new Set();
-    const totalColado = imeis.length;
-    imeis = imeis.filter(i => {
-        const chave = i.tipo === 'kit' ? `${i.rastreador}|${i.teclado}` : i.imei;
-        if (vistos.has(chave)) return false;
-        vistos.add(chave);
-        return true;
-    });
-    const duplicados = totalColado - imeis.length;
-
-    if (imeis.length === 0) {
-        toast('Nenhum número válido encontrado.', 'warning');
-        return;
-    }
-
-    // Atualizar qtd para quantidade de IMEIs processados
-    qtdInput.value = imeis.length;
-    qtdInput.readOnly = true;
-    qtdInput.style.backgroundColor = '#e8f4f8';
-
-    // Renderizar lista de IMEIs SEM status e SEM emojis
-    imeiList.innerHTML = '';
-    imeis.forEach((item) => {
-        const itemDiv = document.createElement('div');
-        itemDiv.className = 'imei-item';
-        itemDiv.dataset.imei = item.tipo === 'kit' ? `${item.rastreador}|${item.teclado}` : item.imei;
-
-        if (item.tipo === 'kit') {
-            itemDiv.innerHTML = `<div>Rastreador: <strong>${escapeHtml(item.rastreador)}</strong> | Teclado: <strong>${escapeHtml(item.teclado)}</strong></div>`;
-        } else {
-            itemDiv.innerHTML = `<div>IMEI: <strong>${escapeHtml(item.imei)}</strong></div>`;
-        }
-        imeiList.appendChild(itemDiv);
-    });
-
-    // Limpar textarea
-    textarea.value = '';
-
-    if (duplicados) toast(`${imeis.length} número(s) processado(s). ${duplicados} repetido(s) ignorado(s).`, 'warning', 5000);
-    else toast(`${imeis.length} número(s) processado(s).`);
-}
-
-// Remove os IMEIs do item e libera a quantidade para edição
-function limparIMEIs(btn) {
-    const card = btn.closest('.item-card');
-    card.querySelector('.it-imei-list').innerHTML = '';
-    const qtd = card.querySelector('.it-qty');
-    qtd.readOnly = false;
-    qtd.style.backgroundColor = '';
-}
-
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -1166,8 +1204,6 @@ window.enviarEmailViaMailtoUsingData = enviarEmailViaMailtoUsingData;
 window.toggleReferenceInput = toggleReferenceInput;
 window.toggleClientMode = toggleClientMode;
 window.toggleIMEISection = toggleIMEISection;
-window.procesarIMEIs = procesarIMEIs;
-window.limparIMEIs = limparIMEIs;
 
 document.addEventListener('DOMContentLoaded', () => {
     // Escutando selectores iniciais
@@ -1194,7 +1230,10 @@ document.addEventListener('DOMContentLoaded', () => {
     ['dest_doc', 'new_dest_doc', 'modal_dest_doc'].forEach(id => ligarMascaraDoc($(id)));
 
     // Faixa de pendências do envio importado: some à medida que os campos são preenchidos
-    ['input', 'change'].forEach(ev => $('tab-romaneio')?.addEventListener(ev, atualizarPendencias));
+    ['input', 'change'].forEach(ev => $('tab-romaneio')?.addEventListener(ev, () => {
+        atualizarPendencias();
+        atualizarIndicadorRascunho();
+    }));
 
     // Auth pipeline init (Dispara checagem do Supabase e carrega BD se logado)
     checkSession();

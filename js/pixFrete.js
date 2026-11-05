@@ -54,11 +54,11 @@ export function montarEmailPixFrete(c, hora = new Date().getHours()) {
     const etapa = c.etapa ? ` (${c.etapa} etapa)` : '';
     const rotulo = c.rotuloRef || 'OS';
     return {
-        assunto: `Solicitação de frete${c.referencia ? ` - ${rotulo} ${c.referencia}` : ''}`,
+        assunto: `Solicitação de pix frete${c.referencia ? ` - ${rotulo} ${c.referencia}` : ''}`,
         corpo: [
             `${saudacaoDoHorario(hora)} Financeiro, tudo bem?`,
             '',
-            `Solicitação de frete${etapa}:`,
+            `Solicitação de pix frete${etapa}:`,
             '',
             `Valor: R$ ${formatarFrete(c.valor)}`,
             `Meio de transporte/Transportadora: ${c.transportadora}`,

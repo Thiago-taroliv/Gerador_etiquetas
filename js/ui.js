@@ -2,6 +2,28 @@ import { $, escapeHtml, AppState } from './config.js';
 import { config, remetentes, remetentePadrao, remetentePorId, remetentePorCnpj } from './configuracoes.js';
 import { searchItems, getItems, addItem as addItemToDB } from './items.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
+import { linhaImeiHtml, imeiDaLinha, atualizarResumoImeis, sinalizarMudanca } from './imeis.js';
+
+// Foto do formulário na última vez que foi carregado ou salvo (null = envio novo, ainda sem base)
+let formularioBase = null;
+
+function assinaturaFormulario() {
+    const { doc_type, origem, montar_kits, ...d } = collectData();
+    return JSON.stringify(d);
+}
+
+// Chamar depois de carregar ou salvar o formulário
+export function marcarFormularioSalvo() {
+    formularioBase = assinaturaFormulario();
+}
+
+// Há algo digitado que ainda não foi salvo?
+export function formularioAlterado() {
+    if (formularioBase !== null) return assinaturaFormulario() !== formularioBase;
+    const d = collectData();
+    return !!(d.dest_name.trim() || d.items.length);
+}
 
 // Opções do select de remetente (Gerenciar Dados > Configurações) + "Personalizado"; mantém a escolha atual
 export function popularSelectRemetentes() {
@@ -91,6 +113,7 @@ export function addItem() {
                 <button type="button" class="btn-sm btn-success" onclick="procesarIMEIs(this)">Processar IMEIs</button>
                 <button type="button" class="btn-sm btn-neutral" onclick="limparIMEIs(this)">Limpar IMEIs</button>
             </div>
+            <div class="it-imei-resumo small" style="display:none;"></div>
             <div class="it-imei-list"></div>
         </div>
     `;
@@ -172,12 +195,41 @@ export function addItem() {
     });
 }
 
-export function removeItem(btn) {
-    btn.closest('.item-card').remove();
+export async function removeItem(btn) {
+    const card = btn.closest('.item-card');
+    const desc = card.querySelector('.it-desc')?.value.trim();
+    const numeros = card.querySelectorAll('.imei-item').length;
+    // Card em branco sai direto: não há nada a perder
+    if (desc || numeros) {
+        const ok = await confirmar({
+            titulo: 'Remover este item?',
+            mensagem: `"${desc || 'Item sem descrição'}"${numeros ? ` e os ${numeros} número(s) dele` : ''} saem do envio.`
+                + (numeros ? '\n\nPara trocar um equipamento só, use "Substituir" ou "Excluir" na linha do número.' : ''),
+            tipo: 'perigo',
+            sim: 'Remover item',
+            nao: 'Manter'
+        });
+        if (!ok) return;
+    }
+    card.remove();
+    sinalizarMudanca();
 }
 
-export function clearItems() {
+export async function clearItems() {
+    const preenchidos = [...document.querySelectorAll('.item-card .it-desc')].filter(i => i.value.trim()).length;
+    if (preenchidos) {
+        const ok = await confirmar({
+            titulo: 'Limpar todos os itens?',
+            mensagem: `${preenchidos} item(ns) e os números deles saem do formulário.`,
+            tipo: 'perigo',
+            sim: 'Limpar itens',
+            nao: 'Manter'
+        });
+        if (!ok) return;
+    }
     $('items_container').innerHTML = '';
+    addItem();
+    sinalizarMudanca();
 }
 
 export function collectData() {
@@ -192,28 +244,10 @@ export function collectData() {
 
             // Coletar IMEIs da seção
             const imeiList = card.querySelector('.it-imei-list');
-            const imeis = [];
-
-            if (imeiList) {
-                imeiList.querySelectorAll('.imei-item').forEach(item => {
-                    const imeiValue = item.dataset.imei;
-                    if (imeiValue) {
-                        // Chip preso ao rastreador (veio da planilha de estoque; não aparece no romaneio)
-                        const chip = {};
-                        if (item.dataset.chip) chip.chip = item.dataset.chip;
-                        if (item.dataset.iccid) chip.iccid = item.dataset.iccid;
-                        // OS/ticket de onde o IMEI veio (envio com várias OS)
-                        if (item.dataset.ref) chip.ref = item.dataset.ref;
-                        // Verificar se é kit (contém |)
-                        if (imeiValue.includes('|')) {
-                            const [rastreador, teclado] = imeiValue.split('|');
-                            imeis.push({ tipo: 'kit', rastreador, teclado, ...chip });
-                        } else {
-                            imeis.push({ tipo: 'simples', imei: imeiValue, ...chip });
-                        }
-                    }
-                });
-            }
+            // Chip e OS/ticket de origem ficam na linha do número
+            const imeis = imeiList
+                ? [...imeiList.querySelectorAll('.imei-item')].filter(item => item.dataset.imei).map(imeiDaLinha)
+                : [];
 
             // papel (rastreador, teclado, acessório...) vem do de-para da planilha de estoque
             // por_ref: quantidade de cada OS/ticket quando o envio junta várias (e-mail ao financeiro)
@@ -329,25 +363,8 @@ export function preencherFormulario(dados) {
                         qtyInput.style.backgroundColor = '#e8f4f8';
 
                         const imeiList = lastCard.querySelector('.it-imei-list');
-                        let imeisHtml = '';
-                        it.imeis.forEach(imeiObj => {
-                            let valA, labelHtml;
-                            if(imeiObj.tipo === 'kit') {
-                                valA = imeiObj.rastreador + '|' + imeiObj.teclado;
-                                labelHtml = '<div>Rastreador: <strong>'+escapeHtml(imeiObj.rastreador)+'</strong> | Teclado: <strong>'+escapeHtml(imeiObj.teclado)+'</strong></div>';
-                            } else {
-                                valA = imeiObj.imei;
-                                labelHtml = '<div>IMEI: <strong>'+escapeHtml(imeiObj.imei)+'</strong></div>';
-                            }
-                            // Chip preso ao rastreador: guardado nos atributos para não se perder ao salvar de novo
-                            let chipAttr = imeiObj.ref ? ' data-ref="'+escapeHtml(imeiObj.ref)+'"' : '';
-                            if(imeiObj.chip) {
-                                chipAttr += ' data-chip="'+escapeHtml(imeiObj.chip)+'"' + (imeiObj.iccid ? ' data-iccid="'+escapeHtml(imeiObj.iccid)+'"' : '');
-                                labelHtml += '<span class="imei-chip" title="'+escapeHtml(imeiObj.chip + (imeiObj.iccid ? ' — ICCID ' + imeiObj.iccid : ''))+'">+ chip</span>';
-                            }
-                            imeisHtml += '<div class="imei-item" data-imei="'+escapeHtml(valA)+'"'+chipAttr+'>'+labelHtml+'</div>';
-                        });
-                        if(imeiList) imeiList.innerHTML = imeisHtml;
+                        if(imeiList) imeiList.innerHTML = it.imeis.map(linhaImeiHtml).join('');
+                        atualizarResumoImeis(lastCard);
                     }
                 }
             }
@@ -374,6 +391,7 @@ export function preencherFormulario(dados) {
 
 // Volta o formulário ao estado inicial (novo envio)
 export function limparFormulario() {
+    formularioBase = null;
     AppState.extrasEnvio = {};
     $('sender_select').value = remetentePadrao()?.id || 'custom';
     onSenderChange();
@@ -451,13 +469,20 @@ export function validarDoc(valor) {
 // Aplica máscara enquanto digita e marca o campo se o documento for inválido
 export function ligarMascaraDoc(input) {
     if (!input) return;
+    // Mensagem logo abaixo do campo: um modal aqui prenderia a pessoa a cada saída do campo
+    const erro = document.createElement('div');
+    erro.className = 'campo-erro';
+    erro.textContent = 'CPF/CNPJ inválido. Confira os números.';
+    input.after(erro);
     input.addEventListener('input', () => {
         input.value = formatarDoc(input.value);
         input.style.borderColor = '';
+        erro.style.display = 'none';
     });
     input.addEventListener('blur', () => {
-        input.style.borderColor = validarDoc(input.value) ? '' : '#e53935';
-        if (!validarDoc(input.value)) toast('CPF/CNPJ inválido. Confira os números.', 'warning');
+        const valido = validarDoc(input.value);
+        input.style.borderColor = valido ? '' : '#e53935';
+        erro.style.display = valido ? 'none' : 'block';
     });
 }
 

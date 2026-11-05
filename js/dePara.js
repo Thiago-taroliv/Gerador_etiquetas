@@ -3,6 +3,7 @@
 import { supabaseClient, $, escapeHtml } from './config.js';
 import { getItems } from './items.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
 
 export const PAPEIS = [
     { chave: 'rastreador', rotulo: 'Rastreador' },
@@ -221,7 +222,15 @@ window.salvarLinhaDePara = async function (id) {
 
 window.deletarLinhaDePara = async function (id) {
     const m = mapeamentos.find(x => x.id === id);
-    if (!m || !confirm(`Apagar o mapeamento de "${m.descricao_estoque}"?\n\nNa próxima importação ele aparece como item novo.`)) return;
+    if (!m) return;
+    const ok = await confirmar({
+        titulo: 'Apagar este mapeamento?',
+        mensagem: `"${m.descricao_estoque}" aparece como item novo na próxima importação.`,
+        tipo: 'perigo',
+        sim: 'Apagar',
+        nao: 'Manter'
+    });
+    if (!ok) return;
     if (await deletarDePara(id)) {
         toast('Mapeamento apagado.');
         renderListaDePara();

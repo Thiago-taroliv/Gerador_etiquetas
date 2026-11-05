@@ -3,6 +3,7 @@ import { $, escapeHtml, supabaseClient, AppState } from './config.js';
 import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente } from './db.js';
 import { formatarFrete, lerValor } from './planilha.js';
 import { oferecerPixFrete } from './pixFrete.js';
+import { confirmar, pedirCampos } from './dialogo.js';
 import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao } from './juncao.js';
 import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
@@ -239,19 +240,31 @@ window.destacarMesmoTecnico = function (chave) {
 // Move o pedido de fase com atualização otimista; volta ao estado anterior se o banco falhar
 // extrasIniciais: outros campos a gravar junto, ex. { mesclado_em: null }
 export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
-    const reg = acharPedido(id);
+    let reg = acharPedido(id);
     if (!reg || reg.fase === fase) return false;
 
-    if (fase !== 'cancelado' && ordemFase(fase) < ordemFase(reg.fase) &&
-        !confirm(`Voltar "${reg.destinatario}" para "${rotuloFase(fase)}"?`)) return false;
+    if (fase !== 'cancelado' && ordemFase(fase) < ordemFase(reg.fase)) {
+        const voltar = await confirmar({
+            titulo: 'Voltar o pedido de fase?',
+            mensagem: `"${reg.destinatario}" sai de "${rotuloFase(reg.fase)}" e volta para "${rotuloFase(fase)}".`,
+            tipo: 'aviso',
+            sim: 'Voltar de fase',
+            nao: 'Deixar como está'
+        });
+        if (!voltar) return false;
+    }
 
     const extras = { ...extrasIniciais };
     if (fase === 'despachado') {
-        const despacho = pedirDadosDespacho(reg);
+        if (!(await confirmarEtapasDoDespacho(reg.destinatario, reg.status))) return false;
+        const despacho = await pedirDadosDespacho(reg, { despachando: true });
         if (!despacho) return false;
         Object.assign(extras, despacho);
     }
 
+    // O quadro pode ter recarregado enquanto o modal estava aberto
+    reg = acharPedido(id);
+    if (!reg) return false;
     const antes = { fase: reg.fase, fase_em: reg.fase_em };
     Object.keys(extras).forEach(campo => { antes[campo] = reg[campo]; });
     atualizarCaches(id, { fase, fase_em: new Date().toISOString(), ...extras });
@@ -268,18 +281,39 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
     return ok;
 }
 
+// Despachar trava os itens: avisa se ainda falta alguma etapa do pedido
+async function confirmarEtapasDoDespacho(destinatario, status = {}) {
+    const faltam = [
+        !status?.email && 'pedido de NF por e-mail',
+        !status?.romaneio && 'romaneio',
+        !status?.etiqueta && 'etiqueta'
+    ].filter(Boolean);
+    if (!faltam.length) return true;
+    return confirmar({
+        titulo: 'Faltam etapas neste pedido',
+        mensagem: `"${destinatario || 'Sem destinatário'}" ainda não tem: ${faltam.join(', ')}.\n\nDepois de despachado, os itens não podem mais ser alterados.`,
+        tipo: 'aviso',
+        sim: 'Despachar mesmo assim',
+        nao: 'Voltar'
+    });
+}
+
 // Pergunta rastreio e valor do frete (ambos opcionais). null se cancelou.
-export function pedirDadosDespacho(reg = {}) {
-    const codigo = prompt('Código de rastreio (opcional):', reg.rastreio || '');
-    if (codigo === null) return null;
-    let valor = formatarFrete(reg.frete);
-    for (;;) {
-        valor = prompt('Valor do frete em R$ (opcional):', valor);
-        if (valor === null) return null;
-        const frete = lerValor(valor);
-        if (!Number.isNaN(frete)) return { rastreio: codigo.trim() || null, frete };
-        alert('Valor do frete inválido. Use, por exemplo, 25,90.');
-    }
+export async function pedirDadosDespacho(reg = {}, { despachando = false } = {}) {
+    const dados = await pedirCampos({
+        titulo: despachando ? 'Despachar pedido' : 'Rastreio e frete',
+        mensagem: despachando
+            ? 'Os dois campos são opcionais e podem ser preenchidos depois, no detalhe do pedido. Depois de despachado, os itens ficam bloqueados.'
+            : 'Os dois campos são opcionais.',
+        sim: despachando ? 'Despachar' : 'Salvar',
+        campos: [
+            { nome: 'rastreio', rotulo: 'Código de rastreio', valor: reg.rastreio || '' },
+            { nome: 'frete', rotulo: 'Valor do frete (R$)', valor: formatarFrete(reg.frete), placeholder: 'Ex: 25,90' }
+        ],
+        validar: v => Number.isNaN(lerValor(v.frete))
+            ? { campo: 'frete', mensagem: 'Valor do frete inválido. Use, por exemplo, 25,90.' } : null
+    });
+    return dados && { rastreio: dados.rastreio || null, frete: lerValor(dados.frete) };
 }
 
 // Rascunho arrastado para uma fase: cria o registro no histórico já nessa fase.
@@ -290,7 +324,8 @@ async function moverRascunhoPara(draftId, fase) {
 
     let extras = {};
     if (fase === 'despachado') {
-        extras = pedirDadosDespacho();
+        if (!(await confirmarEtapasDoDespacho(rasc.destinatario))) return false;
+        extras = await pedirDadosDespacho({}, { despachando: true });
         if (!extras) return false;
     }
 
@@ -310,20 +345,23 @@ async function moverRascunhoPara(draftId, fase) {
 }
 
 // Impresso antes da NF: o pedido já avançou para "Pronto"; avisa e permite voltar
-export function avisarProntoSemNF(id, { fase, faseAnterior, faseEmAnterior }) {
+export async function avisarProntoSemNF(id, { fase, faseAnterior, faseEmAnterior }) {
     if (fase !== 'pronto' || faseAnterior === fase || ordemFase(faseAnterior) >= ordemFase('nf_emitida')) return;
-    toast('Movido para "Pronto p/ envio" sem NF emitida.', 'warning', 10000, {
-        label: 'Desfazer',
-        onClick: async () => {
-            const extras = faseEmAnterior ? { fase_em: faseEmAnterior } : {};
-            const ok = await moverFase(id, faseAnterior, extras);
-            if (ok) {
-                atualizarCaches(id, { fase: faseAnterior, fase_em: faseEmAnterior || new Date().toISOString() });
-                if (kanbanVisivel()) renderKanban();
-            }
-            toast(ok ? 'Fase restaurada.' : 'Não foi possível desfazer.', ok ? 'success' : 'error');
-        }
+    const voltar = await confirmar({
+        titulo: 'Pedido pronto, mas sem NF emitida',
+        mensagem: `Com etiqueta e romaneio impressos, o pedido foi para "Pronto p/ envio", mas a NF ainda não foi emitida.\n\nQuer manter ou voltar para "${rotuloFase(faseAnterior)}"?`,
+        tipo: 'aviso',
+        sim: `Voltar para "${rotuloFase(faseAnterior)}"`,
+        nao: 'Manter em Pronto'
     });
+    if (!voltar) return;
+    const extras = faseEmAnterior ? { fase_em: faseEmAnterior } : {};
+    const ok = await moverFase(id, faseAnterior, extras);
+    if (ok) {
+        atualizarCaches(id, { fase: faseAnterior, fase_em: faseEmAnterior || new Date().toISOString() });
+        if (kanbanVisivel()) renderKanban();
+    }
+    toast(ok ? 'Fase restaurada.' : 'Não foi possível voltar a fase. Verifique a conexão.', ok ? 'success' : 'error');
 }
 
 // --- Arrastar e soltar (HTML5) ---

@@ -7,6 +7,7 @@ import { popularSelectRemetentes, onSenderChange, validarDoc } from './ui.js';
 import { FASES } from './db.js';
 import { TIPOS } from './planilha.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
 
 const clonar = v => JSON.parse(JSON.stringify(v));
 let edicao = {};    // chave -> valor sendo editado
@@ -207,7 +208,14 @@ window.cfgSalvar = async function (chave, btn) {
 
 window.cfgRestaurar = async function (chave) {
     const c = CARTOES[chave];
-    if (!confirm(`Voltar "${c.titulo}" ao padrão do sistema?`)) return;
+    const ok = await confirmar({
+        titulo: 'Voltar ao padrão do sistema?',
+        mensagem: `"${c.titulo}" perde o que foi personalizado.`,
+        tipo: 'aviso',
+        sim: 'Voltar ao padrão',
+        nao: 'Cancelar'
+    });
+    if (!ok) return;
     if (!(await restaurarPadrao(chave))) { toast('Não foi possível restaurar.', 'error'); return; }
     edicao[chave] = clonar(PADROES[chave]);
     c.depois?.();
@@ -270,7 +278,15 @@ window.cfgSalvarReceita = async function (i, btn) {
 
 window.cfgExcluirReceita = async function (i) {
     const r = receitas[i];
-    if (!r?.id || !confirm(`Excluir a receita "${r.nome}"?`)) return;
+    if (!r?.id) return;
+    const ok = await confirmar({
+        titulo: 'Excluir esta receita?',
+        mensagem: `A receita de kit "${r.nome}" será apagada.`,
+        tipo: 'perigo',
+        sim: 'Excluir',
+        nao: 'Manter'
+    });
+    if (!ok) return;
     if (!(await excluirReceita(r.nome))) { toast('Não foi possível excluir.', 'error'); return; }
     toast('Receita excluída.');
     receitas = await carregarReceitas(true);

@@ -4,6 +4,7 @@ import { escapeHtml } from './config.js';
 import { COLUNAS_VEICULOS, VC, gerarLinhasVeiculos, normUnidade } from './veiculos.js';
 import { config, salvarConfiguracao } from './configuracoes.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
 
 let linhas = [];
 let unidades = []; // [{ unidade, cliente }] dos rastreadores deste envio
@@ -134,7 +135,16 @@ async function lembrarClientes() {
 
 window.copiarVeiculos = async function () {
     const erros = problemas();
-    if (erros.size && !confirm(`${new Set([...erros.keys()]).size} célula(s) para conferir (em laranja). Copiar mesmo assim?`)) return;
+    if (erros.size) {
+        const copiar = await confirmar({
+            titulo: 'Há células para conferir',
+            mensagem: `${new Set([...erros.keys()]).size} célula(s) estão marcadas em laranja.`,
+            tipo: 'aviso',
+            sim: 'Copiar mesmo assim',
+            nao: 'Voltar e conferir'
+        });
+        if (!copiar) return;
+    }
     const todas = [...(document.getElementById('veiculos_cabecalho').checked ? [COLUNAS_VEICULOS] : []), ...linhas];
     const limpo = todas.map(l => COLUNAS_VEICULOS.map((_, c) => String(l[c] ?? '').replace(/[\t\n\r]+/g, ' ').trim()));
     const tsv = limpo.map(l => l.join('\t')).join('\n');

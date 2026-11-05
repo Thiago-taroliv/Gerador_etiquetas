@@ -1,5 +1,6 @@
 import { supabaseClient, $ } from './config.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
 
 export async function carregarDestinatarios() {
     const { data, error } = await supabaseClient.from('destinatarios').select('*').order('nome', { ascending: true });
@@ -58,14 +59,21 @@ export async function salvarOuAtualizarDestinatario(registro) {
     let error;
 
     if (existente) {
-        if (!confirm(`Já existe um cadastro para "${existente.nome}" (${existente.cpf_cnpj || 'sem documento'}).\n\nDeseja ATUALIZAR esse cadastro com os dados atuais?`)) return false;
+        const atualizar = await confirmar({
+            titulo: 'Destinatário já cadastrado',
+            mensagem: `Já existe um cadastro para "${existente.nome}" (${existente.cpf_cnpj || 'sem documento'}).\n\nQuer atualizar esse cadastro com os dados atuais?`,
+            tipo: 'aviso',
+            sim: 'Atualizar cadastro',
+            nao: 'Cancelar'
+        });
+        if (!atualizar) return false;
         ({ error } = await supabaseClient.from('destinatarios').update(registro).eq('id', existente.id));
     } else {
         ({ error } = await supabaseClient.from('destinatarios').insert([registro]));
     }
 
     if (error) {
-        alert('Erro ao salvar: ' + error.message);
+        toast('Erro ao salvar: ' + error.message, 'error');
         return false;
     }
     toast(existente ? 'Cadastro atualizado na nuvem.' : 'Destinatário salvo na nuvem.');
@@ -95,7 +103,7 @@ export async function loadJsonFile() {
     r.onload = async function (e) {
         try {
             const jsonCarregado = JSON.parse(e.target.result);
-            if (!Array.isArray(jsonCarregado)) { alert('O JSON importado deve ser um Array de objetos.'); return; }
+            if (!Array.isArray(jsonCarregado)) { toast('O arquivo deve conter uma lista de destinatários (Array de objetos).', 'warning'); return; }
 
             const registrosParaBanco = jsonCarregado.map(r => ({
                 nome: r.destinatario || r.nome_cliente || r.name || r.nome || '',
@@ -119,13 +127,21 @@ export async function loadJsonFile() {
                 return;
             }
 
+            const importar = await confirmar({
+                titulo: 'Importar destinatários?',
+                mensagem: `${novos.length} destinatário(s) novo(s) entram no cadastro.${ignorados ? ` ${ignorados} já cadastrado(s) serão ignorado(s).` : ''}`,
+                sim: 'Importar',
+                nao: 'Cancelar'
+            });
+            if (!importar) return;
+
             const { error } = await supabaseClient.from('destinatarios').insert(novos);
-            if (error) alert('Erro do Supabase ao importar: ' + error.message);
+            if (error) toast('Erro ao importar: ' + error.message, 'error');
             else {
                 toast(`${novos.length} contato(s) importado(s)${ignorados ? `, ${ignorados} já existente(s) ignorado(s)` : ''}.`, 'success', 5000);
                 carregarDestinatarios();
             }
-        } catch (err) { alert('Erro ao processar JSON: ' + err.message); }
+        } catch (err) { toast('Não foi possível ler o arquivo JSON: ' + err.message, 'error'); }
     };
     r.readAsText(f, 'utf-8');
 }
@@ -133,7 +149,7 @@ export async function loadJsonFile() {
 export async function exportToJSON() {
     const { data, error } = await supabaseClient.from('destinatarios').select('*');
     if (error) {
-        alert("Erro ao ler banco para exportação: " + error.message);
+        toast('Erro ao ler o banco para exportar: ' + error.message, 'error');
         return;
     }
     if (!data || data.length === 0) {
@@ -408,7 +424,7 @@ export async function salvarPendente(dados, draftId = null, silencioso = false) 
 
     if (error) {
         console.error('Erro ao salvar rascunho:', error.message);
-        alert('Erro ao salvar rascunho: ' + error.message);
+        toast('Erro ao salvar o rascunho: ' + error.message, 'error');
         return null;
     } else {
         if (!silencioso) toast('Rascunho salvo.');
@@ -429,14 +445,23 @@ export async function carregarPendentes() {
     return data || [];
 }
 
-export async function deletarPendente(id, confirmar = true) {
-    if (confirmar && !confirm('Você tem certeza que deseja excluir ESTE RASCUNHO?')) return false;
+export async function deletarPendente(id, perguntar = true) {
+    if (perguntar) {
+        const ok = await confirmar({
+            titulo: 'Excluir este rascunho?',
+            mensagem: 'Os dados dele serão apagados e não dá para desfazer.',
+            tipo: 'perigo',
+            sim: 'Excluir rascunho',
+            nao: 'Manter'
+        });
+        if (!ok) return false;
+    }
 
     const { error } = await supabaseClient.from('pedidos_pendentes').delete().eq('id', id);
 
     if (error) {
         console.error('Erro ao deletar rascunho:', error.message);
-        alert('Erro ao deletar rascunho: ' + error.message);
+        toast('Erro ao excluir o rascunho: ' + error.message, 'error');
         return false;
     }
     return true;
@@ -451,7 +476,7 @@ export async function concluirPendente(id) {
         .single();
 
     if (errBusca || !rascunho) {
-        alert('Erro ao encontrar o rascunho para concluir.');
+        toast('Não encontramos o rascunho para concluir. Atualize a página e tente de novo.', 'error');
         return false;
     }
 
@@ -460,7 +485,7 @@ export async function concluirPendente(id) {
     const salvo = await registrarNoHistorico(dadosFormulario, dadosFormulario.historico_id || null);
     if (!salvo) {
         // Não apaga o rascunho se o histórico falhou, para não perder dados
-        alert('Erro ao salvar no Histórico. O rascunho foi mantido.');
+        toast('Erro ao salvar no Histórico. O rascunho foi mantido.', 'error');
         return false;
     }
 

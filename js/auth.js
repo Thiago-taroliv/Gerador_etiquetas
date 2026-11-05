@@ -3,7 +3,9 @@ import { carregarDestinatarios, popularSelectDestinatarios } from './db.js';
 import { initializeItems, renderItemsCRUD } from './items.js';
 import { desligarTempoReal } from './kanban.js';
 import { carregarConfiguracoes, config } from './configuracoes.js';
-import { popularSelectRemetentes, onSenderChange } from './ui.js';
+import { popularSelectRemetentes, onSenderChange, formularioAlterado } from './ui.js';
+import { confirmar } from './dialogo.js';
+import { toast } from './toast.js';
 
 export async function checkSession() {
     const { data: { session }, error } = await supabaseClient.auth.getSession();
@@ -59,9 +61,19 @@ export async function handleLogin() {
 }
 
 export async function handleLogout() {
+    if (formularioAlterado()) {
+        const sair = await confirmar({
+            titulo: 'Sair sem salvar?',
+            mensagem: 'O formulário tem alterações que ainda não foram salvas e elas podem ser perdidas.',
+            tipo: 'aviso',
+            sim: 'Sair mesmo assim',
+            nao: 'Continuar aqui'
+        });
+        if (!sair) return;
+    }
     desligarTempoReal();
     const { error } = await supabaseClient.auth.signOut();
-    if(error) alert("Erro ao sair: " + error.message);
+    if(error) toast('Erro ao sair: ' + error.message, 'error');
     else checkSession();
 }
 

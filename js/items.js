@@ -1,4 +1,6 @@
 import { supabaseClient, escapeHtml } from './config.js';
+import { confirmar } from './dialogo.js';
+import { toast } from './toast.js';
 
 // Lista padrão de items
 const DEFAULT_ITEMS = [
@@ -176,7 +178,7 @@ window.addNewItem_global = async function() {
 
     const nome = input.value.trim();
     if (!nome) {
-        alert('Digite o nome do item');
+        toast('Digite o nome do item.', 'warning');
         return;
     }
 
@@ -188,13 +190,20 @@ window.addNewItem_global = async function() {
             window.renderItemsCRUD_fn('items_list');
         }
     } else {
-        alert('Item já existe ou erro ao adicionar');
+        toast('Este item já existe ou não foi possível adicioná-lo.', 'warning');
     }
 };
 
 // Função global para deletar item
 window.deleteItem_global = async function(nome) {
-    if (!confirm(`Deletar "${nome}"?`)) return;
+    const ok = await confirmar({
+        titulo: 'Deletar este item do cadastro?',
+        mensagem: `"${nome}" deixa de aparecer nas sugestões. Envios já feitos não mudam.`,
+        tipo: 'perigo',
+        sim: 'Deletar',
+        nao: 'Manter'
+    });
+    if (!ok) return;
 
     const success = await deleteItem(nome);
     if (success) {
@@ -203,7 +212,7 @@ window.deleteItem_global = async function(nome) {
             window.renderItemsCRUD_fn('items_list');
         }
     } else {
-        alert('Erro ao deletar item');
+        toast('Não foi possível deletar o item.', 'error');
     }
 };
 

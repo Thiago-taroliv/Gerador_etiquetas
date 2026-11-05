@@ -6,6 +6,8 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 
 - **Kanban de pedidos** (aba principal): cada envio aparece na coluna da sua fase — Rascunho, Aguardando NF, NF emitida, Pronto p/ envio, Despachado e Entregue. Os cards podem ser arrastados entre colunas, e as ações do sistema (e-mail, etiqueta, romaneio) avançam a fase sozinhas
 - **Importação da planilha de estoque**: o responsável do estoque sobe a planilha de saída e cada envio vira um rascunho no kanban, com aviso do que falta preencher à mão (CPF/CNPJ, endereço, volumes...). Os nomes do estoque viram itens do sistema pela tabela de-para (Gerenciar Dados → De-para Estoque); o chip fica na linha do rastreador na planilha de envio. Linhas do mesmo dia, destinatário e unidade viram um envio só, mesmo com várias OS (a prévia permite separar por OS ou juntar envios)
+- **Troca de equipamento com defeito**: cada número (IMEI) de um item tem "Substituir", que já pede o número novo e mantém chip e OS de origem, e "Excluir", que tira o número e baixa a quantidade. Ao salvar, o sistema avisa se o romaneio impresso ou o pedido de NF ficaram desatualizados
+- **Guia na tela**: confirmações e avisos em modais próprios, e aviso de alterações não salvas antes de trocar de pedido, iniciar outro envio ou sair
 - **Montar kit** (prévia da importação e formulário): sugere qual item é cada componente da receita (ex. KIT RA24) e quantos kits dá por OS; tudo ajustável antes de montar, e o kit pode ser desmontado
 - **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos dias, configurável) e permite juntar tudo num envio só
 - Geração automática de **etiquetas de envio** (com suporte a múltiplos volumes)
@@ -51,6 +53,8 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
     ├── kit.js          # Sugestão, montagem e desmontagem de kits
     ├── kitModal.js     # Tela "Montar kit"
     ├── kitReceitas.js  # Receitas de kit no Supabase
+    ├── imeis.js        # Números de um item: colar, substituir e excluir
+    ├── dialogo.js      # Modais de confirmação, aviso e pergunta
     ├── conferencia.js  # Conferência do e-mail e resumo antes de concluir
     ├── configuracoes.js     # Configurações editáveis (padrões + Supabase)
     ├── configuracoesTela.js # Tela Gerenciar Dados → Configurações

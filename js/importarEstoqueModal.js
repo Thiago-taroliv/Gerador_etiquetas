@@ -10,6 +10,7 @@ import { carregarReceitas } from './kitReceitas.js';
 import { garantirDePara, acharDePara, salvarDePara, sugerirPapel, sugerirNome, normDesc, datalistItensHtml, selectPapelHtml } from './dePara.js';
 import { carregarOrigensEstoque, salvarPendente } from './db.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
 
 let registros = [];    // linhas lidas da planilha (reagrupadas quando um de-para muda)
 let ignoradas = [];
@@ -450,8 +451,16 @@ window.criarRascunhosEstoque = async function () {
     if (!escolhidos.length || itensNovos().length) return;
 
     const atualizacoes = escolhidos.filter(g => g.status !== 'novo').length;
-    if (atualizacoes && !confirm(`${atualizacoes} rascunho(s) já existem e serão atualizados com os itens da planilha.\n\n` +
-        'CPF/CNPJ, endereço, contato, volumes e transportadora já preenchidos são mantidos.')) return;
+    if (atualizacoes) {
+        const ok = await confirmar({
+            titulo: 'Atualizar rascunhos existentes?',
+            mensagem: `${atualizacoes} rascunho(s) já existem e os itens deles serão trocados pelos da planilha, inclusive números substituídos à mão.\n\nCPF/CNPJ, endereço, contato, volumes e transportadora já preenchidos são mantidos.`,
+            tipo: 'aviso',
+            sim: 'Atualizar rascunhos',
+            nao: 'Cancelar'
+        });
+        if (!ok) return;
+    }
 
     const btn = $('estoque_criar');
     btn.disabled = true;
@@ -486,7 +495,7 @@ async function receberArquivo(arquivo) {
         }
         await receber(lido.grade, lido.bruta, arquivo.name + (lido.aba ? ` (aba ${lido.aba})` : ''));
     } catch (e) {
-        alert('Não foi possível ler o arquivo: ' + e.message);
+        toast('Não foi possível ler o arquivo: ' + e.message, 'error');
     } finally {
         $('estoque_status').textContent = '';
         $('estoque_arquivo').value = '';

@@ -3,6 +3,11 @@
 import { $, escapeHtml } from './config.js';
 import { COLUNAS, GRUPOS, TIPOS, COL, copiarLinhasPlanilha } from './planilha.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
+
+// Pergunta antes de perder as edições feitas à mão na tabela
+const descartarEdicoes = (titulo, mensagem, sim) =>
+    confirmar({ titulo, mensagem, tipo: 'aviso', sim, nao: 'Continuar editando' });
 
 // Largura de cada coluna (px), na ordem de COLUNAS
 const LARGURAS = [70, 90, 190, 64, 150, 100, 120, 150, 100, 180, 70, 80, 70, 70, 76, 80, 160, 200, 240, 90, 150, 130, 50, 150, 96, 130, 70, 96, 90];
@@ -191,9 +196,9 @@ function atualizarInfoKits(montar) {
 }
 
 // Liga/desliga a montagem de kits: refaz as linhas e grava a escolha no envio
-export function alternarKitsPlanilha(montar) {
+export async function alternarKitsPlanilha(montar) {
     if (!kits) return;
-    if (editado && !confirm('Refazer as linhas? As edições feitas na tabela serão perdidas.')) {
+    if (editado && !(await descartarEdicoes('Refazer as linhas?', 'As edições feitas na tabela serão perdidas.', 'Refazer linhas'))) {
         $('planilha_kits_check').checked = !montar;
         return;
     }
@@ -206,8 +211,8 @@ export function alternarKitsPlanilha(montar) {
     kits.aoMudar?.(montar);
 }
 
-export function fecharPreviewPlanilha(forcar = false) {
-    if (!forcar && editado && !confirm('Descartar as alterações feitas nas linhas?')) return;
+export async function fecharPreviewPlanilha(forcar = false) {
+    if (!forcar && editado && !(await descartarEdicoes('Fechar sem copiar?', 'As alterações feitas nas linhas serão descartadas.', 'Descartar e fechar'))) return;
     $('modal-planilha').style.display = 'none';
 }
 
@@ -226,8 +231,8 @@ export function adicionarLinhaPlanilha() {
     focar(linhas.length - 1, 4);
 }
 
-export function restaurarPlanilha() {
-    if (editado && !confirm('Voltar para as linhas como foram geradas? As edições serão perdidas.')) return;
+export async function restaurarPlanilha() {
+    if (editado && !(await descartarEdicoes('Voltar às linhas originais?', 'As linhas voltam a ser como foram geradas, e as edições serão perdidas.', 'Voltar às originais'))) return;
     linhas = clonar(original);
     editado = false;
     render();
@@ -235,11 +240,20 @@ export function restaurarPlanilha() {
 
 export async function confirmarCopiaPlanilha() {
     const erros = problemas();
-    if (erros.size && !confirm(`Há ${erros.size} célula(s) marcada(s) para conferir (IMEI/ICCID fora do padrão ou repetido).\n\nCopiar mesmo assim?`)) return;
+    if (erros.size) {
+        const copiar = await confirmar({
+            titulo: 'Há células para conferir',
+            mensagem: `${erros.size} célula(s) estão marcadas: IMEI/ICCID fora do padrão ou repetido.`,
+            tipo: 'aviso',
+            sim: 'Copiar mesmo assim',
+            nao: 'Voltar e conferir'
+        });
+        if (!copiar) return;
+    }
     try {
         await copiarLinhasPlanilha(linhas);
     } catch (e) {
-        alert('Não foi possível copiar: ' + e.message);
+        toast('Não foi possível copiar: ' + e.message, 'error');
         return;
     }
     fecharPreviewPlanilha(true);

@@ -3,6 +3,7 @@
 import { $, escapeHtml } from './config.js';
 import { parseTSV, lerLinhas, agruparEnvios, resumoItens, lerArquivo } from './importarPlanilha.js';
 import { toast } from './toast.js';
+import { confirmar } from './dialogo.js';
 
 const CHAVE_STORAGE = 'gx_planilha_importada_v1';
 const MAX_LISTA = 150;
@@ -89,7 +90,7 @@ async function receberArquivo(arquivo) {
         const grade = await lerArquivo(arquivo);
         aplicarRegistros(lerLinhas(grade), `de ${arquivo.name}`);
     } catch (e) {
-        alert('Não foi possível ler o arquivo: ' + e.message);
+        toast('Não foi possível ler o arquivo: ' + e.message, 'error');
     } finally {
         $('importar_status').textContent = '';
         $('importar_arquivo').value = '';
@@ -144,8 +145,15 @@ export function novaBaseImportada() {
     mostrarEtapa();
 }
 
-export function limparBaseImportada() {
-    if (!confirm('Apagar a base importada deste navegador?')) return;
+export async function limparBaseImportada() {
+    const ok = await confirmar({
+        titulo: 'Apagar a base importada?',
+        mensagem: 'A base sai deste navegador. A planilha original não muda, e dá para importar de novo.',
+        tipo: 'perigo',
+        sim: 'Apagar base',
+        nao: 'Manter'
+    });
+    if (!ok) return;
     try { localStorage.removeItem(CHAVE_STORAGE); } catch (e) { /* ignora */ }
     grupos = [];
     quando = null;
@@ -156,8 +164,8 @@ export function escolherArquivoImportar() {
     $('importar_arquivo').click();
 }
 
-export function usarEnvioImportado(i) {
+export async function usarEnvioImportado(i) {
     const g = grupos[i];
     if (!g || !aoUsar) return;
-    if (aoUsar(g) !== false) fecharImportarPlanilha();
+    if (await aoUsar(g) !== false) fecharImportarPlanilha();
 }
