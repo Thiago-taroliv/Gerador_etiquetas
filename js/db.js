@@ -302,6 +302,8 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
             // Reimprimir depois de uma junção não pode apagar o registro dos pedidos juntados
             const mesclados = atual.dados_completos?.mesclados;
             if (mesclados && !registro.dados_completos.mesclados) registro.dados_completos.mesclados = mesclados;
+            const rascunhoEm = atual.dados_completos?.rascunho_em;
+            if (rascunhoEm && !registro.dados_completos.rascunho_em) registro.dados_completos.rascunho_em = rascunhoEm;
 
             const status = { email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas };
             const faseAnterior = atual.fase || 'rascunho';
@@ -481,7 +483,7 @@ export async function concluirPendente(id) {
     }
 
     // 2. Salva no histórico (se já foi gerado antes, atualiza o mesmo registro em vez de duplicar)
-    const dadosFormulario = rascunho.dados_completos;
+    const dadosFormulario = { ...rascunho.dados_completos, rascunho_em: rascunho.created_at };
     const salvo = await registrarNoHistorico(dadosFormulario, dadosFormulario.historico_id || null);
     if (!salvo) {
         // Não apaga o rascunho se o histórico falhou, para não perder dados

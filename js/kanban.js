@@ -265,6 +265,9 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
     // O quadro pode ter recarregado enquanto o modal estava aberto
     reg = acharPedido(id);
     if (!reg) return false;
+    // Data de envio: voltar de "Entregue" mantém a original; voltar para antes do despacho a apaga
+    if (fase === 'despachado' && !reg.despachado_em) extras.despachado_em = new Date().toISOString();
+    else if (reg.despachado_em && fase !== 'cancelado' && ordemFase(fase) < ordemFase('despachado')) extras.despachado_em = null;
     const antes = { fase: reg.fase, fase_em: reg.fase_em };
     Object.keys(extras).forEach(campo => { antes[campo] = reg[campo]; });
     atualizarCaches(id, { fase, fase_em: new Date().toISOString(), ...extras });
@@ -327,9 +330,10 @@ async function moverRascunhoPara(draftId, fase) {
         if (!(await confirmarEtapasDoDespacho(rasc.destinatario))) return false;
         extras = await pedirDadosDespacho({}, { despachando: true });
         if (!extras) return false;
+        extras.despachado_em = new Date().toISOString();
     }
 
-    const salvo = await registrarNoHistorico(rasc.dados_completos);
+    const salvo = await registrarNoHistorico({ ...rasc.dados_completos, rascunho_em: rasc.created_at });
     if (!salvo) {
         toast('Não foi possível mover o rascunho. Verifique a conexão.', 'error', 5000);
         return false;

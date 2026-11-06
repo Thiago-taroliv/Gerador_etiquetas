@@ -9,7 +9,7 @@ import { linhaImeiHtml, imeiDaLinha, atualizarResumoImeis, sinalizarMudanca } fr
 let formularioBase = null;
 
 function assinaturaFormulario() {
-    const { doc_type, origem, montar_kits, ...d } = collectData();
+    const { doc_type, origem, montar_kits, rascunho_em, ...d } = collectData();
     return JSON.stringify(d);
 }
 

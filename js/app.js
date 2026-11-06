@@ -690,6 +690,7 @@ function extrasDoEnvio(dados) {
     const extras = {};
     if (dados?.origem) extras.origem = dados.origem;
     if (dados?.montar_kits !== undefined) extras.montar_kits = dados.montar_kits;
+    if (dados?.rascunho_em) extras.rascunho_em = dados.rascunho_em;
     return extras;
 }
 
@@ -728,6 +729,8 @@ window.salvarRascunhoAtual = async function(silencioso = false) {
     if (salvo) {
         // Guarda o ID que voltou do supabase
         AppState.currentDraftId = String(salvo.id);
+        // O registro do histórico guarda quando o rascunho nasceu (a data de criação do pedido é outra)
+        AppState.extrasEnvio = { rascunho_em: salvo.created_at, ...(AppState.extrasEnvio || {}) };
         marcarFormularioSalvo();
         atualizarIndicadorRascunho();
         return true;
@@ -807,7 +810,7 @@ function abrirRascunhoNoFormulario(id) {
         AppState.currentDraftId = String(id);
         AppState.currentHistoricoId = rascunho.dados_completos?.historico_id || null;
         AppState.juncaoPendente = [];
-        AppState.extrasEnvio = extrasDoEnvio(rascunho.dados_completos);
+        AppState.extrasEnvio = { ...extrasDoEnvio(rascunho.dados_completos), rascunho_em: rascunho.created_at };
         marcarFormularioSalvo();
         atualizarIndicadorRascunho();
         atualizarPendencias();
@@ -901,16 +904,21 @@ window.confirmarCopiaPlanilha = confirmarCopiaPlanilha;
 window.alternarKitsPlanilha = alternarKitsPlanilha;
 
 // aoMudarKits(montar): grava a escolha de "Montar kits" no envio de onde as linhas vieram
-// reg: registro do histórico, para preencher rastreio, frete e data de recebimento
-function abrirLinhas(dados, dataEnvio, titulo, aoMudarKits, reg = null) {
+// reg: registro do histórico, para preencher datas, rastreio e frete
+function abrirLinhas(dados, titulo, aoMudarKits, reg = null) {
     // Kit fica numa linha só por padrão; separado apenas se a pessoa desmarcar
     const marcado = dados.montar_kits !== false;
-    const envio = reg ? {
-        rastreio: reg.rastreio,
-        frete: reg.frete,
-        recebido: reg.fase === 'entregue' ? new Date(reg.fase_em).toLocaleDateString('pt-BR') : ''
-    } : {};
-    const gerar = montar => gerarLinhasPlanilha(dados, dataEnvio, { montarKits: montar, envio });
+    const dataBR = data => data ? new Date(data).toLocaleDateString('pt-BR') : '';
+    const envio = {
+        // Criação do rascunho; envio sem rascunho usa a criação do registro (ou hoje, se ainda não foi salvo)
+        recebimento: dataBR(dados.rascunho_em || reg?.created_at || Date.now()),
+        // Só preenche depois que o pedido foi movido para "Despachado"
+        dataEnvio: dataBR(reg?.despachado_em),
+        rastreio: reg?.rastreio,
+        frete: reg?.frete,
+        recebido: reg?.fase === 'entregue' ? dataBR(reg.fase_em) : ''
+    };
+    const gerar = montar => gerarLinhasPlanilha(dados, { montarKits: montar, envio });
     const linhas = gerar(marcado);
     if (linhas.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return; }
     const info = contarKits(dados);
@@ -921,7 +929,7 @@ function abrirLinhas(dados, dataEnvio, titulo, aoMudarKits, reg = null) {
 window.copiarParaPlanilha = function () {
     const d = collectData();
     const ref = d.reference_type !== 'none' && d.reference ? ` · ${d.reference_type === 'os' ? 'OS' : 'Ticket'} ${d.reference}` : '';
-    abrirLinhas(d, undefined, `Linhas para a planilha${ref}`, async montar => {
+    abrirLinhas(d, `Linhas para a planilha${ref}`, async montar => {
         AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), montar_kits: montar };
         // Rascunho/registro já salvos guardam a escolha na hora; envio novo guarda ao salvar ou gerar
         if (AppState.currentDraftId) await salvarRascunhoAtual(true);
@@ -929,14 +937,14 @@ window.copiarParaPlanilha = function () {
     }, AppState.currentHistoricoId ? acharPedido(AppState.currentHistoricoId) : null);
 };
 
-// Botão no detalhe do histórico (data de envio = data do registro)
+// Botão no detalhe do histórico
 window.copiarPlanilhaDoHistorico = function (id) {
     const reg = acharPedido(id);
     if (!reg || !reg.dados_completos) {
         toast('Este registro antigo não tem os dados completos para gerar as linhas.', 'warning');
         return;
     }
-    abrirLinhas(reg.dados_completos, new Date(reg.created_at).toLocaleDateString('pt-BR'),
+    abrirLinhas(reg.dados_completos,
         `Linhas para a planilha · ${reg.destinatario || ''}`, async montar => {
             if (await gravarEscolhaKits(id, montar)) atualizarCaches(id, { dados_completos: { ...reg.dados_completos, montar_kits: montar } });
         }, reg);

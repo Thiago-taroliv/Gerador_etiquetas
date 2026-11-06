@@ -15,7 +15,8 @@ begin
         add column if not exists fase     text        not null default 'rascunho',
         add column if not exists fase_em  timestamptz not null default now(),
         add column if not exists rastreio text,
-        add column if not exists frete    numeric(10,2);
+        add column if not exists frete    numeric(10,2),
+        add column if not exists despachado_em timestamptz;
 
     -- mesclado_em usa o mesmo tipo de historico.id (uuid ou bigint)
     select format_type(a.atttypid, a.atttypmod) into tipo_id
@@ -36,6 +37,11 @@ begin
     if primeira_vez then
         update public.historico set fase = 'entregue', fase_em = created_at;
     end if;
+
+    -- Pedidos que já estão em "Despachado": fase_em é o momento do despacho.
+    -- Os já entregues ficam sem data: fase_em deles guarda a entrega, e a do despacho se perdeu.
+    update public.historico set despachado_em = fase_em
+    where fase = 'despachado' and despachado_em is null;
 end $$;
 
 create index if not exists historico_fase_idx on public.historico (fase, fase_em desc);

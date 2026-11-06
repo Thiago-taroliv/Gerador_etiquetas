@@ -84,10 +84,6 @@ export function separarEnderecoLinha2(texto) {
     return res;
 }
 
-function hoje() {
-    return new Date().toLocaleDateString('pt-BR');
-}
-
 // 25.9 -> "25,90" (vazio se não informado)
 export const formatarFrete = v =>
     v === null || v === undefined || v === '' ? '' : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -181,8 +177,8 @@ const iccidDe = im => (im.iccid && /\d{6,}/.test(im.iccid) ? String(im.iccid).tr
 // Monta as linhas (array de arrays, uma posição por coluna) a partir dos dados do formulário/rascunho/histórico.
 // montarKits: junta rastreador + teclado avulsos da mesma unidade numa linha só (na ordem dos IMEIs).
 // É o padrão: só fica separado quando a pessoa desmarca "Montar kits" (montar_kits === false).
-// envio: o que o pedido já tem depois de despachado — { rastreio, frete, recebido }
-export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = dados.montar_kits !== false, envio = {} } = {}) {
+// envio: datas e dados do pedido — { recebimento, dataEnvio, rastreio, frete, recebido }
+export function gerarLinhasPlanilha(dados, { montarKits = dados.montar_kits !== false, envio = {} } = {}) {
     const end = separarEnderecoLinha2(dados.dest_addr2);
     const os = dados.reference_type === 'none' ? '' : String(dados.reference || '').trim();
     const linhas = [];
@@ -199,6 +195,7 @@ export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = da
         l[2] = unidade;
         l[3] = dados.planilha_tipo || '';
         l[4] = equip;
+        l[5] = envio.recebimento || '';
         Object.entries(campos).forEach(([i, v]) => { l[i] = v; });
         l[17] = (dados.dest_name || '').trim();
         l[18] = (dados.dest_addr1 || '').trim();
@@ -207,7 +204,7 @@ export function gerarLinhasPlanilha(dados, dataEnvio = hoje(), { montarKits = da
         l[21] = end.cidade;
         l[22] = end.uf;
         l[23] = (dados.dest_phone || '').trim();
-        l[24] = dataEnvio;
+        l[24] = envio.dataEnvio || '';
         l[25] = envio.rastreio || '';
         l[26] = String(dados.total_vol || '').trim();
         l[27] = envio.recebido || '';
