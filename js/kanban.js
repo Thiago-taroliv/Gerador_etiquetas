@@ -1,6 +1,6 @@
 // Kanban de pedidos: uma coluna por fase, cards arrastáveis entre elas
 import { $, escapeHtml, supabaseClient, AppState } from './config.js';
-import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente, gravarPreparo } from './db.js';
+import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente, gravarPreparo, deletarPendente } from './db.js';
 import { formatarFrete, lerValor } from './planilha.js';
 import { oferecerPixFrete } from './pixFrete.js';
 import { confirmar, pedirCampos } from './dialogo.js';
@@ -8,6 +8,7 @@ import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao, pedid
 import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
 import { config } from './configuracoes.js';
+import { formularioAlterado } from './ui.js';
 
 // Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Gerenciar Dados > Configurações)
 const limitesAtraso = () => config('kanban_atraso') || {};
@@ -65,10 +66,30 @@ export async function carregarViewKanban() {
     rascunhoPorPedido = {};
     pendentes.forEach(r => { if (r.dados_completos?.historico_id) rascunhoPorPedido[r.dados_completos.historico_id] = r.id; });
     renderKanban();
+
+    // Pedidos já enviados antes desta regra que ainda têm rascunho: conclui em segundo plano
+    pedidos.filter(r => FASES_ENVIADO.includes(r.fase) && rascunhoPorPedido[r.id])
+        .forEach(r => concluirRascunhoDoPedido(r.id));
 }
 
 // Id do rascunho aberto para o pedido do histórico, se houver
 export const rascunhoDoPedido = id => rascunhoPorPedido[id] || null;
+
+// Depois de despachado os itens não mudam mais: o rascunho ligado ao pedido é concluído (apagado).
+// O pedido continua no kanban e no histórico com todos os dados.
+const FASES_ENVIADO = ['despachado', 'entregue'];
+
+async function concluirRascunhoDoPedido(historicoId) {
+    const draftId = rascunhoPorPedido[historicoId];
+    if (!draftId) return;
+    // Rascunho na tela com alterações não salvas: deixa para a próxima vez
+    if (String(AppState.currentDraftId) === String(draftId) && formularioAlterado()) return;
+    if (!(await deletarPendente(draftId, false))) return;
+    delete rascunhoPorPedido[historicoId];
+    // Formulário com este rascunho segue ligado ao pedido do histórico
+    if (String(AppState.currentDraftId) === String(draftId)) AppState.currentDraftId = null;
+    if (kanbanVisivel()) renderKanban();
+}
 
 // Registro do histórico por id, venha do kanban ou da lista do Histórico
 export function acharPedido(id) {
@@ -217,7 +238,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     ].filter(Boolean).join(' &middot; ');
     const icones = [
         doEstoque ? '<span class="kanban-icone" title="Importado da planilha de estoque">📥</span>' : '',
-        !rascunho && idDraft ? `<span class="kanban-icone clicavel" title="Tem rascunho aberto: clique para abrir no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">✎</span>` : ''
+        !rascunho && idDraft ? `<span class="kanban-icone clicavel" title="Editar no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">✎</span>` : ''
     ].join('');
 
     return `
@@ -495,6 +516,7 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
         if (kanbanVisivel()) renderKanban();
         toast('Não foi possível mudar a fase. Verifique a conexão.', 'error', 5000);
     } else if (fase === 'despachado') {
+        await concluirRascunhoDoPedido(id);
         oferecerPixFrete(reg);
     }
     return ok;
@@ -557,9 +579,14 @@ async function moverRascunhoPara(draftId, fase) {
         return false;
     }
     if (salvo.fase !== fase || Object.keys(extras).length) await moverFase(salvo.id, fase, extras);
-    await salvarPendente({ ...rasc.dados_completos, historico_id: salvo.id }, draftId, true);
     // Formulário com este rascunho aberto passa a atualizar o mesmo registro
     if (String(AppState.currentDraftId) === String(draftId)) AppState.currentHistoricoId = String(salvo.id);
+    if (FASES_ENVIADO.includes(fase)) {
+        // Já enviado: não precisa mais do rascunho
+        if (await deletarPendente(draftId, false) && String(AppState.currentDraftId) === String(draftId)) AppState.currentDraftId = null;
+    } else {
+        await salvarPendente({ ...rasc.dados_completos, historico_id: salvo.id }, draftId, true);
+    }
 
     await carregarViewKanban();
     if (fase === 'despachado') oferecerPixFrete(acharPedido(salvo.id));
