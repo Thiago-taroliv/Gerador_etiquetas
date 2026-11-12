@@ -26,6 +26,7 @@ import { abrirImportarPlanilha, fecharImportarPlanilha, importarPlanilhaAberto, 
 import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto, alternarKitsPlanilha } from './planilhaPreview.js';
 
 import { config } from './configuracoes.js';
+import { semEnvio, entregaDe, rotuloEntrega } from './entrega.js';
 import { renderConfiguracoes } from './configuracoesTela.js';
 import { abrirLinhasVeiculos } from './veiculosModal.js';
 
@@ -295,6 +296,8 @@ window.abrirDetalheHistorico = function (id) {
     const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${escapeHtml(it.qty)} × ${escapeHtml(it.desc)}</li>`).join('');
     const dataFormatada = new Date(reg.created_at).toLocaleString('pt-BR');
     const cancelado = reg.fase === 'cancelado';
+    // Retirada / instalação na Ranor: sem NF, etiqueta, rastreio nem frete
+    const sem = semEnvio(reg.dados_completos);
 
     // Junção de pedidos: este foi absorvido por outro envio, ou absorveu outros
     const mesclados = reg.dados_completos?.mesclados || [];
@@ -342,7 +345,8 @@ window.abrirDetalheHistorico = function (id) {
             <div style="font-size:18px; font-weight:700; color:#222;">${escapeHtml(reg.destinatario)}</div>
             ${reg.unidade && reg.unidade !== reg.destinatario ? `<div style="font-size:13px; color:#555; margin-top:2px;">Unidade: ${escapeHtml(reg.unidade)}</div>` : ''}
             ${reg.referencia ? `<div style="font-size:13px; color:#b70f0f; margin-top:4px; font-weight:600;">Ref: ${escapeHtml(reg.referencia)}</div>` : ''}
-            ${reg.transportadora ? `<div style="font-size:12px; color:#888; margin-top:2px;">Transportadora: ${escapeHtml(reg.transportadora)}</div>` : ''}
+            ${sem ? `<div style="font-size:12px; color:#888; margin-top:2px;">Saída: ${escapeHtml(rotuloEntrega(entregaDe(reg.dados_completos)))} (sem NF)</div>`
+                : reg.transportadora ? `<div style="font-size:12px; color:#888; margin-top:2px;">Transportadora: ${escapeHtml(reg.transportadora)}</div>` : ''}
         </div>
 
         <div style="margin-bottom:20px;">
@@ -358,9 +362,9 @@ window.abrirDetalheHistorico = function (id) {
         <div>
             <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Status das Ações</div>
             <div style="display:flex; flex-direction:column; gap:8px;">
-                ${statusItem('email',    'E-mail enviado',       st.email,    'email')}
+                ${sem ? '' : statusItem('email',    'E-mail enviado',       st.email,    'email')}
                 ${statusItem('romaneio', 'Romaneio impresso',    st.romaneio, 'romaneio')}
-                ${statusItem('etiqueta', 'Etiqueta impressa',    st.etiqueta, 'etiqueta')}
+                ${sem ? '' : statusItem('etiqueta', 'Etiqueta impressa',    st.etiqueta, 'etiqueta')}
             </div>
         </div>
 
@@ -375,7 +379,7 @@ window.abrirDetalheHistorico = function (id) {
             <select onchange="mudarPreparoDoModal('${id}', this.value)">
                 ${ETAPAS_PREPARO.map(e => `<option value="${e.chave}"${e.chave === preparoDe(reg.dados_completos) ? ' selected' : ''}>${e.rotulo}</option>`).join('')}
             </select>
-            <div class="detalhe-rastreio">
+            <div class="detalhe-rastreio"${sem ? ' style="display:none"' : ''}>
                 Rastreio: <strong>${escapeHtml(reg.rastreio) || '—'}</strong>
                 · Frete: <strong>${reg.frete != null ? 'R$ ' + formatarFrete(reg.frete) : '—'}</strong>
                 <button class="btn-sm btn-neutral" onclick="editarRastreioDoModal('${id}')">Editar</button>
@@ -413,7 +417,7 @@ window.toggleStatusHistorico = async function (id, campo) {
     const resultado = await atualizarStatusHistorico(reg, novoStatus);
     if (resultado) {
         atualizarCaches(id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
-        await avisarProntoSemNF(id, resultado);
+        await avisarProntoSemNF(id, resultado, semEnvio(reg.dados_completos));
         abrirDetalheHistorico(id); // Recarrega o modal com status atualizado
     }
 };
@@ -490,7 +494,7 @@ window.separarPedidoDoModal = async function (id, idx) {
 window.reativarPedidoDoModal = async function (id) {
     const reg = acharPedido(id);
     if (!reg) return;
-    if (await moverPedidoPara(id, faseSugerida(reg.status), { mesclado_em: null })) {
+    if (await moverPedidoPara(id, faseSugerida(reg.status, semEnvio(reg.dados_completos)), { mesclado_em: null })) {
         toast(`Pedido reativado em "${rotuloFase(reg.fase)}".`);
     }
     abrirDetalheHistorico(id);
@@ -585,7 +589,7 @@ async function registrarEnvio(dados, etapas) {
     atualizarIndicadorRascunho();
 
     // Impresso antes da NF: avança mesmo assim, mas avisa e permite voltar
-    avisarProntoSemNF(id, resultado);
+    avisarProntoSemNF(id, resultado, semEnvio(dados));
 
     if (AppState.currentDraftId) {
         await salvarPendente({ ...dados, historico_id: AppState.currentHistoricoId }, AppState.currentDraftId, true);
@@ -1069,11 +1073,17 @@ window.abrirImportarPlanilha = () => abrirImportarPlanilha(preencherComEnvioImpo
 // Erros bloqueiam; avisos perguntam se quer continuar.
 async function validarAntesDeGerar(d) {
     if (d.items.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return false; }
-    if (!d.dest_name.trim() || !d.dest_addr1.trim()) {
+    // Retirada / instalação na Ranor não vai pelo correio: basta o nome, sem endereço nem volumes
+    const sem = semEnvio(d);
+    if (sem && !d.dest_name.trim()) {
+        toast('Preencha o Nome do destinatário.', 'warning');
+        return false;
+    }
+    if (!sem && (!d.dest_name.trim() || !d.dest_addr1.trim())) {
         toast('Preencha o Nome e o Endereço (linha 1) do destinatário.', 'warning');
         return false;
     }
-    if (d.total_vol === '') {
+    if (!sem && d.total_vol === '') {
         toast('Preencha o número de volumes.', 'warning');
         $('total_vol')?.focus();
         return false;
@@ -1093,9 +1103,21 @@ async function validarAntesDeGerar(d) {
     return true;
 }
 
-async function generatePreview() {
+// Documentos escolhidos no select; retirada / instalação na Ranor só tem romaneio (sem etiqueta)
+function tipoDocumento() {
     const docType = $('doc-selector').value;
-    if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return; }
+    if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return null; }
+    if (semEnvio(collectData()) && docType !== 'romaneio') {
+        if (docType === 'labels') { toast('Retirada / instalação na Ranor não tem etiqueta. Gere o romaneio.', 'warning'); return null; }
+        $('doc-selector').value = 'romaneio';
+        return 'romaneio';
+    }
+    return docType;
+}
+
+async function generatePreview() {
+    const docType = tipoDocumento();
+    if (!docType) return;
 
     AppState.formData = collectData();
     if (!(await validarAntesDeGerar(AppState.formData))) return;
@@ -1115,8 +1137,8 @@ async function generatePreview() {
 }
 
 async function generateNewTab() {
-    const docType = $('doc-selector').value;
-    if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return; }
+    const docType = tipoDocumento();
+    if (!docType) return;
 
     AppState.formData = collectData();
     if (!(await validarAntesDeGerar(AppState.formData))) return;
@@ -1172,6 +1194,16 @@ function copyEmailBody() {
 
 async function enviarEmailViaMailtoUsingData() {
     const d = collectData();
+    if (semEnvio(d)) {
+        const pedir = await confirmar({
+            titulo: 'Este pedido não precisa de NF',
+            mensagem: `A forma de saída é "${rotuloEntrega(entregaDe(d))}": não pede nota fiscal ao financeiro.\n\nSe precisar de NF, mude a forma de saída para Transportadora.`,
+            tipo: 'aviso',
+            sim: 'Pedir NF mesmo assim',
+            nao: 'Voltar'
+        });
+        if (!pedir) return;
+    }
     if (!(await validarAntesDeGerar(d))) return;
 
     // Outro pedido do mesmo técnico sem NF? Oferece juntar antes de pedir a nota

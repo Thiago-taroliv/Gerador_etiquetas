@@ -1,5 +1,6 @@
 import { escapeHtml, AppState } from './config.js';
 import { config } from './configuracoes.js';
+import { semEnvio, entregaDe, rotuloEntrega } from './entrega.js';
 
 // Escapa e preserva quebras de linha (ex: endereço do remetente)
 function escapeMultiline(s) {
@@ -188,7 +189,9 @@ export function renderRomaneio(data) {
                 </div>
                 <div style="margin-top:12px;font-size:12px;">
                     <div style="margin-top:8px;">
-                    <strong>Total de Volumes (CAIXAS):</strong> ${escapeHtml(String(data.total_vol))}  
+                    ${semEnvio(data)
+                        ? `<strong>Saída:</strong> ${escapeHtml(rotuloEntrega(entregaDe(data)))}`
+                        : `<strong>Total de Volumes (CAIXAS):</strong> ${escapeHtml(String(data.total_vol))}`}  
                     </div>
                     <strong>Data (chegada/assinatura):</strong> _____/_____/_______<br>
                     <strong>Recebedor/Responsável:</strong> ${escapeHtml(data.receiver)}<br><br>

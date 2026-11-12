@@ -51,6 +51,9 @@ const inicioDe = r => t(r.fases_em?.rascunho || r.rascunho_em || r.created_at);
 const naFase = (r, f) => t(r.fases_em?.[f]);
 const despachoDe = r => t(r.despachado_em) || naFase(r, 'despachado');
 const entregaDe = r => t(r.entregue_em) || naFase(r, 'entregue');
+// Retirada / instalação na Ranor: sem frete nem trânsito, fica fora das contas (só é contada à parte)
+const SEM_ENVIO = ['retirada', 'instalacao'];
+const comEnvio = r => !SEM_ENVIO.includes(r.entrega);
 const entre = (x, p) => x != null && x >= p.de.getTime() && x < p.ate.getTime();
 const intervalo = (a, b) => a != null && b != null && b >= a ? (b - a) / DIA : null;
 
@@ -164,14 +167,15 @@ function lista(pedidos, vazio) {
 function renderPainel() {
     const p = periodo();
     const transpSel = $('painel_transportadora');
-    const transportadoras = [...new Set(dados.pedidos.map(r => (r.transportadora || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    const transportadoras = [...new Set(dados.pedidos.filter(comEnvio).map(r => (r.transportadora || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
     const atual = transpSel.value;
     transpSel.innerHTML = '<option value="">Todas as transportadoras</option>' +
         transportadoras.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
     transpSel.value = transportadoras.includes(atual) ? atual : '';
     const transp = transpSel.value;
 
-    const pedidos = dados.pedidos.filter(r => !transp || (r.transportadora || '').trim() === transp);
+    const pedidos = dados.pedidos.filter(r => comEnvio(r) && (!transp || (r.transportadora || '').trim() === transp));
+    const semEnvioNoPeriodo = transp ? 0 : dados.pedidos.filter(r => !comEnvio(r) && entre(despachoDe(r), p)).length;
     const despachados = pedidos.filter(r => entre(despachoDe(r), p));
     const comFrete = despachados.filter(r => r.frete != null);
     const gasto = comFrete.reduce((s, r) => s + Number(r.frete), 0);
@@ -249,7 +253,8 @@ function renderPainel() {
             ${tile('Gasto com frete', brl(gasto),
                 (anteriorCarregado ? deltaHtml(gasto, gastoAnterior) : '') +
                 `<div>${nomePeriodo}${semFrete.length ? ` · <a href="#painel_sem_frete">${semFrete.length} sem frete preenchido</a>` : ''}</div>`, true)}
-            ${tile('Envios despachados', despachados.length.toLocaleString('pt-BR'), `${comFrete.length} com frete`)}
+            ${tile('Envios despachados', despachados.length.toLocaleString('pt-BR'), `${comFrete.length} com frete`
+                + (semEnvioNoPeriodo ? ` · fora estes, ${semEnvioNoPeriodo} retirada(s)/instalação(ões) na Ranor` : ''))}
             ${tile('Frete médio por envio', comFrete.length ? brl(gasto / comFrete.length) : '—', comFrete.length ? `em ${comFrete.length} envio(s) com frete` : 'nenhum frete preenchido')}
             ${tile('Do pedido ao despacho', fmtDias(media(prazosDespacho)), prazosDespacho.length ? `mediana ${fmtDias(mediana(prazosDespacho))}` : 'nenhum despacho no período')}
             ${tile('Do despacho à entrega', fmtDias(media(prazosEntrega)), prazosEntrega.length ? `${prazosEntrega.length} entrega(s) com data` : 'sem entregas com data no período')}

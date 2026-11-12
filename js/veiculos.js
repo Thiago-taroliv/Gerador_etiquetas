@@ -10,13 +10,16 @@ export const VC = { CLIENTE: 0, PLACA: 1, DESCRICAO: 2, ICCID: 3, TELEFONE: 4, O
 const semAcento = s => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
 export const normUnidade = s => semAcento(s).replace(/[^A-Z0-9]/g, '');
 
-// "RASTREADOR RA24" / "KIT RA24" -> "RA24"; "ST340UR" -> "ST340UR"; senão o nome sem RASTREADOR/KIT
+// "RASTREADOR RA24" / "KIT RA24" -> "RA24"; "ST340UR" -> "ST340UR"; "LV12" -> "LV-12"; senão o nome sem RASTREADOR/KIT
 export function modeloDoItem(desc) {
     const d = semAcento(desc);
     const ra = d.match(/\bRA\s?(\d{2})\b/);
     if (ra) return `RA${ra[1]}`;
     const st = d.match(/\bST\s?\d{3}[A-Z]*\b/);
     if (st) return st[0].replace(/\s/g, '');
+    // "Rastreador LV12-Trade Importadora" -> "LV-12" (padrão da plataforma)
+    const lv = d.match(/\bLV\s?-?\s?(\d{2,3})\b/);
+    if (lv) return `LV-${lv[1]}`;
     return d.replace(/\b(RASTREADOR|EQUIPAMENTO|KIT)\b/g, '').replace(/\s+/g, ' ').trim();
 }
 

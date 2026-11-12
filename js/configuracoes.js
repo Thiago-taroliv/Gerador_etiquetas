@@ -21,6 +21,8 @@ export const PADROES = {
         { comeca: 'corret', tipo: 'COR' },
         { comeca: 'fornec', tipo: 'FOR' }
     ],
+    // Planilha de estoque: envios que não vão por transportadora (o texto aparece no produto, cliente ou motivo)
+    entrega_regras: [{ contem: 'rfleet', entrega: 'retirada' }],
     // Dias na fase até o card ficar amarelo / vermelho no kanban
     kanban_atraso: { aguardando_nf: [2, 5], nf_emitida: [2, 5], pronto: [1, 3] },
     // Pedidos do mesmo técnico nos últimos N dias são oferecidos para juntar

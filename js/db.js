@@ -1,6 +1,7 @@
 import { supabaseClient, $ } from './config.js';
 import { toast } from './toast.js';
 import { confirmar } from './dialogo.js';
+import { semEnvio, entregaDe, rotuloEntrega } from './entrega.js';
 
 export async function carregarDestinatarios() {
     const { data, error } = await supabaseClient.from('destinatarios').select('*').order('nome', { ascending: true });
@@ -168,6 +169,7 @@ export async function exportToJSON() {
 // --- FUNÇÕES DO HISTÓRICO ---
 
 // Campos da tabela historico montados a partir dos dados do formulário
+// Retirada / instalação na Ranor: a coluna transportadora guarda a forma de saída (aparece no kanban e nos filtros)
 function montarRegistroHistorico(dados) {
     return {
         remetente: dados.sender_company,
@@ -176,7 +178,7 @@ function montarRegistroHistorico(dados) {
         referencia: dados.reference,
         tipo_doc: dados.doc_type || dados.docType || 'não informado',
         itens: dados.items,
-        transportadora: dados.carrier,
+        transportadora: semEnvio(dados) ? rotuloEntrega(entregaDe(dados)) : dados.carrier,
         // Snapshot completo para regeração futura (sem o vínculo interno)
         dados_completos: { ...dados, historico_id: undefined }
     };
@@ -197,17 +199,19 @@ export const FASES = [
 export const ordemFase = chave => FASES.findIndex(f => f.chave === chave);
 export const rotuloFase = chave => chave === 'cancelado' ? 'Cancelado' : (FASES.find(f => f.chave === chave)?.rotulo || chave);
 
-// Fase que as ações já feitas (e-mail, etiqueta, romaneio) indicam
-export function faseSugerida(status = {}) {
+// Fase que as ações já feitas (e-mail, etiqueta, romaneio) indicam.
+// semEnv: retirada / instalação na Ranor, sem NF nem etiqueta: o romaneio impresso já deixa pronto.
+export function faseSugerida(status = {}, semEnv = false) {
+    if (semEnv) return status.romaneio ? 'pronto' : 'rascunho';
     if (status.etiqueta && status.romaneio) return 'pronto';
     if (status.email) return 'aguardando_nf';
     return 'rascunho';
 }
 
 // Só avança: reimprimir algo de um pedido já despachado não o faz voltar. Cancelado não muda.
-export function proximaFase(faseAtual, status) {
+export function proximaFase(faseAtual, status, semEnv = false) {
     if (faseAtual === 'cancelado') return faseAtual;
-    const sugerida = faseSugerida(status);
+    const sugerida = faseSugerida(status, semEnv);
     return ordemFase(sugerida) > ordemFase(faseAtual) ? sugerida : faseAtual;
 }
 
@@ -310,7 +314,7 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
 
             const status = { email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas };
             const faseAnterior = atual.fase || 'rascunho';
-            const fase = proximaFase(faseAnterior, status);
+            const fase = proximaFase(faseAnterior, status, semEnvio(dados));
             const update = { ...registro, status, fase };
             if (fase !== faseAnterior) update.fase_em = new Date().toISOString();
 
@@ -326,7 +330,7 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
     }
 
     const status = { email: false, etiqueta: false, romaneio: false, ...etapas };
-    const fase = faseSugerida(status);
+    const fase = faseSugerida(status, semEnvio(dados));
     const { data, error } = await supabaseClient
         .from('historico').insert([{ ...registro, status, fase }]).select();
 
@@ -359,7 +363,7 @@ export async function carregarHistorico(pagina = 0) {
 // Retorna { fase, faseAnterior, faseEmAnterior, fase_em } ou null em caso de erro.
 export async function atualizarStatusHistorico(reg, novoStatus) {
     const faseAnterior = reg.fase || 'rascunho';
-    const fase = proximaFase(faseAnterior, novoStatus);
+    const fase = proximaFase(faseAnterior, novoStatus, semEnvio(reg.dados_completos));
     const update = { status: novoStatus, fase };
     if (fase !== faseAnterior) update.fase_em = new Date().toISOString();
 
@@ -413,7 +417,7 @@ export async function gravarPreparo(tabela, id, preparo) {
 // Pedidos para o painel: criados ou despachados desde a data, sem os cancelados.
 // Não traz os dados do formulário (pesados). semColunas: o sql/painel.sql ainda não foi rodado.
 export async function carregarDadosPainel(desde) {
-    const base = 'id, created_at, fase, fase_em, despachado_em, frete, transportadora, destinatario, unidade, referencia, status, rascunho_em:dados_completos->>rascunho_em';
+    const base = 'id, created_at, fase, fase_em, despachado_em, frete, transportadora, destinatario, unidade, referencia, status, rascunho_em:dados_completos->>rascunho_em, entrega:dados_completos->>entrega';
     const buscar = async colunas => {
         const todos = [];
         for (let de = 0; ; de += 1000) {

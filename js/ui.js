@@ -4,6 +4,7 @@ import { searchItems, getItems, addItem as addItemToDB } from './items.js';
 import { toast } from './toast.js';
 import { confirmar } from './dialogo.js';
 import { linhaImeiHtml, imeiDaLinha, atualizarResumoImeis, sinalizarMudanca } from './imeis.js';
+import { semEnvio } from './entrega.js';
 
 // Foto do formulário na última vez que foi carregado ou salvo (null = envio novo, ainda sem base)
 let formularioBase = null;
@@ -277,6 +278,7 @@ export function collectData() {
         reference: $('reference').value || '',
         reference_type: $('reference_type')?.value || 'ticket',
         carrier: $('carrier').value || '',
+        entrega: $('entrega')?.value || 'transportadora',
         receiver: $('receiver').value || '',
         client_mode: isMultiMode ? 'multi' : 'single',
         items: items,
@@ -383,6 +385,8 @@ export function preencherFormulario(dados) {
     $('reference').value = String(dados.reference || '');
     $('total_vol').value = dados.total_vol === '' ? '' : (dados.total_vol || 1);
     $('carrier').value = dados.carrier || config('transportadora_padrao');
+    if ($('entrega')) $('entrega').value = semEnvio(dados) ? dados.entrega : 'transportadora';
+    atualizarFormaEntrega();
     $('receiver').value = dados.receiver || '';
     if ($('doc-selector')) $('doc-selector').value = dados.doc_type || '';
     if ($('planilha_cliente')) $('planilha_cliente').value = dados.planilha_cliente || '';
@@ -413,8 +417,24 @@ export function limparFormulario() {
     $('reference').value = '';
     $('total_vol').value = 1;
     $('carrier').value = config('transportadora_padrao');
+    if ($('entrega')) $('entrega').value = 'transportadora';
+    atualizarFormaEntrega();
     $('doc-selector').value = '';
 }
+
+// Retirada / instalação na Ranor: some transportadora e volumes, e só dá para gerar o romaneio
+export function atualizarFormaEntrega() {
+    const sem = semEnvio({ entrega: $('entrega')?.value });
+    ['carrier_wrap', 'total_vol_wrap'].forEach(id => { if ($(id)) $(id).style.display = sem ? 'none' : ''; });
+    if ($('entrega_aviso')) $('entrega_aviso').style.display = sem ? 'block' : 'none';
+    const sel = $('doc-selector');
+    if (!sel) return;
+    [...sel.options].forEach(o => {
+        if (o.value === 'labels' || o.value === 'both') o.disabled = sem;
+    });
+    if (sem && (sel.value === 'labels' || sel.value === 'both')) sel.value = 'romaneio';
+}
+window.atualizarFormaEntrega = atualizarFormaEntrega;
 
 // --- CPF / CNPJ ---
 // Aceita CNPJ alfanumérico (Receita Federal, a partir de jul/2026): 12 caracteres [0-9A-Z] + 2 DVs numéricos

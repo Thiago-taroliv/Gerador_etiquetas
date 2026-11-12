@@ -9,6 +9,7 @@ import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
 import { config } from './configuracoes.js';
 import { formularioAlterado } from './ui.js';
+import { semEnvio, entregaDe, rotuloEntrega, iconeEntrega } from './entrega.js';
 
 // Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Gerenciar Dados > Configurações)
 const limitesAtraso = () => config('kanban_atraso') || {};
@@ -173,10 +174,10 @@ function candidatosJuncao() {
     const recente = (...datas) => datas.some(d => d && new Date(d) >= desde);
     return [
         ...pedidos.filter(r => FASES_SEM_NF.includes(r.fase) && !r.mesclado_em && recente(r.created_at, r.fase_em))
-            .map(r => ({ chave: 'h:' + r.id, pessoa: pessoaDoRegistro(r) })),
+            .map(r => ({ chave: 'h:' + r.id, pessoa: pessoaDoRegistro(r), sem: semEnvio(r.dados_completos) })),
         ...rascunhos.filter(r => recente(r.created_at))
-            .map(r => ({ chave: 'r:' + r.id, pessoa: pessoaDoRegistro(r) }))
-    ];
+            .map(r => ({ chave: 'r:' + r.id, pessoa: pessoaDoRegistro(r), sem: semEnvio(r.dados_completos) }))
+    ].filter(c => !c.sem); // retirada / instalação na Ranor não pede NF: não há o que juntar
 }
 
 // chave do card -> chaves dos outros cards do mesmo técnico
@@ -190,7 +191,10 @@ function gruposMesmoTecnico() {
     return grupos;
 }
 
-const transportadoraDe = (reg, rascunho) => rascunho ? reg.dados_completos?.carrier : reg.transportadora;
+// Retirada / instalação na Ranor aparece no lugar da transportadora (e no filtro)
+const transportadoraDe = (reg, rascunho) => semEnvio(reg.dados_completos)
+    ? rotuloEntrega(entregaDe(reg.dados_completos))
+    : rascunho ? reg.dados_completos?.carrier : reg.transportadora;
 const qtdItens = (reg, rascunho) => (rascunho ? (reg.dados_completos?.items || []) : (reg.itens || []))
     .reduce((s, it) => s + (parseInt(it.qty) || 1), 0);
 
@@ -231,8 +235,9 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
         reg.unidade && reg.unidade !== reg.destinatario ? escapeHtml(reg.unidade) : '',
         reg.referencia ? `<span class="kanban-card-ref">${escapeHtml(reg.referencia)}</span>` : ''
     ].filter(Boolean).join(' &middot; ');
+    const sem = semEnvio(reg.dados_completos);
     const meta = [
-        transportadora && escapeHtml(transportadora),
+        transportadora && (sem ? `${iconeEntrega(entregaDe(reg.dados_completos))} ` : '') + escapeHtml(transportadora),
         qtd && `${qtd} item(ns)`,
         reg.rastreio && `Rastreio <strong>${escapeHtml(reg.rastreio)}</strong>`,
         reg.frete != null && `Frete <strong>R$ ${formatarFrete(reg.frete)}</strong>`
@@ -254,6 +259,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
             <div class="kanban-card-tags">${seloPreparo}${seloJuncao}</div>
             <div class="kanban-card-rodape">
                 ${rascunho ? '<span class="status-badge" title="Ainda não gerou e-mail, romaneio nem etiqueta">não gerado</span>'
+                    : sem ? `<div class="status-badges">${selo(st.romaneio, 'R', 'Romaneio')}</div>`
                     : `<div class="status-badges">${selo(st.email, 'E', 'E-mail de NF')}${selo(st.romaneio, 'R', 'Romaneio')}${selo(st.etiqueta, 'Et', 'Etiqueta')}</div>`}
                 <span class="kanban-icones">${icones}</span>
             </div>
@@ -306,7 +312,7 @@ function popularFiltros() {
         el.classList.toggle('ativo', !!el.value);
     };
     preencher('kanban_tecnico', [...pedidos, ...rascunhos].map(r => r.destinatario), 'Todos os destinatários');
-    preencher('kanban_transportadora', [...pedidos.map(r => r.transportadora), ...rascunhos.map(r => r.dados_completos?.carrier)], 'Todas as transportadoras');
+    preencher('kanban_transportadora', [...pedidos.map(r => transportadoraDe(r, false)), ...rascunhos.map(r => transportadoraDe(r, true))], 'Todas as transportadoras');
 }
 
 // Cada coluna mostra os mais recentes; o resto fica atrás de "Ver mais" (atrasados e junções sempre aparecem)
@@ -387,6 +393,7 @@ function pedidoDoCard(chave) {
 const chaveDoPedido = p => (p.origem === 'rascunho' ? 'r:' : 'h:') + p.id;
 
 function semNF(chave) {
+    if (semEnvio(registroDaChave(chave)?.dados_completos)) return false; // não pede NF: não junta
     if (chave.startsWith('r:')) return true;
     const reg = acharPedido(chave.slice(2));
     return !!reg && FASES_SEM_NF.includes(reg.fase) && !reg.mesclado_em;
@@ -477,8 +484,11 @@ window.kanbanDropCard = async function (ev, chave) {
 
 // Move o pedido de fase com atualização otimista; volta ao estado anterior se o banco falhar
 // extrasIniciais: outros campos a gravar junto, ex. { mesclado_em: null }
+// Retirada / instalação na Ranor não tem trânsito: "Despachado" vai direto para "Entregue"
 export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
     let reg = acharPedido(id);
+    const sem = semEnvio(reg?.dados_completos);
+    if (sem && fase === 'despachado') fase = 'entregue';
     if (!reg || reg.fase === fase) return false;
 
     if (fase !== 'cancelado' && ordemFase(fase) < ordemFase(reg.fase)) {
@@ -493,18 +503,22 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
     }
 
     const extras = { ...extrasIniciais };
-    if (fase === 'despachado') {
+    // Saída do pedido: despacho pela transportadora, ou a entrega na Ranor (retirada / instalação)
+    const saindo = fase === 'despachado' || (sem && fase === 'entregue' && !reg.despachado_em);
+    if (saindo) {
         if (!(await confirmarEtapasDoDespacho(reg))) return false;
-        const despacho = await pedirDadosDespacho(reg, { despachando: true });
-        if (!despacho) return false;
-        Object.assign(extras, despacho);
+        if (!sem) {
+            const despacho = await pedirDadosDespacho(reg, { despachando: true });
+            if (!despacho) return false;
+            Object.assign(extras, despacho);
+        }
     }
 
     // O quadro pode ter recarregado enquanto o modal estava aberto
     reg = acharPedido(id);
     if (!reg) return false;
     // Data de envio: voltar de "Entregue" mantém a original; voltar para antes do despacho a apaga
-    if (fase === 'despachado' && !reg.despachado_em) extras.despachado_em = new Date().toISOString();
+    if (saindo && !reg.despachado_em) extras.despachado_em = new Date().toISOString();
     else if (reg.despachado_em && fase !== 'cancelado' && ordemFase(fase) < ordemFase('despachado')) extras.despachado_em = null;
     const antes = { fase: reg.fase, fase_em: reg.fase_em };
     Object.keys(extras).forEach(campo => { antes[campo] = reg[campo]; });
@@ -516,28 +530,31 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
         atualizarCaches(id, antes);
         if (kanbanVisivel()) renderKanban();
         toast('Não foi possível mudar a fase. Verifique a conexão.', 'error', 5000);
-    } else if (fase === 'despachado') {
+    } else if (saindo) {
         await concluirRascunhoDoPedido(id);
-        oferecerPixFrete(reg);
+        if (sem) toast(`${rotuloEntrega(entregaDe(reg.dados_completos))}: pedido marcado como entregue.`);
+        else oferecerPixFrete(reg);
     }
     return ok;
 }
 
 // Despachar trava os itens: avisa se ainda falta alguma etapa do pedido
+// Retirada / instalação na Ranor não tem NF nem etiqueta: só confere romaneio e configuração
 async function confirmarEtapasDoDespacho({ destinatario, status, dados_completos } = {}) {
     const preparo = preparoDe(dados_completos);
+    const sem = semEnvio(dados_completos);
     const faltam = [
-        !status?.email && 'pedido de NF por e-mail',
+        !sem && !status?.email && 'pedido de NF por e-mail',
         !status?.romaneio && 'romaneio',
-        !status?.etiqueta && 'etiqueta',
+        !sem && !status?.etiqueta && 'etiqueta',
         preparo !== 'configurado' && `configuração dos equipamentos (está em "${rotuloPreparo(preparo)}")`
     ].filter(Boolean);
     if (!faltam.length) return true;
     return confirmar({
         titulo: 'Faltam etapas neste pedido',
-        mensagem: `"${destinatario || 'Sem destinatário'}" ainda não tem: ${faltam.join(', ')}.\n\nDepois de despachado, os itens não podem mais ser alterados.`,
+        mensagem: `"${destinatario || 'Sem destinatário'}" ainda não tem: ${faltam.join(', ')}.\n\nDepois de ${sem ? 'entregue' : 'despachado'}, os itens não podem mais ser alterados.`,
         tipo: 'aviso',
-        sim: 'Despachar mesmo assim',
+        sim: sem ? 'Marcar entregue mesmo assim' : 'Despachar mesmo assim',
         nao: 'Voltar'
     });
 }
@@ -565,11 +582,13 @@ export async function pedirDadosDespacho(reg = {}, { despachando = false } = {})
 async function moverRascunhoPara(draftId, fase) {
     const rasc = rascunhos.find(r => String(r.id) === String(draftId));
     if (!rasc || fase === 'rascunho') return false;
+    const sem = semEnvio(rasc.dados_completos);
+    if (sem && fase === 'despachado') fase = 'entregue';
 
     let extras = {};
-    if (fase === 'despachado') {
+    if (fase === 'despachado' || (sem && fase === 'entregue')) {
         if (!(await confirmarEtapasDoDespacho({ destinatario: rasc.destinatario, dados_completos: rasc.dados_completos }))) return false;
-        extras = await pedirDadosDespacho({}, { despachando: true });
+        extras = sem ? {} : await pedirDadosDespacho({}, { despachando: true });
         if (!extras) return false;
         extras.despachado_em = new Date().toISOString();
     }
@@ -595,7 +614,9 @@ async function moverRascunhoPara(draftId, fase) {
 }
 
 // Impresso antes da NF: o pedido já avançou para "Pronto"; avisa e permite voltar
-export async function avisarProntoSemNF(id, { fase, faseAnterior, faseEmAnterior }) {
+// semEnv: retirada / instalação na Ranor não tem NF: não há o que avisar
+export async function avisarProntoSemNF(id, { fase, faseAnterior, faseEmAnterior }, semEnv = false) {
+    if (semEnv) return;
     if (fase !== 'pronto' || faseAnterior === fase || ordemFase(faseAnterior) >= ordemFase('nf_emitida')) return;
     const voltar = await confirmar({
         titulo: 'Pedido pronto, mas sem NF emitida',

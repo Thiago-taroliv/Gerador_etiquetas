@@ -6,6 +6,7 @@ import { carregarReceitas, salvarReceita, excluirReceita, receitasSalvasNoBanco 
 import { popularSelectRemetentes, onSenderChange, validarDoc } from './ui.js';
 import { FASES } from './db.js';
 import { TIPOS } from './planilha.js';
+import { FORMAS_ENTREGA } from './entrega.js';
 import { toast } from './toast.js';
 import { confirmar } from './dialogo.js';
 
@@ -75,6 +76,22 @@ const CARTOES = {
         novo: () => ({ comeca: '', tipo: TIPOS[0] }),
         limpar: v => v.map(r => ({ comeca: r.comeca.trim(), tipo: r.tipo })).filter(r => r.comeca),
         validar: v => v.find(r => !TIPOS.includes(r.tipo)) ? 'Tipo inválido.' : null
+    },
+    entrega_regras: {
+        titulo: 'Retirada / instalação na Ranor',
+        ajuda: 'Envios da planilha de estoque que não vão por transportadora: vale a primeira regra cujo texto aparece no PRODUTO, CLIENTE INICIAL ou MOTIVO (sem diferenciar acento e maiúsculas). Esses pedidos não pedem NF nem etiqueta e vão direto para Entregue. Dá para mudar em cada pedido, no formulário.',
+        campos: v => `${v.map((r, i) => `
+            <div class="cfg-linha">
+                <input type="text" placeholder="Texto (ex. Rfleet)" value="${escapeHtml(r.contem)}" oninput="cfgCampo('entrega_regras', ${i}, 'contem', this.value)">
+                <select onchange="cfgCampo('entrega_regras', ${i}, 'entrega', this.value)" style="max-width:200px">
+                    ${FORMAS_ENTREGA.filter(f => f.chave !== 'transportadora').map(f => `<option value="${f.chave}"${f.chave === r.entrega ? ' selected' : ''}>${f.rotulo}</option>`).join('')}
+                </select>
+                <button type="button" class="btn-sm btn-neutral" onclick="cfgRemover('entrega_regras', ${i})">✕</button>
+            </div>`).join('')}
+            <button type="button" class="btn-sm btn-neutral" onclick="cfgAdicionar('entrega_regras')">+ Regra</button>`,
+        novo: () => ({ contem: '', entrega: 'retirada' }),
+        limpar: v => v.map(r => ({ contem: r.contem.trim(), entrega: r.entrega })).filter(r => r.contem),
+        validar: v => v.find(r => !FORMAS_ENTREGA.some(f => f.chave === r.entrega && f.chave !== 'transportadora')) ? 'Forma de saída inválida.' : null
     },
     kanban_atraso: {
         titulo: 'Prazos de atraso do kanban',

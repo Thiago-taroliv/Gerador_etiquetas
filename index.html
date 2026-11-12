@@ -244,8 +244,16 @@
                         <fieldset>
                             <legend>Dados Adicionais</legend>
 
+                            <label>Forma de saída</label>
+                            <select id="entrega" onchange="atualizarFormaEntrega()" title="Retirada e instalação na Ranor não pedem NF nem etiqueta, e vão direto para Entregue">
+                                <option value="transportadora">Transportadora</option>
+                                <option value="retirada">Retirada na Ranor (cliente/técnico busca)</option>
+                                <option value="instalacao">Instalação na Ranor</option>
+                            </select>
+                            <div id="entrega_aviso" class="small" style="display:none; margin-top:4px;">Sem NF, sem etiqueta e sem frete. O romaneio serve de comprovante (assinatura de quem recebeu) e o pedido vai direto para Entregue.</div>
+
                             <div class="row">
-                                <div class="col">
+                                <div class="col" id="total_vol_wrap">
                                     <label>Volumes (nº de etiquetas)</label>
                                     <input id="total_vol" type="number" value="1" min="1">
                                 </div>
@@ -262,8 +270,10 @@
                             <label>Número da Referência</label>
                             <input id="reference" type="text" placeholder="Ex: 465">
 
-                            <label>Transportadora</label>
-                            <input id="carrier" type="text" value="Jadlog">
+                            <div id="carrier_wrap">
+                                <label>Transportadora</label>
+                                <input id="carrier" type="text" value="Jadlog">
+                            </div>
 
                             <label>Recebedor/Responsável (assinatura)</label>
                             <input id="receiver" type="text" value="">

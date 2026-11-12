@@ -4,6 +4,7 @@ import { $, escapeHtml } from './config.js';
 import { config, remetentePadrao } from './configuracoes.js';
 import { parseTSV } from './importarPlanilha.js';
 import { lerLinhasEstoque, agruparEnviosEstoque, grupoEstoqueParaFormulario, lerArquivoEstoque, chaveDeAgrupamento, definirMotivoTipo } from './importarEstoque.js';
+import { definirRegrasEntrega, semEnvio, rotuloEntrega, iconeEntrega } from './entrega.js';
 import { sugerirKit, montarKit, totalKits } from './kit.js';
 import { abrirMontarKit } from './kitModal.js';
 import { carregarReceitas } from './kitReceitas.js';
@@ -53,7 +54,7 @@ function chaveDoReg(reg) {
 
 // Campos que você preenche à mão no rascunho: reimportar não apaga o que já foi digitado
 const CAMPOS_MANUAIS = ['dest_doc', 'dest_addr1', 'dest_addr2', 'dest_phone', 'total_vol', 'carrier', 'receiver',
-    'sender_company', 'sender_cnpj', 'sender_address', 'doc_type'];
+    'sender_company', 'sender_cnpj', 'sender_address', 'doc_type', 'entrega'];
 
 // Nome do estoque -> item do sistema, pelo de-para; sem de-para, o item fica "novo" com papel sugerido
 function resolverItem(cod, desc) {
@@ -109,7 +110,7 @@ const chaveDoAberto = p => (p.origem === 'rascunho' ? 'r:' : 'h:') + p.id;
 function alvosDoGrupo(g) {
     if (g.status !== 'novo' || !abertos) return [];
     const daPlanilha = new Set(grupos.map(o => o.chave));
-    return pedidosAbertosDoTecnico(abertos, { doc: g.cad?.cpf_cnpj, nome: g.destinatario })
+    return pedidosAbertosDoTecnico(abertos, { doc: g.cad?.cpf_cnpj, nome: g.destinatario, semEnvio: semEnvio(g) })
         .filter(p => !(p.origem === 'rascunho' && daPlanilha.has(p.dados?.origem?.chave)));
 }
 
@@ -141,6 +142,7 @@ window.anexarEnvioEstoque = function (i, chave) {
 
 function reagrupar() {
     definirMotivoTipo(config('motivo_tipo'));
+    definirRegrasEntrega(config('entrega_regras'));
     grupos = agruparEnviosEstoque(registros, resolverItem, chaveDoReg).map(g => ({ ...g, ...acharCadastro(g.destinatario), status: null }));
     grupos.forEach(g => { aplicarKit(g); g.status = statusDoGrupo(g); });
     // Envio novo de técnico que já tem pedido aberto sem NF: sugere adicionar a ele (o mais recente)
@@ -309,6 +311,7 @@ function render() {
                         <span class="imp-os">${escapeHtml(ref)}</span>
                         <span>${escapeHtml(g.destinatario || 'Sem destinatário')}</span>
                         ${cadastro}
+                        ${semEnvio(g) ? `<span class="estoque-tag ok" title="Não vai por transportadora: sem NF e sem etiqueta">${iconeEntrega(g.entrega)} ${rotuloEntrega(g.entrega)}</span>` : ''}
                         <span class="estoque-status ${classe}">${rotulo}</span>
                     </div>
                     <div class="imp-meta">${meta.map(escapeHtml).join(' &middot; ')}</div>

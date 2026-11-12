@@ -3,6 +3,7 @@
 // Agrupa as linhas por envio e monta os itens no formato do formulário.
 // Não depende do navegador (exceto lerArquivoEstoque): o de-para entra pelo parâmetro resolverItem.
 import { parseTSV, parseCSV, carregarSheetJS } from './importarPlanilha.js';
+import { entregaDoEnvio, semEnvio } from './entrega.js';
 
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -194,6 +195,8 @@ export function agruparEnviosEstoque(registros, resolverItem, chaveDoReg = chave
         if (motivos.length > 1) avisos.push(`Motivos diferentes no mesmo envio (${motivos.join(', ')}): usado "${motivos[0]}".`);
         const tipo = motivoParaTipo(motivos[0]);
         if (motivos[0] && !tipo) avisos.push(`Motivo "${motivos[0]}" sem Tipo correspondente: preencha o Tipo à mão.`);
+        // Retirada / instalação na Ranor (ex. Rfleet): regra de Configurações sobre produto, cliente e motivo
+        const entrega = entregaDoEnvio(linhas.flatMap(l => [l.produto, l.clienteInicial, l.motivo]));
         const destinos = unicos(linhas.map(l => l.destinatario));
         if (destinos.length > 1) avisos.push(`Destinatários diferentes no mesmo envio (${destinos.join(', ')}): usado "${p.destinatario}".`);
 
@@ -217,6 +220,7 @@ export function agruparEnviosEstoque(registros, resolverItem, chaveDoReg = chave
             clienteFinal: p.clienteFinal,
             motivo: motivos[0] || '',
             tipo,
+            entrega,
             destinatario: p.destinatario,
             paraClienteFinal: p.paraClienteFinal,
             linhas: linhas.map(l => l.linha),
@@ -332,6 +336,7 @@ export function grupoEstoqueParaFormulario(grupo, base = {}) {
         reference_type: grupo.ticket ? 'ticket' : grupo.os ? 'os' : (base.reference_type || 'ticket'),
         planilha_cliente: grupo.clienteInicial,
         planilha_tipo: grupo.tipo,
+        entrega: grupo.entrega || 'transportadora',
         client_mode: 'single',
         // Várias OS/tickets no mesmo envio: cada item guarda quanto é de cada um (o financeiro emite a nota separando)
         items: grupo.itens.map(({ desc, qty, client, papel, imeis, por_ref, kit }) => ({
@@ -343,13 +348,15 @@ export function grupoEstoqueParaFormulario(grupo, base = {}) {
 }
 
 // O que o envio ainda precisa que a planilha de estoque não traz (aviso no formulário e no kanban)
+// Retirada / instalação na Ranor não vai pelo correio: dispensa documento, endereço, contato e volumes
 export function pendenciasEnvio(d) {
     const p = [];
-    if (!String(d.dest_doc || '').trim()) p.push('CPF/CNPJ');
-    if (!String(d.dest_addr1 || '').trim()) p.push('Endereço');
-    if (!String(d.dest_phone || '').trim()) p.push('Contato');
+    const envia = !semEnvio(d);
+    if (envia && !String(d.dest_doc || '').trim()) p.push('CPF/CNPJ');
+    if (envia && !String(d.dest_addr1 || '').trim()) p.push('Endereço');
+    if (envia && !String(d.dest_phone || '').trim()) p.push('Contato');
     if (d.reference_type !== 'none' && !String(d.reference || '').trim()) p.push('Referência');
     if (!d.planilha_tipo) p.push('Tipo');
-    if (!d.total_vol) p.push('Volumes');
+    if (envia && !d.total_vol) p.push('Volumes');
     return p;
 }

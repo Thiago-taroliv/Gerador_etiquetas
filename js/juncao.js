@@ -8,6 +8,7 @@ import { toast } from './toast.js';
 import { config } from './configuracoes.js';
 import { confirmar } from './dialogo.js';
 import { rascunhoDoPedido } from './kanban.js';
+import { semEnvio } from './entrega.js';
 
 // Fases em que a NF ainda não foi emitida
 export const FASES_SEM_NF = ['rascunho', 'aguardando_nf'];
@@ -53,11 +54,13 @@ export function pedidoDoRascunho(r) {
 }
 
 // Pedidos sem NF (da janela da junção) do técnico informado. base: retorno de carregarCandidatosJuncao.
+// pessoa.semEnvio: retirada / instalação na Ranor só junta com outro pedido sem envio (e vice-versa)
 export function pedidosAbertosDoTecnico(base, pessoa) {
     return [
         ...base.historico.filter(r => r.dados_completos).map(pedidoDoHistorico),
         ...base.rascunhos.map(pedidoDoRascunho)
-    ].filter(p => mesmoTecnico(pessoa, { doc: p.dados?.dest_doc, nome: p.dados?.dest_name }));
+    ].filter(p => mesmoTecnico(pessoa, { doc: p.dados?.dest_doc, nome: p.dados?.dest_name })
+        && semEnvio(p.dados) === !!pessoa.semEnvio);
 }
 
 // Pedidos do mesmo técnico, sem NF, que ainda não estão neste envio (o que está no formulário)
@@ -66,7 +69,7 @@ async function buscarPedidosMesmoTecnico(dados) {
     if (!base) return [];
     const jaJuntado = p => AppState.juncaoPendente.some(j => j.origem === p.origem && String(j.id) === String(p.id));
     const esteEnvio = p => String(p.id) === String(p.origem === 'historico' ? AppState.currentHistoricoId : AppState.currentDraftId);
-    return pedidosAbertosDoTecnico(base, { doc: dados.dest_doc, nome: dados.dest_name })
+    return pedidosAbertosDoTecnico(base, { doc: dados.dest_doc, nome: dados.dest_name, semEnvio: semEnvio(dados) })
         .filter(p => !esteEnvio(p) && !jaJuntado(p));
 }
 
