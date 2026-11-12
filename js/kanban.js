@@ -94,12 +94,13 @@ async function concluirRascunhoDoPedido(historicoId) {
 // Registro do histórico por id, venha do kanban ou da lista do Histórico
 export function acharPedido(id) {
     return pedidos.find(r => String(r.id) === String(id))
-        || (window.__historicoCache || []).find(r => String(r.id) === String(id));
+        || (window.__historicoCache || []).find(r => String(r.id) === String(id))
+        || (window.__painelCache || []).find(r => String(r.id) === String(id));
 }
 
 // Aplica os campos em todas as cópias do registro (kanban e lista do Histórico)
 export function atualizarCaches(id, campos) {
-    [...pedidos, ...(window.__historicoCache || [])]
+    [...pedidos, ...(window.__historicoCache || []), ...(window.__painelCache || [])]
         .filter(r => String(r.id) === String(id))
         .forEach(r => Object.assign(r, campos));
 }

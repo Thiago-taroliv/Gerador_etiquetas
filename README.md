@@ -10,6 +10,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 - **Troca de equipamento com defeito**: cada número (IMEI) de um item tem "Substituir", que já pede o número novo e mantém chip e OS de origem, e "Excluir", que tira o número e baixa a quantidade. Ao salvar, o sistema avisa se o romaneio impresso ou o pedido de NF ficaram desatualizados
 - **Guia na tela**: confirmações e avisos em modais próprios, e aviso de alterações não salvas antes de trocar de pedido, iniciar outro envio ou sair
 - **Montar kit** (prévia da importação e formulário): sugere qual item é cada componente da receita (ex. KIT RA24) e quantos kits dá por OS; tudo ajustável antes de montar, e o kit pode ser desmontado
+- **Painel** (aba ao lado de Pedidos): gasto com frete no período (com comparação ao período anterior), envios despachados, frete médio, tempo do pedido ao despacho e do despacho à entrega; gráficos de gasto por mês (12 meses), por transportadora e tempo médio em cada etapa; listas de despachados sem frete e dos mais demorados. Filtros de período e transportadora. As datas de cada fase são gravadas pelo banco (rode [`sql/painel.sql`](sql/painel.sql))
 - **Kanban enxuto**: ocupa a largura da tela, cada coluna mostra os 8 pedidos mais recentes (atrasados e juntáveis sempre aparecem) com "Ver mais", rola por dentro e mostra no cabeçalho o total de pedidos e itens. Filtros por destinatário e transportadora
 - **Junção de pedidos** do mesmo técnico ainda sem NF (últimos dias, configurável; mesmo CPF/CNPJ ou mesmo nome), para pedir uma nota só:
   - no kanban, pelo botão "Juntar" do card ou arrastando um card sobre o outro: grava na hora, o card juntado sai do quadro
@@ -53,7 +54,8 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
     ├── ui.js           # Manipulação de formulário e coleta de dados
     ├── render.js       # Renderização de etiquetas, romaneio e e-mail
     ├── kanban.js       # Quadro de pedidos por fase (arrastar e soltar)
-    ├── juncao.js       # Alerta e junção de pedidos do mesmo técnico
+    ├── juncao.js       # Junção de pedidos do mesmo técnico (juntar, separar)
+    ├── painel.js       # Painel: gasto com frete e prazos
     ├── importarEstoque.js      # Leitor da planilha de estoque (agrupa linhas em envios)
     ├── importarEstoqueModal.js # Prévia da importação e criação dos rascunhos
     ├── dePara.js       # De-para: item do estoque -> item do sistema + papel
@@ -81,6 +83,8 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 ## Banco de dados
 
 O kanban usa as colunas `fase`, `fase_em`, `rastreio`, `frete`, `despachado_em` e `mesclado_em` da tabela `historico`. Para criá-las, rode [`sql/kanban.sql`](sql/kanban.sql) no SQL Editor do Supabase (pode ser executado mais de uma vez).
+
+O painel usa as colunas `entregue_em` e `fases_em` (quando o pedido entrou em cada fase, gravado por um gatilho no banco). Para criá-las, rode [`sql/painel.sql`](sql/painel.sql) depois do `kanban.sql`. Antes disso o painel funciona, mas sem o tempo de cada etapa e da entrega.
 
 A importação da planilha de estoque usa a tabela `de_para_itens`: rode [`sql/estoque.sql`](sql/estoque.sql) da mesma forma.
 

@@ -11,6 +11,7 @@ import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } fr
 window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisivel()) carregarViewKanban(); });
 import { onSenderChange, popularSelectRemetentes, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep, marcarFormularioSalvo, formularioAlterado } from './ui.js';
 import { confirmar } from './dialogo.js';
+import { iniciarPainel, carregarPainel, painelVisivel } from './painel.js';
 import './imeis.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject, avisosEmail } from './render.js';
 import { conferirEmail, resumoDoPedido } from './conferencia.js';
@@ -73,6 +74,8 @@ window.switchTab = function (tabName) {
     // Carregar dados específicos da aba (ESCALÁVEL: Fácil adicionar novas abas aqui)
     if (tabName === 'tab-pedidos') {
         carregarViewKanban();
+    } else if (tabName === 'tab-painel') {
+        iniciarPainel();
     } else if (tabName === 'tab-envios') {
         // Por padrão, abre os Rascunhos.
         switchSubTab('sub-andamento');
@@ -398,6 +401,7 @@ window.fecharDetalheHistorico = function () {
     window.__detalheHistoricoAtual = null;
     // Atualiza a tela de onde o modal foi aberto para refletir novos status
     if (kanbanVisivel()) renderKanban();
+    else if (painelVisivel()) carregarPainel(true); // ex. frete preenchido pelo detalhe
     else loadHistoricoView();
 };
 

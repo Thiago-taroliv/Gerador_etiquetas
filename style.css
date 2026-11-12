@@ -1416,7 +1416,7 @@ button.secondary:hover {
 .kanban-filtro.ativo { border-color: #1a56b0; color: #1a56b0; font-weight: 600; }
 
 /* O kanban usa mais largura que as outras abas (seis colunas lado a lado) */
-#tab-pedidos {
+#tab-pedidos, #tab-painel {
     width: min(1880px, calc(100vw - 64px));
     margin-left: calc((100% - min(1880px, calc(100vw - 64px))) / 2);
 }
@@ -1597,7 +1597,7 @@ button.resumo-chip:hover { transform: none; box-shadow: none; filter: brightness
     .kanban-acoes { min-width: 0; }
     .kanban-acoes input { max-width: none; }
     .kanban-filtro { max-width: none; flex: 1; }
-    #tab-pedidos { width: auto; margin-left: 0; }
+    #tab-pedidos, #tab-painel { width: auto; margin-left: 0; }
     .kanban-col-body { max-height: none; overflow: visible; }
 }
 
@@ -1783,3 +1783,77 @@ input.campo-pendente, select.campo-pendente {
 
 /* Linhas p/ Veículos: cabeçalho de uma linha só (sem a linha de grupos da planilha de envio) */
 .veiculos-table tr.nomes th { top: 0; background: #f3f4f6; padding: 6px 8px; border-bottom: 2px solid #d0d4da; }
+
+/* --- PAINEL (gasto com frete e prazos) --- */
+.painel-datas { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #555; }
+.painel-datas input { margin: 0; width: auto; }
+.painel-alerta { background: #fff4d6; color: #8a5a00; border: 1px solid #f3d27a; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 14px; }
+.painel-alerta code { background: #fff; padding: 1px 4px; border-radius: 4px; }
+.painel-vazio { font-size: 13px; color: #898781; padding: 18px 0; text-align: center; }
+
+.painel-tiles { display: grid; grid-template-columns: 1.6fr repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.painel-tile { background: #fcfcfb; border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; }
+.painel-tile-rotulo { font-size: 12px; color: #52514e; font-weight: 600; }
+.painel-tile-valor { font-size: 24px; font-weight: 700; color: #0b0b0b; margin-top: 4px; line-height: 1.15; }
+.painel-tile.hero .painel-tile-valor { font-size: 40px; }
+.painel-tile-sub { font-size: 12px; color: #898781; margin-top: 6px; line-height: 1.5; }
+.painel-tile-sub a { color: #1a56b0; }
+.painel-delta { display: block; font-weight: 600; color: #52514e; }
+.painel-delta.ruim { color: #d03b3b; }
+.painel-delta.bom { color: #006300; }
+
+.painel-grade-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.painel-card { background: #fcfcfb; border: 1px solid var(--border-light); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.painel-card.largo { grid-column: 1 / -1; }
+.painel-card-titulo { font-weight: 700; color: #0b0b0b; font-size: 14px; }
+.painel-card-sub { font-size: 12px; color: #898781; margin: 2px 0 12px; }
+
+/* Colunas (gasto por mês): barra de até 24px, ponta arredondada, base reta */
+.painel-colunas-area { position: relative; height: 200px; display: flex; align-items: flex-end; gap: 4px; margin-left: 64px; border-bottom: 1px solid #c3c2b7; }
+.painel-grade { position: absolute; left: -64px; right: 0; border-top: 1px solid #e1e0d9; pointer-events: none; }
+.painel-grade span { position: absolute; left: 0; top: -8px; font-size: 11px; color: #898781; font-variant-numeric: tabular-nums; width: 58px; text-align: right; }
+.painel-coluna { position: relative; flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; cursor: default; }
+.painel-coluna:hover { background: rgba(42, 120, 214, 0.06); }
+.painel-coluna-barra { width: min(24px, 70%); background: #2a78d6; border-radius: 4px 4px 0 0; min-height: 0; }
+.painel-coluna-valor { position: absolute; font-size: 11px; font-weight: 600; color: #52514e; white-space: nowrap; }
+.painel-colunas-eixo { display: flex; gap: 4px; margin-left: 64px; margin-top: 6px; }
+.painel-colunas-eixo span { flex: 1; text-align: center; font-size: 11px; color: #898781; }
+
+/* Barras horizontais: valor na ponta */
+.painel-barras { display: flex; flex-direction: column; gap: 10px; }
+.painel-barra-linha { display: grid; grid-template-columns: minmax(110px, 34%) 1fr; gap: 10px; align-items: center; cursor: default; padding: 2px 0; border-radius: 6px; }
+.painel-barra-linha:hover { background: rgba(42, 120, 214, 0.06); }
+.painel-barra-rotulo { font-size: 12.5px; color: #0b0b0b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.painel-barra-trilho { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.painel-barra { height: 16px; background: #2a78d6; border-radius: 0 4px 4px 0; flex-shrink: 0; max-width: 62%; }
+.painel-barra-valor { font-size: 12px; color: #52514e; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.painel-tabela { margin-top: 10px; font-size: 12px; }
+.painel-tabela summary { cursor: pointer; color: #1a56b0; font-weight: 600; }
+.painel-tabela table { width: 100%; border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.painel-tabela th, .painel-tabela td { text-align: left; padding: 4px 6px; border-bottom: 1px solid #e1e0d9; }
+.painel-tabela th { color: #52514e; font-weight: 600; }
+
+.painel-lista { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.painel-lista td { padding: 7px 6px; border-bottom: 1px solid #e1e0d9; vertical-align: top; }
+.painel-lista tr { cursor: pointer; }
+.painel-lista tr:hover td { background: #f3f6fb; }
+.painel-lista-sub { font-size: 11.5px; color: #898781; margin-top: 1px; }
+.painel-lista-extra { text-align: right; white-space: nowrap; font-weight: 600; color: #0b0b0b; }
+.painel-card .painel-lista { max-height: 320px; }
+#painel_sem_frete { max-height: 420px; overflow-y: auto; }
+
+.painel-tooltip {
+    position: fixed; z-index: 3000; display: none; pointer-events: none;
+    background: #0b0b0b; color: #fff; font-size: 12px; padding: 6px 9px; border-radius: 6px;
+    max-width: 320px; box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+
+@media (max-width: 1100px) {
+    .painel-tiles { grid-template-columns: repeat(2, 1fr); }
+    .painel-tile.hero { grid-column: 1 / -1; }
+}
+@media (max-width: 800px) {
+    .painel-grade-cards { grid-template-columns: 1fr; }
+    .painel-colunas-eixo span:nth-child(even) { visibility: hidden; }
+}

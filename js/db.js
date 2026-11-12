@@ -408,6 +408,48 @@ export async function gravarPreparo(tabela, id, preparo) {
     return true;
 }
 
+// --- PAINEL ---
+
+// Pedidos para o painel: criados ou despachados desde a data, sem os cancelados.
+// Não traz os dados do formulário (pesados). semColunas: o sql/painel.sql ainda não foi rodado.
+export async function carregarDadosPainel(desde) {
+    const base = 'id, created_at, fase, fase_em, despachado_em, frete, transportadora, destinatario, unidade, referencia, status, rascunho_em:dados_completos->>rascunho_em';
+    const buscar = async colunas => {
+        const todos = [];
+        for (let de = 0; ; de += 1000) {
+            const { data, error } = await supabaseClient.from('historico').select(colunas)
+                .neq('fase', 'cancelado')
+                .or(`created_at.gte."${desde}",despachado_em.gte."${desde}"`)
+                .order('created_at', { ascending: true })
+                .range(de, de + 999);
+            if (error) return { error };
+            todos.push(...data);
+            if (data.length < 1000) return { data: todos };
+        }
+    };
+    let r = await buscar(base + ', entregue_em, fases_em');
+    let semColunas = false;
+    if (r.error) {
+        r = await buscar(base);
+        semColunas = true;
+    }
+    if (r.error) {
+        console.error('Erro ao carregar o painel:', r.error.message);
+        return null;
+    }
+    return { pedidos: r.data, semColunas };
+}
+
+// Um pedido completo (para abrir o detalhe a partir do painel)
+export async function carregarPedido(id) {
+    const { data, error } = await supabaseClient.from('historico').select('*').eq('id', id).single();
+    if (error) {
+        console.error('Erro ao buscar pedido:', error.message);
+        return null;
+    }
+    return data;
+}
+
 // Envios que vieram da planilha de estoque (para reconhecer uma reimportação): rascunhos e histórico
 export async function carregarOrigensEstoque() {
     const [rasc, hist, anexRasc, anexHist] = await Promise.all([

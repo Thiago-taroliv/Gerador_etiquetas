@@ -42,6 +42,7 @@
             </div>
             <div class="nav-center">
                 <button class="nav-tab active" data-tab="tab-pedidos" onclick="switchTab('tab-pedidos')">Pedidos</button>
+                <button class="nav-tab" data-tab="tab-painel" onclick="switchTab('tab-painel')">Painel</button>
                 <button class="nav-tab" data-tab="tab-romaneio" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
                 <button class="nav-tab" data-tab="tab-dados" onclick="switchTab('tab-dados')">Gerenciar Dados</button>
                 <button class="nav-tab" data-tab="tab-envios" onclick="switchTab('tab-envios')">Envios</button>
@@ -77,6 +78,38 @@
                     <div id="kanban_board" class="kanban-board">
                         <div class="empty-state">Carregando pedidos...</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- ABA: PAINEL (gasto com frete e prazos) -->
+            <div id="tab-painel" class="tab-content" style="display: none;">
+                <div class="card">
+                    <div class="kanban-topo">
+                        <div>
+                            <strong>Painel</strong>
+                            <div class="small">Gasto com frete e prazos dos envios. Passe o mouse nos gráficos para ver os valores.</div>
+                        </div>
+                        <div class="kanban-acoes">
+                            <select id="painel_periodo" class="kanban-filtro" onchange="mudarPeriodoPainel()" title="Período">
+                                <option value="mes">Este mês</option>
+                                <option value="mes_passado">Mês passado</option>
+                                <option value="30">Últimos 30 dias</option>
+                                <option value="90">Últimos 90 dias</option>
+                                <option value="ano">Este ano</option>
+                                <option value="custom">Personalizado…</option>
+                            </select>
+                            <span id="painel_datas" class="painel-datas" style="display: none;">
+                                <input type="date" id="painel_de" onchange="carregarPainel()"> até
+                                <input type="date" id="painel_ate" onchange="carregarPainel()">
+                            </span>
+                            <select id="painel_transportadora" class="kanban-filtro" onchange="renderPainel()" title="Transportadora">
+                                <option value="">Todas as transportadoras</option>
+                            </select>
+                            <button class="btn-outline" onclick="carregarPainel(true)">🔄 Atualizar</button>
+                        </div>
+                    </div>
+                    <div id="painel_aviso"></div>
+                    <div id="painel_corpo"></div>
                 </div>
             </div>
 
