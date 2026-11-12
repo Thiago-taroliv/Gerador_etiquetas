@@ -10,7 +10,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 - **Troca de equipamento com defeito**: cada número (IMEI) de um item tem "Substituir", que já pede o número novo e mantém chip e OS de origem, e "Excluir", que tira o número e baixa a quantidade. Ao salvar, o sistema avisa se o romaneio impresso ou o pedido de NF ficaram desatualizados
 - **Guia na tela**: confirmações e avisos em modais próprios, e aviso de alterações não salvas antes de trocar de pedido, iniciar outro envio ou sair
 - **Montar kit** (prévia da importação e formulário): sugere qual item é cada componente da receita (ex. KIT RA24) e quantos kits dá por OS; tudo ajustável antes de montar, e o kit pode ser desmontado
-- **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos dias, configurável) e permite juntar tudo num envio só
+- **Junção de pedidos**: ao pedir a NF, o sistema avisa se há outro pedido para o mesmo técnico ainda sem nota (últimos dias, configurável; mesmo CPF/CNPJ ou mesmo nome) e permite juntar tudo num envio só. "Enviar só este" pede confirmação. No kanban, o botão "Juntar" do card abre o pedido no formulário já com a junção
 - Geração automática de **etiquetas de envio** (com suporte a múltiplos volumes)
 - Geração de **romaneio de entrega** para impressão
 - **Linhas p/ Veículos**: um veículo por rastreador no padrão da planilha de importação de veículos da plataforma (cliente na plataforma lembrado por unidade, placa provisória "RA24 52-01", ICCID e operadora do chip)

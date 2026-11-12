@@ -2,7 +2,7 @@ import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
 import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido } from './db.js';
 import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido, ETAPAS_PREPARO, preparoDe, definirPreparo } from './kanban.js';
-import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao } from './juncao.js';
+import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao, juntarNoFormulario } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
 import { pendenciasEnvio } from './importarEstoque.js';
 import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } from './importarEstoqueModal.js';
@@ -654,6 +654,20 @@ window.editarPedidoNoFormulario = async function (id) {
     atualizarPendencias();
     window.switchTab('tab-romaneio');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+
+// Botão "Juntar" do card do kanban (chave 'h:<id>' ou 'r:<id>'): abre o pedido no formulário
+// e já mostra os outros pedidos do mesmo técnico para juntar
+window.juntarPedidoDoKanban = async function (chave) {
+    const id = chave.slice(2);
+    const rascunho = chave.startsWith('r:');
+    if (rascunho) await window.editarRascunho(id);
+    else await window.editarPedidoNoFormulario(id);
+
+    // Usuário desistiu de trocar o formulário, ou o pedido não pôde ser aberto
+    const aberto = rascunho ? AppState.currentDraftId === String(id) : AppState.currentHistoricoId === String(id);
+    if (!aberto) return;
+    await juntarNoFormulario(collectData());
 };
 
 // Grava o formulário no pedido vinculado, sem marcar etapas nem mudar a fase

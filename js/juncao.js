@@ -5,6 +5,7 @@ import { carregarCandidatosJuncao, cancelarPedido, deletarPendente, FASES } from
 import { preencherFormulario } from './ui.js';
 import { toast } from './toast.js';
 import { config } from './configuracoes.js';
+import { confirmar } from './dialogo.js';
 
 // Fases em que a NF ainda não foi emitida
 export const FASES_SEM_NF = ['rascunho', 'aguardando_nf'];
@@ -18,10 +19,11 @@ const normNome = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
 // { doc, nome } de um registro do histórico ou rascunho
 export const pessoaDoRegistro = reg => ({ doc: reg.dados_completos?.dest_doc, nome: reg.destinatario });
 
-// Mesmo CPF/CNPJ; se algum dos dois não tiver documento, compara o nome
+// Mesmo CPF/CNPJ ou mesmo nome. O nome vale mesmo com documentos diferentes
+// (ex. um pedido com o CPF do técnico e outro com o CNPJ da unidade).
 export function mesmoTecnico(a, b) {
     const docA = normDoc(a.doc), docB = normDoc(b.doc);
-    if (docA && docB) return docA === docB;
+    if (docA && docA === docB) return true;
     const nomeA = normNome(a.nome);
     return !!nomeA && nomeA === normNome(b.nome);
 }
@@ -67,7 +69,10 @@ let responder = null;
 export const juncaoAberta = () => $('modal-juncao')?.style.display === 'flex';
 export const fecharJuncao = () => window.responderJuncao('voltar');
 
-function perguntarJuncao(nome, candidatos) {
+// manual: aberto pelo botão "Juntar" do kanban, sem e-mail em andamento (não há "Enviar só este")
+function perguntarJuncao(nome, candidatos, manual = false) {
+    $('btn-juncao-so-este').style.display = manual ? 'none' : '';
+    $('btn-juncao-juntar').textContent = manual ? 'Juntar' : 'Juntar neste envio';
     const linhas = candidatos.map((c, idx) => {
         const qtd = (c.dados?.items || c.itens || []).length;
         const situacao = c.pediuNF
@@ -140,13 +145,41 @@ export async function verificarJuncao(dados) {
     const candidatos = await buscarPedidosMesmoTecnico(dados);
     if (candidatos.length === 0) return true;
 
-    const { acao, escolhidos } = await perguntarJuncao(dados.dest_name, candidatos);
-    if (acao === 'so_este') return true;
-    if (acao === 'juntar') {
-        aplicarJuncaoNoFormulario(dados, escolhidos);
-        toast('Itens juntados no formulário. Confira os volumes e envie o e-mail de novo.', 'success', 7000);
+    while (true) {
+        const { acao, escolhidos } = await perguntarJuncao(dados.dest_name, candidatos);
+        if (acao === 'so_este') {
+            const n = candidatos.length + 1;
+            const certeza = await confirmar({
+                titulo: 'Pedir NFs separadas?',
+                mensagem: `Vão ser ${n} notas fiscais separadas para ${dados.dest_name || 'o mesmo técnico'}, que podem sair num envio só.`,
+                detalhe: 'Use "Juntar neste envio" para pedir uma nota só com todos os itens.',
+                tipo: 'aviso',
+                sim: 'Enviar só este mesmo assim',
+                nao: 'Voltar'
+            });
+            if (certeza) return true;
+            continue; // reabre a lista de pedidos
+        }
+        if (acao === 'juntar') {
+            aplicarJuncaoNoFormulario(dados, escolhidos);
+            toast('Itens juntados no formulário. Confira os volumes e envie o e-mail de novo.', 'success', 7000);
+        }
+        return false;
     }
-    return false;
+}
+
+// Botão "Juntar" do kanban: o pedido já está no formulário; oferece juntar os outros do mesmo técnico.
+// A junção só é gravada quando o e-mail for enviado (finalizarJuncao).
+export async function juntarNoFormulario(dados) {
+    const candidatos = await buscarPedidosMesmoTecnico(dados);
+    if (candidatos.length === 0) {
+        toast('Nenhum outro pedido sem NF para este técnico.', 'warning');
+        return;
+    }
+    const { acao, escolhidos } = await perguntarJuncao(dados.dest_name, candidatos, true);
+    if (acao !== 'juntar') return;
+    aplicarJuncaoNoFormulario(dados, escolhidos);
+    toast('Itens juntados no formulário. Confira os volumes e clique em "Enviar E-mail" para pedir uma NF só.', 'success', 9000);
 }
 
 // Depois do e-mail registrado: cancela os pedidos juntados, apontando para o novo envio

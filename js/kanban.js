@@ -211,7 +211,8 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
             <div class="kanban-card-tags">
                 ${seloPreparo}
                 ${doEstoque ? '<span class="kanban-tag estoque" title="Importado da planilha de estoque">estoque</span>' : ''}
-                ${outros ? `<span class="kanban-tag juncao" title="Clique para destacar" onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length} p/ este técnico</span>` : ''}
+                ${outros ? `<span class="kanban-tag juncao" title="Clique para destacar" onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length} p/ este técnico</span>
+                    <span class="kanban-tag juncao juntar" title="Abre este pedido no formulário e junta os outros do mesmo técnico, para pedir uma NF só" onclick="event.stopPropagation(); juntarPedidoDoKanban('${chave}')">Juntar</span>` : ''}
                 ${!rascunho && idDraft ? `<span class="kanban-tag rasc" title="Abrir rascunho no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">rascunho aberto</span>` : ''}
             </div>
             <div class="kanban-card-rodape">

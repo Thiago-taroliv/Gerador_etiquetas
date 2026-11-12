@@ -1487,6 +1487,8 @@ button.secondary:hover {
     white-space: nowrap;
 }
 .kanban-tag.juncao { background: #e8f0fe; color: #1a56b0; }
+.kanban-tag.juncao.juntar { background: #1a56b0; color: #fff; cursor: pointer; }
+.kanban-tag.juncao.juntar:hover { background: #14468f; }
 .kanban-tag.rasc { background: #fff8e1; color: #8a6d00; }
 /* Configuração dos equipamentos: saída do estoque -> em configuração -> configurado */
 .kanban-tag.preparo-estoque { background: #f1f1f1; color: #666; }
