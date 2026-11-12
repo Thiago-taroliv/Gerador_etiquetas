@@ -1,6 +1,6 @@
 // Kanban de pedidos: uma coluna por fase, cards arrastáveis entre elas
 import { $, escapeHtml, supabaseClient, AppState } from './config.js';
-import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente } from './db.js';
+import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente, gravarPreparo } from './db.js';
 import { formatarFrete, lerValor } from './planilha.js';
 import { oferecerPixFrete } from './pixFrete.js';
 import { confirmar, pedirCampos } from './dialogo.js';
@@ -83,6 +83,58 @@ export function atualizarCaches(id, campos) {
         .forEach(r => Object.assign(r, campos));
 }
 
+// --- Configuração dos equipamentos: etapa paralela às fases (pode configurar enquanto espera a NF) ---
+export const ETAPAS_PREPARO = [
+    { chave: 'estoque',      rotulo: 'Saída do estoque' },
+    { chave: 'configurando', rotulo: 'Em configuração' },
+    { chave: 'configurado',  rotulo: 'Configurado' }
+];
+// Pedido sem etapa gravada acabou de sair do estoque
+export const preparoDe = dados => ETAPAS_PREPARO.some(e => e.chave === dados?.preparo) ? dados.preparo : 'estoque';
+const rotuloPreparo = chave => ETAPAS_PREPARO.find(e => e.chave === chave)?.rotulo || chave;
+
+// chave do card: 'h:<id>' (histórico) ou 'r:<id>' (rascunho)
+function registroDaChave(chave) {
+    const id = chave.slice(2);
+    return chave.startsWith('r:')
+        ? rascunhos.find(r => String(r.id) === id) || (window.__rascunhosCache || []).find(r => String(r.id) === id)
+        : acharPedido(id);
+}
+
+// Grava a etapa com atualização otimista; volta se o banco falhar
+export async function definirPreparo(chave, preparo) {
+    const reg = registroDaChave(chave);
+    if (!reg) return false;
+    const rascunho = chave.startsWith('r:');
+    const id = chave.slice(2);
+    const anterior = reg.dados_completos?.preparo;
+    const aplicar = valor => {
+        const copias = rascunho ? [reg] : [...pedidos, ...(window.__historicoCache || [])].filter(r => String(r.id) === id);
+        copias.forEach(r => { r.dados_completos = { ...(r.dados_completos || {}), preparo: valor }; });
+        // Formulário com este pedido aberto: "Salvar rascunho" não pode desfazer a etapa
+        const aberto = rascunho ? String(AppState.currentDraftId) === id : String(AppState.currentHistoricoId) === id;
+        if (aberto) AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), preparo: valor };
+        if (kanbanVisivel()) renderKanban();
+    };
+
+    aplicar(preparo);
+    const ok = await gravarPreparo(rascunho ? 'pedidos_pendentes' : 'historico', id, preparo);
+    if (!ok) {
+        aplicar(anterior);
+        toast('Não foi possível salvar a etapa de configuração. Verifique a conexão.', 'error', 5000);
+    }
+    return ok;
+}
+
+// Clique no selo do card: avança para a próxima etapa (de "Configurado" volta ao começo)
+window.avancarPreparo = function (chave) {
+    const reg = registroDaChave(chave);
+    if (!reg) return;
+    const i = ETAPAS_PREPARO.findIndex(e => e.chave === preparoDe(reg.dados_completos));
+    const proxima = ETAPAS_PREPARO[(i + 1) % ETAPAS_PREPARO.length].chave;
+    definirPreparo(chave, proxima).then(ok => ok && toast(`${reg.destinatario || 'Pedido'}: ${rotuloPreparo(proxima)}.`));
+};
+
 const diasDesde = data => Math.max(0, Math.floor((Date.now() - new Date(data)) / 864e5));
 const textoDias = n => n === 0 ? 'hoje' : `há ${n} dia${n > 1 ? 's' : ''}`;
 
@@ -137,6 +189,12 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     const doEstoque = reg.dados_completos?.origem?.perfil === 'estoque';
     const falta = rascunho && doEstoque ? pendenciasEnvio(reg.dados_completos) : [];
     const acao = rascunho ? `editarRascunho('${reg.id}')` : `abrirDetalheHistorico('${reg.id}')`;
+    // Depois de despachado, só mostra a etapa de configuração se ela foi marcada
+    const preparo = preparoDe(reg.dados_completos);
+    const mostraPreparo = reg.dados_completos?.preparo || !['despachado', 'entregue'].includes(fase);
+    const seloPreparo = mostraPreparo
+        ? `<span class="kanban-tag preparo preparo-${preparo}" title="Configuração dos equipamentos. Clique para avançar a etapa."
+                 onclick="event.stopPropagation(); avancarPreparo('${chave}')">⚙ ${rotuloPreparo(preparo)}</span>` : '';
     const arrastar = `draggable="true" ondragstart="kanbanDragStart(event, '${rascunho ? 'r:' : ''}${reg.id}')" ondragend="kanbanDragEnd(event)"`;
 
     return `
@@ -151,6 +209,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
             ${reg.frete != null ? `<div class="kanban-card-meta">Frete: <strong>R$ ${formatarFrete(reg.frete)}</strong></div>` : ''}
             ${falta.length ? `<div class="kanban-card-falta">Falta: ${falta.map(escapeHtml).join(', ')}</div>` : ''}
             <div class="kanban-card-tags">
+                ${seloPreparo}
                 ${doEstoque ? '<span class="kanban-tag estoque" title="Importado da planilha de estoque">estoque</span>' : ''}
                 ${outros ? `<span class="kanban-tag juncao" title="Clique para destacar" onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length} p/ este técnico</span>` : ''}
                 ${!rascunho && idDraft ? `<span class="kanban-tag rasc" title="Abrir rascunho no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">rascunho aberto</span>` : ''}
@@ -256,7 +315,7 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
 
     const extras = { ...extrasIniciais };
     if (fase === 'despachado') {
-        if (!(await confirmarEtapasDoDespacho(reg.destinatario, reg.status))) return false;
+        if (!(await confirmarEtapasDoDespacho(reg))) return false;
         const despacho = await pedirDadosDespacho(reg, { despachando: true });
         if (!despacho) return false;
         Object.assign(extras, despacho);
@@ -285,11 +344,13 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
 }
 
 // Despachar trava os itens: avisa se ainda falta alguma etapa do pedido
-async function confirmarEtapasDoDespacho(destinatario, status = {}) {
+async function confirmarEtapasDoDespacho({ destinatario, status, dados_completos } = {}) {
+    const preparo = preparoDe(dados_completos);
     const faltam = [
         !status?.email && 'pedido de NF por e-mail',
         !status?.romaneio && 'romaneio',
-        !status?.etiqueta && 'etiqueta'
+        !status?.etiqueta && 'etiqueta',
+        preparo !== 'configurado' && `configuração dos equipamentos (está em "${rotuloPreparo(preparo)}")`
     ].filter(Boolean);
     if (!faltam.length) return true;
     return confirmar({
@@ -327,7 +388,7 @@ async function moverRascunhoPara(draftId, fase) {
 
     let extras = {};
     if (fase === 'despachado') {
-        if (!(await confirmarEtapasDoDespacho(rasc.destinatario))) return false;
+        if (!(await confirmarEtapasDoDespacho({ destinatario: rasc.destinatario, dados_completos: rasc.dados_completos }))) return false;
         extras = await pedirDadosDespacho({}, { despachando: true });
         if (!extras) return false;
         extras.despachado_em = new Date().toISOString();

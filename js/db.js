@@ -304,6 +304,9 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
             if (mesclados && !registro.dados_completos.mesclados) registro.dados_completos.mesclados = mesclados;
             const rascunhoEm = atual.dados_completos?.rascunho_em;
             if (rascunhoEm && !registro.dados_completos.rascunho_em) registro.dados_completos.rascunho_em = rascunhoEm;
+            // A etapa de configuração é mudada pelo kanban: vale a gravada, não a de um formulário aberto antes
+            const preparo = atual.dados_completos?.preparo;
+            if (preparo) registro.dados_completos.preparo = preparo;
 
             const status = { email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas };
             const faseAnterior = atual.fase || 'rascunho';
@@ -383,6 +386,23 @@ export async function gravarEscolhaKits(id, montar) {
         .update({ dados_completos: { ...(data.dados_completos || {}), montar_kits: montar } }).eq('id', id);
     if (erroUpdate) {
         console.error('Erro ao gravar escolha de kits:', erroUpdate.message);
+        return false;
+    }
+    return true;
+}
+
+// Etapa de configuração dos equipamentos (estoque -> configurando -> configurado).
+// tabela: 'historico' ou 'pedidos_pendentes' (rascunho). Fica em dados_completos.preparo.
+export async function gravarPreparo(tabela, id, preparo) {
+    const { data, error } = await supabaseClient.from(tabela).select('dados_completos').eq('id', id).single();
+    if (error || !data) {
+        console.error('Erro ao ler pedido para gravar a configuração:', error?.message);
+        return false;
+    }
+    const { error: erroUpdate } = await supabaseClient.from(tabela)
+        .update({ dados_completos: { ...(data.dados_completos || {}), preparo } }).eq('id', id);
+    if (erroUpdate) {
+        console.error('Erro ao gravar a configuração:', erroUpdate.message);
         return false;
     }
     return true;

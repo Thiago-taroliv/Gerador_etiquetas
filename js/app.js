@@ -1,7 +1,7 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
 import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido } from './db.js';
-import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido } from './kanban.js';
+import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido, ETAPAS_PREPARO, preparoDe, definirPreparo } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
 import { pendenciasEnvio } from './importarEstoque.js';
@@ -360,6 +360,10 @@ window.abrirDetalheHistorico = function (id) {
                 : `<select onchange="mudarFaseDoModal('${id}', this.value)">
                     ${FASES.map(f => `<option value="${f.chave}"${f.chave === reg.fase ? ' selected' : ''}>${f.rotulo}</option>`).join('')}
                    </select>`}
+            <div style="font-weight:700; font-size:12px; color:#888; margin:14px 0 10px; text-transform:uppercase; letter-spacing:0.5px;">Configuração dos equipamentos</div>
+            <select onchange="mudarPreparoDoModal('${id}', this.value)">
+                ${ETAPAS_PREPARO.map(e => `<option value="${e.chave}"${e.chave === preparoDe(reg.dados_completos) ? ' selected' : ''}>${e.rotulo}</option>`).join('')}
+            </select>
             <div class="detalhe-rastreio">
                 Rastreio: <strong>${escapeHtml(reg.rastreio) || '—'}</strong>
                 · Frete: <strong>${reg.frete != null ? 'R$ ' + formatarFrete(reg.frete) : '—'}</strong>
@@ -405,6 +409,11 @@ window.toggleStatusHistorico = async function (id, campo) {
 window.mudarFaseDoModal = async function (id, fase) {
     await moverPedidoPara(id, fase);
     abrirDetalheHistorico(id); // mostra a fase gravada (ou a anterior, se cancelou/falhou)
+};
+
+window.mudarPreparoDoModal = async function (id, preparo) {
+    await definirPreparo('h:' + id, preparo);
+    abrirDetalheHistorico(id); // mostra a etapa gravada (ou a anterior, se falhou)
 };
 
 window.editarRastreioDoModal = async function (id) {
@@ -691,6 +700,7 @@ function extrasDoEnvio(dados) {
     if (dados?.origem) extras.origem = dados.origem;
     if (dados?.montar_kits !== undefined) extras.montar_kits = dados.montar_kits;
     if (dados?.rascunho_em) extras.rascunho_em = dados.rascunho_em;
+    if (dados?.preparo) extras.preparo = dados.preparo;
     return extras;
 }
 

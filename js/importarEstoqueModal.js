@@ -442,6 +442,7 @@ function montarDados(g) {
             if (String(existente[c] ?? '').trim()) dados[c] = existente[c];
         });
         if (existente.montar_kits !== undefined) dados.montar_kits = existente.montar_kits;
+        if (existente.preparo) dados.preparo = existente.preparo;
     }
     return dados;
 }
