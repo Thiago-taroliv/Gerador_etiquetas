@@ -665,9 +665,29 @@ window.juntarPedidoDoKanban = async function (chave) {
     else await window.editarPedidoNoFormulario(id);
 
     // Usuário desistiu de trocar o formulário, ou o pedido não pôde ser aberto
-    const aberto = rascunho ? AppState.currentDraftId === String(id) : AppState.currentHistoricoId === String(id);
+    const aberto = String(rascunho ? AppState.currentDraftId : AppState.currentHistoricoId) === String(id);
     if (!aberto) return;
-    await juntarNoFormulario(collectData());
+
+    // Este pedido já tinha pedido NF? O próximo e-mail precisa dizer que o substitui
+    const atual = AppState.currentHistoricoId ? acharPedido(AppState.currentHistoricoId) : null;
+    const jaPediuNF = !!atual?.status?.email;
+
+    if (!(await juntarNoFormulario(collectData()))) return;
+
+    // Grava a junção já: este pedido fica com todos os itens e os outros cards são fechados
+    const d = collectData();
+    d.mesclados = [...(d.mesclados || []), ...AppState.juncaoPendente];
+    if (jaPediuNF) d.nf_anterior = { referencia: atual.referencia, unidade: atual.unidade };
+    const idPedido = await registrarEnvio(d, {});
+    if (!idPedido) return; // registrarEnvio já avisou; a junção continua no formulário
+    AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), mesclados: d.mesclados, ...(d.nf_anterior ? { nf_anterior: d.nf_anterior } : {}) };
+    await finalizarJuncao(idPedido);
+    if (kanbanVisivel()) carregarViewKanban();
+
+    const algumPediuNF = jaPediuNF || d.mesclados.some(m => m.pediuNF);
+    toast(algumPediuNF
+        ? 'Pedidos juntados em um só. Confira os volumes e clique em "Enviar E-mail": o e-mail avisa o financeiro para desconsiderar os pedidos de NF anteriores.'
+        : 'Pedidos juntados em um só. Confira os volumes antes de pedir a NF.', 'success', 10000);
 };
 
 // Grava o formulário no pedido vinculado, sem marcar etapas nem mudar a fase
@@ -715,6 +735,9 @@ function extrasDoEnvio(dados) {
     if (dados?.montar_kits !== undefined) extras.montar_kits = dados.montar_kits;
     if (dados?.rascunho_em) extras.rascunho_em = dados.rascunho_em;
     if (dados?.preparo) extras.preparo = dados.preparo;
+    // Junção já gravada: o próximo e-mail ainda precisa citar os pedidos substituídos
+    if (dados?.mesclados?.length) extras.mesclados = dados.mesclados;
+    if (dados?.nf_anterior) extras.nf_anterior = dados.nf_anterior;
     return extras;
 }
 
@@ -1151,7 +1174,7 @@ async function enviarEmailViaMailtoUsingData() {
 
     // Outro pedido do mesmo técnico sem NF? Oferece juntar antes de pedir a nota
     if (!(await verificarJuncao(d))) return;
-    if (AppState.juncaoPendente.length) d.mesclados = AppState.juncaoPendente;
+    if (AppState.juncaoPendente.length) d.mesclados = [...(d.mesclados || []), ...AppState.juncaoPendente];
 
     // Confere (e edita, se precisar) o e-mail antes de abrir
     const conferido = await conferirEmail({ assunto: buildEmailSubject(d), corpo: buildEmailBody(d), avisos: avisosEmail(d) });

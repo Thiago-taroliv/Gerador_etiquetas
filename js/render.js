@@ -313,7 +313,8 @@ export function buildEmailBody(d) {
     }
 
     // Junção: pedidos que já tinham pedido NF ao financeiro e agora seguem neste envio
-    const substituidos = (d.mesclados || []).filter(m => m.pediuNF);
+    // nf_anterior: este mesmo pedido já tinha pedido NF antes de receber os outros
+    const substituidos = [...(d.nf_anterior ? [d.nf_anterior] : []), ...(d.mesclados || []).filter(m => m.pediuNF)];
     if (substituidos.length) {
         emailText += `\nEste pedido substitui as solicitações anteriores: ${substituidos.map(m => m.referencia || m.unidade || 'sem referência').join(', ')}. Favor desconsiderá-las.\n`;
     }

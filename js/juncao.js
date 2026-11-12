@@ -6,6 +6,7 @@ import { preencherFormulario } from './ui.js';
 import { toast } from './toast.js';
 import { config } from './configuracoes.js';
 import { confirmar } from './dialogo.js';
+import { rascunhoDoPedido } from './kanban.js';
 
 // Fases em que a NF ainda não foi emitida
 export const FASES_SEM_NF = ['rascunho', 'aguardando_nf'];
@@ -169,17 +170,18 @@ export async function verificarJuncao(dados) {
 }
 
 // Botão "Juntar" do kanban: o pedido já está no formulário; oferece juntar os outros do mesmo técnico.
-// A junção só é gravada quando o e-mail for enviado (finalizarJuncao).
+// Só leva os itens para o formulário; quem chama grava e fecha os juntados (finalizarJuncao).
+// Retorna true se juntou.
 export async function juntarNoFormulario(dados) {
     const candidatos = await buscarPedidosMesmoTecnico(dados);
     if (candidatos.length === 0) {
         toast('Nenhum outro pedido sem NF para este técnico.', 'warning');
-        return;
+        return false;
     }
     const { acao, escolhidos } = await perguntarJuncao(dados.dest_name, candidatos, true);
-    if (acao !== 'juntar') return;
+    if (acao !== 'juntar') return false;
     aplicarJuncaoNoFormulario(dados, escolhidos);
-    toast('Itens juntados no formulário. Confira os volumes e clique em "Enviar E-mail" para pedir uma NF só.', 'success', 9000);
+    return true;
 }
 
 // Depois do e-mail registrado: cancela os pedidos juntados, apontando para o novo envio
@@ -187,9 +189,14 @@ export async function finalizarJuncao(novoHistoricoId) {
     const pendentes = AppState.juncaoPendente;
     if (!pendentes.length) return;
 
-    const resultados = await Promise.all(pendentes.map(p => p.origem === 'historico'
-        ? cancelarPedido(p.id, novoHistoricoId)
-        : deletarPendente(p.id, false)));
+    const resultados = await Promise.all(pendentes.map(async p => {
+        if (p.origem !== 'historico') return deletarPendente(p.id, false);
+        const ok = await cancelarPedido(p.id, novoHistoricoId);
+        // Rascunho aberto do pedido fechado não serve mais (os itens foram para o novo envio)
+        const draftId = ok && rascunhoDoPedido(p.id);
+        if (draftId) await deletarPendente(draftId, false);
+        return ok;
+    }));
 
     const falhas = pendentes.filter((_, i) => !resultados[i]);
     AppState.juncaoPendente = falhas;
