@@ -64,7 +64,7 @@ export async function handleLogout() {
     if (formularioAlterado()) {
         const sair = await confirmar({
             titulo: 'Sair sem salvar?',
-            mensagem: 'O formulário tem alterações que ainda não foram salvas e elas podem ser perdidas.',
+            mensagem: 'O pedido aberto tem alterações que ainda não foram salvas e elas podem ser perdidas.',
             tipo: 'aviso',
             sim: 'Sair mesmo assim',
             nao: 'Continuar aqui'

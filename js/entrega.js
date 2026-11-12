@@ -19,7 +19,7 @@ export const iconeEntrega = chave => forma(chave)?.icone || '';
 // --- Planilha de estoque: forma de saída pelo PRODUTO, CLIENTE INICIAL ou MOTIVO ---
 const norm = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Regras de Gerenciar Dados > Configurações (definirRegrasEntrega); esta é a padrão
+// Regras de Cadastros > Configurações (definirRegrasEntrega); esta é a padrão
 let regras = [{ contem: 'rfleet', entrega: 'retirada' }];
 export function definirRegrasEntrega(r) {
     if (Array.isArray(r)) regras = r;

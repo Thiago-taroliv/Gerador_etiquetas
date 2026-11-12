@@ -31,7 +31,7 @@ export function mesmoTecnico(a, b) {
     return !!nomeA && nomeA === normNome(b.nome);
 }
 
-// Só procura pedidos criados ou mexidos nestes últimos dias (Gerenciar Dados > Configurações)
+// Só procura pedidos criados ou mexidos nestes últimos dias (Cadastros > Configurações)
 export const inicioJanelaJuncao = () => new Date(Date.now() - (Number(config('juncao_dias')) || 7) * 864e5).toISOString();
 
 const diasDesde = data => Math.floor((Date.now() - new Date(data)) / 864e5);
@@ -138,12 +138,13 @@ async function fecharJuntados(entradas, historicoId) {
     return entradas.filter((_, i) => !resultados[i]);
 }
 
-// Grava os dados no pedido do histórico e no rascunho aberto dele, se houver
+// Grava os dados no pedido do quadro. O rascunho de onde ele veio (ou ligado a ele, de versões
+// anteriores) deixa de existir: o pedido fica num lugar só.
 async function gravarPedido(dados, historicoId, draftId = null) {
     const salvo = await registrarNoHistorico(dados, historicoId);
     if (!salvo) return null;
     const rascunho = draftId || rascunhoDoPedido(salvo.id);
-    if (rascunho) await salvarPendente({ ...dados, historico_id: salvo.id }, rascunho, true);
+    if (rascunho) await deletarPendente(rascunho, false);
     return salvo.id;
 }
 

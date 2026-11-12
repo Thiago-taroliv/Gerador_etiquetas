@@ -123,7 +123,7 @@ export async function deletarDePara(id) {
     return true;
 }
 
-// --- Tela de manutenção (Gerenciar Dados -> De-para estoque) ---
+// --- Tela de manutenção (Cadastros -> De-para estoque) ---
 
 // <datalist> com o cadastro de itens, para sugerir o nome no romaneio
 export function datalistItensHtml(id = 'depara_itens_catalogo') {

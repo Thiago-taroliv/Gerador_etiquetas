@@ -24,7 +24,7 @@ const ehCod = n => n.startsWith('cod');
 const ehQtd = n => n.startsWith('qt');
 
 // Motivo -> Tipo da planilha de envio: o motivo (sem acento) "começa com". As regras vêm de
-// Gerenciar Dados > Configurações (definirMotivoTipo); estas são as padrão.
+// Cadastros > Configurações (definirMotivoTipo); estas são as padrão.
 let regrasMotivo = [
     { comeca: 'manut', tipo: 'MAN' }, { comeca: 'instal', tipo: 'INS' }, { comeca: 'correc', tipo: 'COR' },
     { comeca: 'corret', tipo: 'COR' }, { comeca: 'fornec', tipo: 'FOR' }

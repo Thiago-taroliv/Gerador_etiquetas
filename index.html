@@ -42,10 +42,11 @@
             </div>
             <div class="nav-center">
                 <button class="nav-tab active" data-tab="tab-pedidos" onclick="switchTab('tab-pedidos')">Pedidos</button>
+                <!-- Só aparece com um pedido aberto: volta para ele sem perder nada -->
+                <button class="nav-tab nav-tab-pedido" data-tab="tab-romaneio" id="nav_pedido_aberto" style="display:none;" onclick="switchTab('tab-romaneio')">✎ Pedido aberto</button>
                 <button class="nav-tab" data-tab="tab-painel" onclick="switchTab('tab-painel')">Painel</button>
-                <button class="nav-tab" data-tab="tab-romaneio" onclick="switchTab('tab-romaneio')">Gerar Romaneio</button>
-                <button class="nav-tab" data-tab="tab-dados" onclick="switchTab('tab-dados')">Gerenciar Dados</button>
-                <button class="nav-tab" data-tab="tab-envios" onclick="switchTab('tab-envios')">Envios</button>
+                <button class="nav-tab" data-tab="tab-historico" onclick="switchTab('tab-historico')">Histórico</button>
+                <button class="nav-tab" data-tab="tab-dados" onclick="switchTab('tab-dados')">Cadastros</button>
             </div>
             <div class="nav-links">
                 <button class="nav-btn" onclick="handleLogout()">Sair</button>
@@ -59,7 +60,7 @@
                     <div class="kanban-topo">
                         <div>
                             <strong>Pedidos</strong>
-                            <div class="small">Arraste os cards entre as colunas para mudar a fase. Clique em um card para ver detalhes.</div>
+                            <div class="small">Arraste os cards entre as colunas para mudar a fase. Clique em um card para abrir o pedido.</div>
                         </div>
                         <div class="kanban-acoes">
                             <input id="kanban_search" type="text" placeholder="Filtrar por destinatário, unidade, referência ou rastreio..."
@@ -70,8 +71,15 @@
                             <select id="kanban_transportadora" class="kanban-filtro" onchange="renderKanban()" title="Mostrar só os pedidos desta transportadora">
                                 <option value="">Todas as transportadoras</option>
                             </select>
-                            <button class="btn-outline" onclick="abrirImportarEstoque()" title="Criar rascunhos a partir da planilha de saída de estoque">📥 Importar estoque</button>
                             <button class="btn-outline" onclick="carregarViewKanban()">🔄 Atualizar</button>
+                            <div class="menu-novo">
+                                <button type="button" onclick="alternarMenuNovo(event)">+ Novo pedido ▾</button>
+                                <div id="menu_novo" class="menu-novo-lista" style="display:none;">
+                                    <button type="button" onclick="novoPedido()">Em branco<small>Preencher à mão</small></button>
+                                    <button type="button" onclick="fecharMenuNovo(); abrirImportarEstoque()">Da planilha de estoque<small>Cria um rascunho por envio, direto no quadro</small></button>
+                                    <button type="button" onclick="fecharMenuNovo(); abrirImportarPlanilha()">Da planilha de controle<small>Abre um envio já lançado na planilha</small></button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div id="kanban_resumo" class="kanban-resumo"></div>
@@ -113,252 +121,211 @@
                 </div>
             </div>
 
-            <!-- ABA: ROMANEIO -->
+            <!-- ABA: PEDIDO (editor). Abre pelo card do quadro ou por "+ Novo pedido" -->
             <div id="tab-romaneio" class="tab-content" style="display: none;">
+                <!-- Barra fixa: o que é, em que fase está, se está salvo -->
+                <div id="editor_barra" class="editor-barra">
+                    <div class="editor-titulo">
+                        <span id="editor_titulo">Novo pedido</span>
+                        <span id="editor_fase" class="fase-badge">Novo</span>
+                        <span id="editor_estado" class="editor-estado"></span>
+                    </div>
+                    <div class="editor-barra-acoes">
+                        <button id="btn_salvar" type="button" onclick="salvarPedido()" title="Grava o pedido (Ctrl+S)">Salvar</button>
+                        <button class="secondary" type="button" onclick="fecharPedido()">Fechar</button>
+                    </div>
+                </div>
+                <!-- Envio importado da planilha de estoque: o que falta preencher à mão -->
+                <div id="pendencias_banner" class="pendencias-banner" style="display:none;"></div>
+
                 <div class="grid">
                     <div class="card">
-                        <div id="draft_indicator"
-                            style="display:none; justify-content:space-between; align-items:center; gap:12px; padding:10px 14px; margin-bottom:14px; background:#fff8e1; border:1px solid #ffc107; border-radius:8px; font-size:13px;">
-                            <span id="draft_indicator_texto">Editando um rascunho salvo. "Salvar Rascunho" atualiza este rascunho.</span>
-                            <div style="display:flex; gap:8px;">
-                                <button id="btn_salvar_no_pedido" type="button" onclick="salvarNoPedido()"
-                                    style="display:none; font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Salvar no pedido</button>
-                                <button class="secondary" type="button" onclick="novoEnvio()"
-                                    style="font-size:12px; padding:6px 12px; margin:0; white-space:nowrap;">Novo Envio</button>
-                            </div>
-                        </div>
-                        <!-- Envio importado da planilha de estoque: o que falta preencher à mão -->
-                        <div id="pendencias_banner" class="pendencias-banner" style="display:none;"></div>
+                        <!-- disabled quando o pedido já saiu (despachado / entregue) ou foi cancelado -->
+                        <fieldset id="editor_campos" class="editor-campos">
+                            <!-- SEÇÃO: REMETENTE -->
+                            <fieldset>
+                                <legend>Remetente</legend>
 
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-                            <div>
-                                <strong>Formulário (mínimo de envio)</strong>
-                                <div class="small" style="margin-top:0;">Preencha manualmente, use o cadastro ou importe um envio da planilha de controle.</div>
-                            </div>
-                            <button type="button" class="btn-outline" onclick="abrirImportarPlanilha()" style="margin:0;">Importar da Planilha</button>
-                        </div>
+                                <label>Selecionar remetente</label>
+                                <!-- Opções geradas por popularSelectRemetentes (Cadastros > Configurações) -->
+                                <select id="sender_select"></select>
 
-                        <!-- SEÇÃO: REMETENTE -->
-                        <fieldset>
-                            <legend>Remetente</legend>
+                                <label>Empresa</label>
+                                <input id="sender_company" type="text" readonly>
 
-                            <label>Selecionar remetente</label>
-                            <!-- Opções geradas por popularSelectRemetentes (Gerenciar Dados > Configurações) -->
-                            <select id="sender_select"></select>
+                                <label>CNPJ</label>
+                                <input id="sender_cnpj" type="text" readonly>
 
-                            <label>Empresa</label>
-                            <input id="sender_company" type="text" readonly>
+                                <label>Endereço</label>
+                                <textarea id="sender_address" rows="2" readonly
+                                    style="min-height:0; font-family:inherit; resize:none;"></textarea>
+                            </fieldset>
 
-                            <label>CNPJ</label>
-                            <input id="sender_cnpj" type="text" readonly>
+                            <!-- SEÇÃO: DESTINATÁRIO -->
+                            <fieldset>
+                                <legend>Destinatário</legend>
 
-                            <label>Endereço</label>
-                            <textarea id="sender_address" rows="2" readonly
-                                style="min-height:0; font-family:inherit; resize:none;"></textarea>
-                        </fieldset>
+                                <!-- Seletor compacto do cadastro -->
+                                <label>Selecionar do cadastro</label>
+                                <input id="client_search" type="text" placeholder="Filtrar por nome, CPF/CNPJ ou cidade..."
+                                    oninput="filtrarSeletorDestinatarios(this.value)">
+                                <select id="client_select">
+                                    <option value="">— nenhum —</option>
+                                </select>
 
-                        <!-- SEÇÃO: DESTINATÁRIO -->
-                        <fieldset>
-                            <legend>Destinatário</legend>
+                                <div style="border-top: 1px solid #eee; margin: 14px 0 2px;"></div>
 
-                            <!-- Seletor compacto do cadastro -->
-                            <label>Selecionar do cadastro</label>
-                            <input id="client_search" type="text" placeholder="Filtrar por nome, CPF/CNPJ ou cidade..."
-                                oninput="filtrarSeletorDestinatarios(this.value)">
-                            <select id="client_select">
-                                <option value="">— nenhum —</option>
-                            </select>
+                                <label>Nome / Razão Social</label>
+                                <input id="dest_name" type="text" placeholder="">
 
-                            <div style="border-top: 1px solid #eee; margin: 14px 0 2px;"></div>
-
-                            <label>Nome / Razão Social</label>
-                            <input id="dest_name" type="text" placeholder="">
-
-                            <div class="row">
-                                <div class="col">
-                                    <label>CPF / CNPJ</label>
-                                    <input id="dest_doc" type="text" placeholder="">
+                                <div class="row">
+                                    <div class="col">
+                                        <label>CPF / CNPJ</label>
+                                        <input id="dest_doc" type="text" placeholder="">
+                                    </div>
+                                    <div class="col">
+                                        <label>Contato (opcional)</label>
+                                        <input id="dest_phone" type="text" placeholder="">
+                                    </div>
                                 </div>
-                                <div class="col">
-                                    <label>Contato (opcional)</label>
-                                    <input id="dest_phone" type="text" placeholder="">
+
+                                <label>CEP <span style="font-weight:400;color:#888;font-size:12px;">(preenche o endereço automaticamente)</span></label>
+                                <div class="cep-row">
+                                    <input id="dest_cep" type="text" inputmode="numeric" maxlength="9" placeholder="00000-000"
+                                        onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCep('dest')}">
+                                    <button type="button" class="btn-outline" onclick="buscarCep('dest')">Buscar CEP</button>
                                 </div>
-                            </div>
 
-                            <label>CEP <span style="font-weight:400;color:#888;font-size:12px;">(preenche o endereço automaticamente)</span></label>
-                            <div class="cep-row">
-                                <input id="dest_cep" type="text" inputmode="numeric" maxlength="9" placeholder="00000-000"
-                                    onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCep('dest')}">
-                                <button type="button" class="btn-outline" onclick="buscarCep('dest')">Buscar CEP</button>
-                            </div>
+                                <label>Endereço linha 1</label>
+                                <input id="dest_addr1" type="text" placeholder="">
 
-                            <label>Endereço linha 1</label>
-                            <input id="dest_addr1" type="text" placeholder="">
+                                <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
+                                <input id="dest_addr2" type="text" placeholder="">
 
-                            <label>Endereço linha 2 (bairro/cidade/UF/CEP)</label>
-                            <input id="dest_addr2" type="text" placeholder="">
-
-                            <div style="text-align: right; margin-top: 12px;">
-                                <button type="button" class="btn-accent" onclick="salvarDestinatarioAtual()"
-                                    style="font-size: 12px; padding: 6px 14px;">Salvar na Nuvem</button>
-                            </div>
-                        </fieldset>
-
-                        <!-- SEÇÃO: MODE CLIENTE -->
-                        <fieldset>
-                            <legend>Modo de Entrega</legend>
-                            <div style="display:flex;gap:20px;">
-                                <label style="display:flex;align-items:center;gap:8px;margin:0;">
-                                    <input type="radio" id="client_mode_single" name="client_mode" value="single"
-                                        checked onchange="toggleClientMode()">
-                                    <span>Um cliente (romaneio simples)</span>
-                                </label>
-                                <label style="display:flex;align-items:center;gap:8px;margin:0;">
-                                    <input type="radio" id="client_mode_multi" name="client_mode" value="multi"
-                                        onchange="toggleClientMode()">
-                                    <span>Múltiplos clientes (romaneio agrupado)</span>
-                                </label>
-                            </div>
-
-                            <!-- Campo de unidade: visível apenas no modo simples -->
-                            <div id="unit_field_wrapper" style="margin-top:14px;">
-                                <label>Cliente / Unidade <span style="font-weight:400;color:#888;font-size:12px;">(local de instalação)</span></label>
-                                <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
-                            </div>
-                        </fieldset>
-
-                        <!-- SEÇÃO: ITENS -->
-                        <fieldset>
-                            <legend>Itens (descrição e quantidade)</legend>
-
-                            <div id="items_container" style="display:flex; flex-direction:column; gap:10px;"></div>
-                            <div class="actions" style="margin-top: 12px;">
-                                <button onclick="addItem()">Adicionar item</button>
-                                <button class="secondary" onclick="clearItems()" title="Tirar todos os itens do formulário">Limpar itens</button>
-                                <button class="secondary" onclick="montarKitNoFormulario()" title="Juntar rastreador, teclado e acessórios em kits (confere antes)">Montar kit</button>
-                                <button class="secondary" onclick="desmontarKitNoFormulario()" title="Voltar um kit montado aos componentes">Desmontar kit</button>
-                            </div>
-                        </fieldset>
-
-                        <!-- SEÇÃO: DADOS ADICIONAIS -->
-                        <fieldset>
-                            <legend>Dados Adicionais</legend>
-
-                            <label>Forma de saída</label>
-                            <select id="entrega" onchange="atualizarFormaEntrega()" title="Retirada e instalação na Ranor não pedem NF nem etiqueta, e vão direto para Entregue">
-                                <option value="transportadora">Transportadora</option>
-                                <option value="retirada">Retirada na Ranor (cliente/técnico busca)</option>
-                                <option value="instalacao">Instalação na Ranor</option>
-                            </select>
-                            <div id="entrega_aviso" class="small" style="display:none; margin-top:4px;">Sem NF, sem etiqueta e sem frete. O romaneio serve de comprovante (assinatura de quem recebeu) e o pedido vai direto para Entregue.</div>
-
-                            <div class="row">
-                                <div class="col" id="total_vol_wrap">
-                                    <label>Volumes (nº de etiquetas)</label>
-                                    <input id="total_vol" type="number" value="1" min="1">
+                                <div style="text-align: right; margin-top: 12px;">
+                                    <button type="button" class="btn-accent" onclick="salvarDestinatarioAtual()"
+                                        style="font-size: 12px; padding: 6px 14px;">Salvar na Nuvem</button>
                                 </div>
-                                <div class="col">
-                                    <label>Tipo de Referência</label>
-                                    <select id="reference_type" onchange="toggleReferenceInput()">
-                                        <option value="ticket">Ticket</option>
-                                        <option value="os">OS</option>
-                                        <option value="none">Nenhum (Fornecedor)</option>
-                                    </select>
+                            </fieldset>
+
+                            <!-- SEÇÃO: MODE CLIENTE -->
+                            <fieldset>
+                                <legend>Modo de Entrega</legend>
+                                <div style="display:flex;gap:20px;">
+                                    <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                                        <input type="radio" id="client_mode_single" name="client_mode" value="single"
+                                            checked onchange="toggleClientMode()">
+                                        <span>Um cliente (romaneio simples)</span>
+                                    </label>
+                                    <label style="display:flex;align-items:center;gap:8px;margin:0;">
+                                        <input type="radio" id="client_mode_multi" name="client_mode" value="multi"
+                                            onchange="toggleClientMode()">
+                                        <span>Múltiplos clientes (romaneio agrupado)</span>
+                                    </label>
                                 </div>
-                            </div>
 
-                            <label>Número da Referência</label>
-                            <input id="reference" type="text" placeholder="Ex: 465">
-
-                            <div id="carrier_wrap">
-                                <label>Transportadora</label>
-                                <input id="carrier" type="text" value="Jadlog">
-                            </div>
-
-                            <label>Recebedor/Responsável (assinatura)</label>
-                            <input id="receiver" type="text" value="">
-
-                            <div class="row">
-                                <div class="col">
-                                    <label>Cliente <span style="font-weight:400;color:#888;font-size:12px;">(planilha)</span></label>
-                                    <input id="planilha_cliente" type="text" placeholder="Ex: VAMOS">
+                                <!-- Campo de unidade: visível apenas no modo simples -->
+                                <div id="unit_field_wrapper" style="margin-top:14px;">
+                                    <label>Cliente / Unidade <span style="font-weight:400;color:#888;font-size:12px;">(local de instalação)</span></label>
+                                    <input id="unit_name" type="text" placeholder="Ex: Unilever Cabo de Santo Agostinho">
                                 </div>
-                                <div class="col">
-                                    <label>Tipo <span style="font-weight:400;color:#888;font-size:12px;">(planilha)</span></label>
-                                    <select id="planilha_tipo">
-                                        <option value="">—</option>
-                                        <option value="INS">INS</option>
-                                        <option value="COR">COR</option>
-                                        <option value="MAN">MAN</option>
-                                        <option value="FOR">FOR</option>
-                                    </select>
+                            </fieldset>
+
+                            <!-- SEÇÃO: ITENS -->
+                            <fieldset>
+                                <legend>Itens (descrição e quantidade)</legend>
+
+                                <div id="items_container" style="display:flex; flex-direction:column; gap:10px;"></div>
+                                <div class="actions" style="margin-top: 12px;">
+                                    <button onclick="addItem()">Adicionar item</button>
+                                    <button class="secondary" onclick="clearItems()" title="Tirar todos os itens do formulário">Limpar itens</button>
+                                    <button class="secondary" onclick="montarKitNoFormulario()" title="Juntar rastreador, teclado e acessórios em kits (confere antes)">Montar kit</button>
+                                    <button class="secondary" onclick="desmontarKitNoFormulario()" title="Voltar um kit montado aos componentes">Desmontar kit</button>
                                 </div>
-                            </div>
+                            </fieldset>
+
+                            <!-- SEÇÃO: DADOS ADICIONAIS -->
+                            <fieldset>
+                                <legend>Dados Adicionais</legend>
+
+                                <label>Forma de saída</label>
+                                <select id="entrega" onchange="atualizarFormaEntrega()" title="Retirada e instalação na Ranor não pedem NF nem etiqueta, e vão direto para Entregue">
+                                    <option value="transportadora">Transportadora</option>
+                                    <option value="retirada">Retirada na Ranor (cliente/técnico busca)</option>
+                                    <option value="instalacao">Instalação na Ranor</option>
+                                </select>
+                                <div id="entrega_aviso" class="small" style="display:none; margin-top:4px;">Sem NF, sem etiqueta e sem frete. O romaneio serve de comprovante (assinatura de quem recebeu) e o pedido vai direto para Entregue.</div>
+
+                                <div class="row">
+                                    <div class="col" id="total_vol_wrap">
+                                        <label>Volumes (nº de etiquetas)</label>
+                                        <input id="total_vol" type="number" value="1" min="1">
+                                    </div>
+                                    <div class="col">
+                                        <label>Tipo de Referência</label>
+                                        <select id="reference_type" onchange="toggleReferenceInput()">
+                                            <option value="ticket">Ticket</option>
+                                            <option value="os">OS</option>
+                                            <option value="none">Nenhum (Fornecedor)</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <label>Número da Referência</label>
+                                <input id="reference" type="text" placeholder="Ex: 465">
+
+                                <div id="carrier_wrap">
+                                    <label>Transportadora</label>
+                                    <input id="carrier" type="text" value="Jadlog">
+                                </div>
+
+                                <label>Recebedor/Responsável (assinatura)</label>
+                                <input id="receiver" type="text" value="">
+
+                                <div class="row">
+                                    <div class="col">
+                                        <label>Cliente <span style="font-weight:400;color:#888;font-size:12px;">(planilha)</span></label>
+                                        <input id="planilha_cliente" type="text" placeholder="Ex: VAMOS">
+                                    </div>
+                                    <div class="col">
+                                        <label>Tipo <span style="font-weight:400;color:#888;font-size:12px;">(planilha)</span></label>
+                                        <select id="planilha_tipo">
+                                            <option value="">—</option>
+                                            <option value="INS">INS</option>
+                                            <option value="COR">COR</option>
+                                            <option value="MAN">MAN</option>
+                                            <option value="FOR">FOR</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </fieldset>
                         </fieldset>
-
-                        <!-- SEÇÃO: AÇÕES -->
-                        <fieldset style="margin-top: 12px;">
-                            <legend>Geração de Documentos</legend>
-
-                            <label>Selecione os documentos a gerar:</label>
-                            <select id="doc-selector">
-                                <option value="">— selecione —</option>
-                                <option value="labels">Apenas Etiqueta</option>
-                                <option value="romaneio">Apenas Romaneio</option>
-                                <option value="both">Etiqueta + Romaneio</option>
-                            </select>
-
-                            <div class="actions" style="gap: 12px; margin-top: 12px;">
-                                <button onclick="generatePreview()">Gerar / Atualizar Preview</button>
-                                <button class="secondary" type="button" onclick="salvarRascunhoAtual()">Salvar Rascunho</button>
-                                <button class="secondary" onclick="generateNewTab()">Gerar em Nova Aba</button>
-                                <button class="secondary" type="button" onclick="copiarParaPlanilha()" title="Abre as linhas no padrão da planilha de controle para conferir, editar e copiar">Linhas p/ Planilha</button>
-                                <button class="secondary" type="button" onclick="copiarParaVeiculos()" title="Um veículo por rastreador, no padrão da planilha de importação de veículos da plataforma">Linhas p/ Veículos</button>
-                                <button class="secondary" type="button" onclick="novoEnvio()">Novo Envio</button>
-                            </div>
-                        </fieldset>
-
-                        <fieldset>
-                            <legend>E-mail</legend>
-
-                            <div class="actions" style="gap: 12px;">
-                                <button class="secondary" onclick="copyEmailBody()">Copiar Corpo do E-mail</button>
-                                <button id="btnEnviar">Enviar E-mail</button>
-                            </div>
-                        </fieldset>
-
-                        <!-- Importando o Supabase diretamente pra dentro do seu frontend -->
-                        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
-
-                        <script type="module" src="js/app.js"></script>
                     </div>
 
-                    <div class="card no-print">
-                        <strong>Ajuda / notas</strong>
-                        <div class="small" style="margin-top:8px">
-                            • Use o filtro em "Selecionar do cadastro" para achar o destinatário rápido, ou digite o
-                            CEP e clique em "Buscar CEP" para preencher o endereço.<br><br>
-                            • Na descrição do item, use ↑/↓ e Enter para escolher uma sugestão. Enter num nome novo
-                            cadastra o item.<br><br>
-                            • "Salvar Rascunho" guarda o envio na aba Envios para continuar depois. Use "Novo Envio"
-                            para começar outro sem sobrescrever o rascunho aberto.<br><br>
-                            • "Importar da Planilha" faz o caminho inverso: cole as linhas da planilha de controle
-                            (ou escolha o .xlsx), escolha o envio e o formulário é preenchido com destinatário, itens
-                            e IMEIs. A base fica guardada neste navegador.<br><br>
-                            • "Linhas p/ Planilha" abre uma tabela no padrão da planilha de controle para
-                            conferir e editar antes de copiar. Colar uma lista numa célula preenche para baixo.
-                            Depois, na planilha, clique na coluna OS/Ticket da primeira linha vazia e cole
-                            (Ctrl+V).<br><br>
-                            • Recebedor/Responsável: preencha manualmente no romaneio, se necessário.<br><br>
-                            • Para imprimir sem cortes: "Gerar em Nova Aba" → imprimir com escala 100% e margens
-                            nenhuma.
-                        </div>
+                    <div class="editor-lateral">
+                        <div class="card" id="editor_passos"></div>
+                        <div class="card" id="editor_situacao"></div>
+                        <details class="card editor-ajuda no-print">
+                            <summary>Ajuda</summary>
+                            <div class="small" style="margin-top:8px">
+                                • <b>Salvar</b> grava o pedido (Ctrl+S). Pedido novo vira um card na coluna Rascunho do quadro.
+                                Os passos (e-mail e impressão) também salvam o pedido antes.<br><br>
+                                • Depois de despachado, o pedido abre só para leitura. Para mudar itens, volte a fase dele em Situação.<br><br>
+                                • Use o filtro em "Selecionar do cadastro" para achar o destinatário rápido, ou digite o
+                                CEP e clique em "Buscar CEP" para preencher o endereço.<br><br>
+                                • Na descrição do item, use ↑/↓ e Enter para escolher uma sugestão. Enter num nome novo
+                                cadastra o item.<br><br>
+                                • "Linhas p/ Planilha" abre uma tabela no padrão da planilha de controle para
+                                conferir e editar antes de copiar. Depois, na planilha, clique na coluna OS/Ticket da
+                                primeira linha vazia e cole (Ctrl+V).<br><br>
+                                • Para imprimir sem cortes: escala 100% e margens nenhuma.
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div> <!-- Fim da tab-romaneio -->
 
-            <!-- ABA 2: GERENCIAR DESTINATÁRIOS -->
-            <!-- ABA: GERENCIAR DADOS -->
+            <!-- ABA: CADASTROS -->
             <div id="tab-dados" class="tab-content" style="display: none;">
 
                 <!-- SUB-NAV -->
@@ -508,43 +475,15 @@
                     </div>
                 </div>
             </div> <!-- Fim de tab-dados -->
-            <!-- ABA: ENVIOS (Unificada) -->
-            <div id="tab-envios" class="tab-content" style="display: none;">
-
-                <!-- SUB-NAV -->
-                <div class="sub-nav">
-                    <button class="sub-tab active" id="btn-sub-andamento" onclick="switchSubTab('sub-andamento')">Em Andamento (Rascunhos)</button>
-                    <button class="sub-tab" id="btn-sub-historico" onclick="switchSubTab('sub-historico')">Histórico Definitivo</button>
-                </div>
-
-                <!-- SUB-ABA: ANDAMENTO -->
-                <div id="sub-andamento" style="display: block;">
-                <div class="grid">
-                    <div class="card">
-                        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                            <div>
-                                <strong>Pedidos em Andamento (Rascunhos)</strong>
-                                <div class="small">Rascunhos salvos para edição futura. Estes pedidos não estão no histórico final.</div>
-                            </div>
-                            <button class="btn-outline" onclick="carregarViewAndamento()">🔄 Atualizar</button>
-                        </div>
-
-                        <div id="andamento_list" class="table-wrap">
-                            <div class="empty-state">Carregando pedidos em andamento...</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ABA 4: HISTÓRICO DE ENVIOS -->
-            <div id="sub-historico" style="display: none;">
-                <div class="grid">
+            <!-- ABA: HISTÓRICO (todos os pedidos, inclusive cancelados) -->
+            <div id="tab-historico" class="tab-content" style="display: none;">
+                <div>
                     <div class="card">
                         <div
                             style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                             <div>
-                                <strong>Histórico de Envios</strong>
-                                <div class="small">Envios concluídos, do mais recente ao mais antigo. Clique em um envio para ver detalhes e status.</div>
+                                <strong>Histórico</strong>
+                                <div class="small">Todos os pedidos, do mais recente ao mais antigo, inclusive entregues e cancelados. Clique para abrir.</div>
                             </div>
                             <button class="btn-outline" onclick="loadHistoricoView()">🔄 Atualizar</button>
                         </div>
@@ -558,8 +497,7 @@
                         </div>
                     </div>
                 </div>
-                </div> <!-- Fim de sub-historico -->
-            </div> <!-- Fim de tab-envios -->
+            </div> <!-- Fim de tab-historico -->
 
             <!-- preview-container movido para modal -->
         </div>
@@ -600,17 +538,6 @@
         </div>
     </div>
 
-
-    <!-- MODAL DE DETALHE DO HISTORICO -->
-    <div id="modal-historico-detalhe" class="modal-overlay">
-        <div class="modal-card wide">
-            <div class="modal-header">
-                <strong>Detalhes do Envio</strong>
-                <button class="modal-close" onclick="fecharDetalheHistorico()" title="Fechar">&times;</button>
-            </div>
-            <div id="modal-historico-body"></div>
-        </div>
-    </div>
 
 
     <!-- MODAL: PEDIDOS DO MESMO TÉCNICO (JUNÇÃO) -->
@@ -766,6 +693,8 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
+    <script type="module" src="js/app.js"></script>
 </body>
 
 </html>

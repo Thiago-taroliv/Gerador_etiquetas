@@ -26,7 +26,7 @@ export function formularioAlterado() {
     return !!(d.dest_name.trim() || d.items.length);
 }
 
-// Opções do select de remetente (Gerenciar Dados > Configurações) + "Personalizado"; mantém a escolha atual
+// Opções do select de remetente (Cadastros > Configurações) + "Personalizado"; mantém a escolha atual
 export function popularSelectRemetentes() {
     const sel = $('sender_select');
     if (!sel) return;
@@ -419,20 +419,13 @@ export function limparFormulario() {
     $('carrier').value = config('transportadora_padrao');
     if ($('entrega')) $('entrega').value = 'transportadora';
     atualizarFormaEntrega();
-    $('doc-selector').value = '';
 }
 
-// Retirada / instalação na Ranor: some transportadora e volumes, e só dá para gerar o romaneio
+// Retirada / instalação na Ranor: somem transportadora e volumes (os passos do pedido também se ajustam)
 export function atualizarFormaEntrega() {
     const sem = semEnvio({ entrega: $('entrega')?.value });
     ['carrier_wrap', 'total_vol_wrap'].forEach(id => { if ($(id)) $(id).style.display = sem ? 'none' : ''; });
     if ($('entrega_aviso')) $('entrega_aviso').style.display = sem ? 'block' : 'none';
-    const sel = $('doc-selector');
-    if (!sel) return;
-    [...sel.options].forEach(o => {
-        if (o.value === 'labels' || o.value === 'both') o.disabled = sem;
-    });
-    if (sem && (sel.value === 'labels' || sel.value === 'both')) sel.value = 'romaneio';
 }
 window.atualizarFormaEntrega = atualizarFormaEntrega;
 

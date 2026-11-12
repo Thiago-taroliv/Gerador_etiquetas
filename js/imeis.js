@@ -57,9 +57,7 @@ export function sinalizarMudanca() {
 }
 
 function lembreteDeSalvar() {
-    if (AppState.currentHistoricoId) return ' Para gravar, clique em "Salvar no pedido".';
-    if (AppState.currentDraftId) return ' Para gravar, clique em "Salvar Rascunho".';
-    return '';
+    return ' Para gravar, clique em "Salvar" no topo do pedido.';
 }
 
 const limparNumero = s => String(s || '').replace(/[|\t\r\n]/g, '').trim();

@@ -2,11 +2,19 @@
 
 Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **Supabase (PostgreSQL)** para automatizar o fluxo de envio de equipamentos na Ranor Rastreamento.
 
+## Como o sistema se organiza
+
+Menu: **Pedidos** (quadro) · **Painel** · **Histórico** · **Cadastros**. Com um pedido aberto, aparece também o botão dele no menu (✎ nome), para voltar a ele sem perder nada.
+
+- **Um pedido, um lugar, um botão Salvar.** Pedido novo salvo vira um card na coluna Rascunho. No primeiro e-mail, impressão ou arrasto no quadro, ele passa a existir só no quadro (o rascunho deixa de existir). O botão **Salvar** (ou Ctrl+S), na barra do topo do pedido, grava sempre no lugar certo; a barra mostra a fase e se está "✓ Tudo salvo" ou com "● Alterações não salvas". Trocar de pedido, fechar ou sair da página com alterações pede confirmação
+- **Abrir um pedido**: clique no card do quadro (ou na linha do Histórico ou do Painel). **+ Novo pedido** no quadro junta as três entradas: em branco, da planilha de estoque ou da planilha de controle
+- **Tela do pedido**: à esquerda o formulário (remetente, destinatário, itens, dados adicionais); à direita **Próximos passos** na ordem do quadro — 1. Pedir NF (e-mail), 2. Imprimir (romaneio, etiqueta ou os dois), 3. Planilhas (Linhas p/ Planilha e p/ Veículos), 4. Despachar — e **Situação** (fase, configuração dos equipamentos, rastreio/frete, PIX, junção, cancelar/reativar). O e-mail e a impressão salvam o pedido antes. Pedido despachado, entregue ou cancelado abre só para leitura (dá para imprimir de novo e copiar as linhas)
+
 ## Funcionalidades
 
 - **Kanban de pedidos** (aba principal): cada envio aparece na coluna da sua fase — Rascunho, Aguardando NF, NF emitida, Pronto p/ envio, Despachado e Entregue. Os cards podem ser arrastados entre colunas, e as ações do sistema (e-mail, etiqueta, romaneio) avançam a fase sozinhas
-- **Configuração dos equipamentos**: cada card tem um selo ⚙ com a etapa do pedido — Saída do estoque, Em configuração, Configurado. Um clique no selo avança a etapa (também dá para escolher no detalhe do pedido). Ela anda em paralelo às fases (pode configurar enquanto espera a NF) e o despacho avisa se ainda não está configurado
-- **Importação da planilha de estoque**: o responsável do estoque sobe a planilha de saída e cada envio vira um rascunho no kanban, com aviso do que falta preencher à mão (CPF/CNPJ, endereço, volumes...). Os nomes do estoque viram itens do sistema pela tabela de-para (Gerenciar Dados → De-para Estoque); o chip fica na linha do rastreador na planilha de envio. Linhas do mesmo dia, destinatário e unidade viram um envio só, mesmo com várias OS (a prévia permite separar por OS ou juntar envios)
+- **Configuração dos equipamentos**: cada card tem um selo ⚙ com a etapa do pedido — Saída do estoque, Em configuração, Configurado. Um clique no selo avança a etapa (também dá para escolher na Situação do pedido). Ela anda em paralelo às fases (pode configurar enquanto espera a NF) e o despacho avisa se ainda não está configurado
+- **Importação da planilha de estoque**: o responsável do estoque sobe a planilha de saída e cada envio vira um rascunho no kanban, com aviso do que falta preencher à mão (CPF/CNPJ, endereço, volumes...). Os nomes do estoque viram itens do sistema pela tabela de-para (Cadastros → De-para Estoque); o chip fica na linha do rastreador na planilha de envio. Linhas do mesmo dia, destinatário e unidade viram um envio só, mesmo com várias OS (a prévia permite separar por OS ou juntar envios)
 - **Retirada / instalação na Ranor** (ex. envios Rfleet): campo "Forma de saída" no formulário (Transportadora, Retirada na Ranor, Instalação na Ranor). Sem transportadora, o pedido não pede NF nem etiqueta, não pede rastreio/frete, o romaneio serve de comprovante e o card vai direto para Entregue; fica fora das contas de frete do Painel. Na importação do estoque, a forma vem de regras em Configurações (padrão: "Rfleet" no produto, cliente ou motivo → Retirada)
 - **Troca de equipamento com defeito**: cada número (IMEI) de um item tem "Substituir", que já pede o número novo e mantém chip e OS de origem, e "Excluir", que tira o número e baixa a quantidade. Ao salvar, o sistema avisa se o romaneio impresso ou o pedido de NF ficaram desatualizados
 - **Guia na tela**: confirmações e avisos em modais próprios, e aviso de alterações não salvas antes de trocar de pedido, iniciar outro envio ou sair
@@ -18,17 +26,17 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
   - ao pedir a NF, o sistema avisa e oferece juntar; "Enviar só este" pede confirmação
   - na importação do estoque, um envio de técnico que já tem pedido aberto sem NF é adicionado a ele (dá para escolher "Criar card novo")
   - se a NF já tinha sido pedida, o próximo e-mail avisa o financeiro para desconsiderar os pedidos anteriores
-  - "Separar", no detalhe do pedido, desfaz: os itens saem e o pedido volta a ter card próprio
+  - "Separar", na Situação do pedido, desfaz: os itens saem e o pedido volta a ter card próprio
 - Geração automática de **etiquetas de envio** (com suporte a múltiplos volumes)
 - Geração de **romaneio de entrega** para impressão
 - **Linhas p/ Veículos**: um veículo por rastreador no padrão da planilha de importação de veículos da plataforma (cliente na plataforma lembrado por unidade, modelo no padrão da plataforma, ex. "LV-12", placa provisória "RA24 52-01", ICCID e operadora do chip)
 - **Envio de e-mail ao financeiro** solicitando emissão de nota fiscal, com os itens separados por OS e conferência/edição antes de enviar
-- **Pedido de PIX do frete ao financeiro**: oferecido ao despachar e no detalhe de pedidos enviados, com o formulário preenchido a partir do pedido e conferência antes de abrir o e-mail
+- **Pedido de PIX do frete ao financeiro**: oferecido ao despachar e na Situação de pedidos enviados, com o formulário preenchido a partir do pedido e conferência antes de abrir o e-mail
 - **Cadastro de destinatários na nuvem** com persistência segura via Supabase
 - **Importação e exportação de base** em formato JSON (backup/restore)
 - **Autenticação com login e senha** para proteger dados sensíveis (CPF, CNPJ, endereços)
 - Seleção rápida de remetente (cadastrados em Configurações, ou Personalizado)
-- **Configurações** (Gerenciar Dados → Configurações): e-mails do financeiro, remetentes, motivo → tipo, prazos de atraso do kanban, janela da junção, transportadora padrão, textos do e-mail e receitas de kit
+- **Configurações** (Cadastros → Configurações): e-mails do financeiro, remetentes, motivo → tipo, prazos de atraso do kanban, janela da junção, transportadora padrão, textos do e-mail e receitas de kit
 
 ## Tecnologias
 
@@ -43,7 +51,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
 ## Estrutura do Projeto
 
 ```
-├── index.html          # Página principal (login + formulário)
+├── index.html          # Página principal (login, quadro, pedido, painel, histórico, cadastros)
 ├── style.css           # Estilos globais, navbar, login e botões
 ├── img/
 │   ├── logo.png        # Logo Ranor
@@ -67,7 +75,7 @@ Sistema interno desenvolvido em **HTML, CSS e JavaScript** com banco de dados **
     ├── dialogo.js      # Modais de confirmação, aviso e pergunta
     ├── conferencia.js  # Conferência do e-mail e resumo antes de concluir
     ├── configuracoes.js     # Configurações editáveis (padrões + Supabase)
-    ├── configuracoesTela.js # Tela Gerenciar Dados → Configurações
+    ├── configuracoesTela.js # Tela Cadastros → Configurações
     └── app.js          # Inicialização, bindagem de eventos e orquestração
 ```
 

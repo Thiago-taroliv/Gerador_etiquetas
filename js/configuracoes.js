@@ -6,7 +6,7 @@ import { supabaseClient } from './config.js';
 export const PADROES = {
     // E-mails do financeiro que recebem o pedido de nota fiscal
     financeiro_emails: ['michele.miranda@ranor.com.br', 'jaqueline.cristiane@ranor.com.br'],
-    // Remetentes do select "Selecionar remetente"; o "padrao" é o dos envios importados e do "Novo envio"
+    // Remetentes do select "Selecionar remetente"; o "padrao" é o dos envios importados e do "Novo pedido"
     remetentes: [
         { id: 'ranor', company: 'Ranor Rastreamento', cnpj: '10.980.591/0001-64',
           address: 'Coronel João de Barros, 427B \n 37900-049 - Centro, Passos-MG', padrao: true },

@@ -1,6 +1,6 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido } from './db.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, deletarPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido, carregarPedido } from './db.js';
 import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido, ETAPAS_PREPARO, preparoDe, definirPreparo } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao, separarPedido, podeSeparar } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
@@ -43,47 +43,29 @@ window.removeItem = removeItem;
 window.clearItems = clearItems;
 window.buscarCep = buscarCep;
 
-// Filtro do seletor "Selecionar do cadastro" na aba de romaneio
+// Filtro do seletor "Selecionar do cadastro" no formulário do pedido
 window.filtrarSeletorDestinatarios = function (termo) {
     popularSelectDestinatarios(window.__destinatariosSupabase || [], termo);
 };
 
-// Funções de abas
+// Abas: Pedidos (quadro), o pedido aberto, Painel, Histórico e Cadastros
 window.switchTab = function (tabName) {
-    // Fechar modal de preview ao trocar de aba
     const modalPreview = document.getElementById('modal-preview');
     if (modalPreview) modalPreview.style.display = 'none';
+    fecharMenuNovo();
 
-    // Ocultar todas as abas
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.style.display = 'none';
-    });
+    document.querySelectorAll('.tab-content').forEach(tab => { tab.style.display = 'none'; });
+    document.querySelectorAll('.nav-tab').forEach(btn => btn.classList.remove('active'));
 
-    // Resetar estilos dos botões
-    document.querySelectorAll('.nav-tab').forEach(btn => {
-        btn.classList.remove('active');
-    });
-
-    // Mostrar aba selecionada
     const selectedTab = document.getElementById(tabName);
     if (selectedTab) selectedTab.style.display = 'block';
-
     // Destacar botão da aba (funciona também quando chamado via código)
-    const activeBtn = document.querySelector(`.nav-tab[data-tab="${tabName}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
+    document.querySelector(`.nav-tab[data-tab="${tabName}"]`)?.classList.add('active');
 
-    // Carregar dados específicos da aba (ESCALÁVEL: Fácil adicionar novas abas aqui)
-    if (tabName === 'tab-pedidos') {
-        carregarViewKanban();
-    } else if (tabName === 'tab-painel') {
-        iniciarPainel();
-    } else if (tabName === 'tab-envios') {
-        // Por padrão, abre os Rascunhos.
-        switchSubTab('sub-andamento');
-    } else if (tabName === 'tab-dados') {
-        // Por padrão, abre os Destinatários.
-        switchSubTab('sub-destinatarios');
-    }
+    if (tabName === 'tab-pedidos') carregarViewKanban();
+    else if (tabName === 'tab-painel') iniciarPainel();
+    else if (tabName === 'tab-historico') loadHistoricoView();
+    else if (tabName === 'tab-dados') switchSubTab('sub-destinatarios'); // abre nos Destinatários
 };
 
 
@@ -141,14 +123,14 @@ window.salvarModalEdit = async function () {
 
     fecharModalEdit();
 
-    // Recarrega a lista e o seletor da aba de Romaneio
+    // Recarrega a lista e o seletor do formulário do pedido
     const { carregarDestinatarios } = await import('./db.js');
     await carregarDestinatarios();
     loadDestinatariosList();
     toast('Destinatário atualizado.');
 };
 
-// Botão "Salvar Novo Destinatário" da aba Gerenciar Dados
+// Botão "Salvar Novo Destinatário" da aba Cadastros
 window.saveNewDestinatario = async function () {
     const nome = $('new_dest_name').value.trim();
     if (!nome) { toast('Preencha pelo menos o Nome.', 'warning'); return; }
@@ -287,16 +269,144 @@ window.renderHistoricoLista = function () {
     container.innerHTML = html;
 };
 
-window.abrirDetalheHistorico = function (id) {
-    const reg = acharPedido(id);
-    if (!reg) return;
+// --- PEDIDO ABERTO: passos e situação (coluna ao lado do formulário) ---
 
-    window.__detalheHistoricoAtual = reg;
-    const st = reg.status || { email: false, etiqueta: false, romaneio: false };
-    const itens = (reg.itens || []).map(it => `<li style="margin-bottom:4px;">${escapeHtml(it.qty)} × ${escapeHtml(it.desc)}</li>`).join('');
-    const dataFormatada = new Date(reg.created_at).toLocaleString('pt-BR');
+// Pedido despachado ou entregue já saiu: os itens não mudam mais
+const FASES_ENVIADO = ['despachado', 'entregue'];
+const podeEditarItens = reg => !!reg?.dados_completos && reg.fase !== 'cancelado' && !FASES_ENVIADO.includes(reg.fase);
+
+// Registro do quadro do pedido aberto (null enquanto é pedido novo ou rascunho)
+function pedidoAberto() {
+    const id = AppState.currentHistoricoId;
+    if (!id) return null;
+    return acharPedido(id) || (String(AppState.regAberto?.id) === String(id) ? AppState.regAberto : null);
+}
+
+// Já saiu, foi cancelado ou é registro antigo sem os dados do formulário: abre só para leitura
+const somenteLeitura = () => { const reg = pedidoAberto(); return !!reg && !podeEditarItens(reg); };
+
+// Aplica campos no pedido em todas as listas (quadro, histórico, painel) e no pedido aberto
+function aplicarNoPedido(id, campos) {
+    atualizarCaches(id, campos);
+    if (String(AppState.regAberto?.id) === String(id)) Object.assign(AppState.regAberto, campos);
+}
+
+// Relê o pedido aberto do banco (depois de salvar ou registrar uma etapa)
+async function recarregarPedidoAberto() {
+    const id = AppState.currentHistoricoId;
+    if (!id) return null;
+    const reg = await carregarPedido(id);
+    if (!reg) return null;
+    atualizarCaches(id, reg);
+    AppState.regAberto = acharPedido(id) || reg;
+    return reg;
+}
+
+const tituloLateral = t => `<div class="lateral-titulo">${t}</div>`;
+
+// Só troca o HTML da coluna quando ele muda: redesenhar a cada tecla (ou no "change" de quando um
+// campo perde o foco) trocaria o botão debaixo do mouse no meio do clique, e o clique se perderia
+function pintar(el, html) {
+    if (el._html === html) return;
+    el._html = html;
+    el.innerHTML = html;
+}
+
+// Passos na ordem do quadro: pedir NF, imprimir, planilhas, despachar
+function renderPassos() {
+    const el = $('editor_passos');
+    if (!el) return;
+    const d = collectData();
+    const reg = pedidoAberto();
+    const st = reg?.status || {};
+    const leitura = somenteLeitura();
+    const sem = semEnvio(d);
+    const id = reg?.id;
+
+    // O ✓ de cada etapa: marca ou desmarca à mão (só depois que o pedido está no quadro)
+    const marca = (campo, feito, rotulo) => id && !leitura
+        ? `<button type="button" class="passo-marca${feito ? ' feito' : ''}" onclick="alternarEtapa('${campo}')" title="Clique para marcar ou desmarcar à mão">${feito ? '✓' : '○'} ${rotulo}</button>`
+        : `<span class="passo-marca${feito ? ' feito' : ''}">${feito ? '✓' : '○'} ${rotulo}</span>`;
+    const passo = (n, nome, feito, corpo) => `
+        <div class="passo${feito ? ' feito' : ''}">
+            <div class="passo-topo"><span class="passo-num">${feito ? '✓' : n}</span>${nome}</div>
+            ${corpo}
+        </div>`;
+
+    const nf = sem
+        ? passo(1, 'Pedir NF ao financeiro', false, `<div class="passo-nota">Não precisa: ${escapeHtml(rotuloEntrega(entregaDe(d)))}.</div>`)
+        : passo(1, 'Pedir NF ao financeiro', !!st.email, `
+            <div class="passo-marcas">${marca('email', !!st.email, 'E-mail enviado')}</div>
+            ${leitura ? '' : `<div class="passo-acoes">
+                <button type="button" onclick="enviarEmailViaMailtoUsingData()">Enviar e-mail</button>
+                <button type="button" class="btn-neutral" onclick="copyEmailBody()" title="Só copia o texto do e-mail, sem registrar o envio">Copiar texto</button>
+            </div>`}`);
+
+    const impresso = sem ? !!st.romaneio : !!(st.romaneio && st.etiqueta);
+    const imprimir = passo(2, 'Imprimir', impresso, `
+        <div class="passo-marcas">${marca('romaneio', !!st.romaneio, 'Romaneio')}${sem ? '' : marca('etiqueta', !!st.etiqueta, 'Etiqueta')}</div>
+        <div class="passo-acoes">
+            <button type="button" onclick="imprimir('romaneio')">Romaneio</button>
+            ${sem ? '' : `<button type="button" onclick="imprimir('etiqueta')">Etiqueta</button>
+            <button type="button" class="btn-neutral" onclick="imprimir('ambos')">Os dois</button>`}
+        </div>
+        ${leitura ? '' : '<button type="button" class="link-btn" onclick="preVisualizar()">Pré-visualizar sem registrar</button>'}`);
+
+    const planilhas = passo(3, 'Planilhas', false, `
+        <div class="passo-acoes">
+            <button type="button" class="btn-neutral" onclick="copiarParaPlanilha()" title="Linhas no padrão da planilha de controle, para conferir, editar e copiar">Linhas p/ Planilha</button>
+            <button type="button" class="btn-neutral" onclick="copiarParaVeiculos()" title="Um veículo por rastreador, no padrão da planilha de importação de veículos da plataforma">Linhas p/ Veículos</button>
+        </div>`);
+
+    const saiu = !!reg && FASES_ENVIADO.includes(reg.fase);
+    const dataSaida = reg?.despachado_em ? ` em ${new Date(reg.despachado_em).toLocaleDateString('pt-BR')}` : '';
+    const despachar = passo(4, sem ? 'Entregar' : 'Despachar', saiu, saiu
+        ? `<div class="passo-nota">${reg.fase === 'entregue' ? 'Entregue' : 'Despachado'}${dataSaida}.</div>`
+        : reg?.fase === 'cancelado' ? '<div class="passo-nota">Pedido cancelado.</div>'
+        : id ? `<div class="passo-acoes"><button type="button" onclick="mudarFaseDoPedido('despachado')">${sem ? 'Marcar entregue' : 'Despachar'}</button></div>`
+        : '<div class="passo-nota">Fica disponível depois do e-mail ou da impressão.</div>');
+
+    pintar(el, `${tituloLateral('Próximos passos')}
+        <div class="small">${leitura ? 'Só leitura: dá para imprimir de novo e copiar as linhas.' : 'O e-mail e a impressão salvam o pedido antes.'}</div>
+        ${nf}${imprimir}${planilhas}${despachar}`);
+}
+
+function seletorPreparo(chave, dados) {
+    return `<div class="situacao-linha"><span class="situacao-rotulo">Configuração</span>
+        <select onchange="mudarPreparoDoPedido('${chave}', this.value)">
+            ${ETAPAS_PREPARO.map(e => `<option value="${e.chave}"${e.chave === preparoDe(dados) ? ' selected' : ''}>${e.rotulo}</option>`).join('')}
+        </select></div>`;
+}
+
+// Faz a próxima pintura da coluna Situação redesenhar mesmo com o mesmo HTML (os seletores voltam ao gravado)
+function esquecerSituacao() {
+    const el = $('editor_situacao');
+    if (el) el._html = null;
+}
+
+// Fase, configuração, rastreio/frete, junção e cancelar
+function renderSituacao() {
+    const el = $('editor_situacao');
+    if (!el) return;
+    const reg = pedidoAberto();
+    const draftId = AppState.currentDraftId;
+
+    if (!reg) {
+        if (!draftId) {
+            pintar(el, `${tituloLateral('Situação')}<div class="small">Pedido novo, ainda não salvo. Ao salvar, ele vira um card na coluna Rascunho do quadro.</div>`);
+            return;
+        }
+        const r = (window.__rascunhosCache || []).find(x => String(x.id) === String(draftId));
+        pintar(el, `${tituloLateral('Situação')}
+            <div class="situacao-linha"><span class="situacao-rotulo">Fase</span><span class="fase-badge">Rascunho</span></div>
+            ${seletorPreparo('r:' + draftId, { preparo: AppState.extrasEnvio?.preparo || r?.dados_completos?.preparo })}
+            ${r ? `<div class="small">Criado em ${new Date(r.created_at).toLocaleString('pt-BR')}</div>` : ''}
+            <div class="situacao-acoes"><button type="button" class="btn-sm btn-danger" onclick="excluirRascunhoAberto()">Excluir rascunho</button></div>`);
+        return;
+    }
+
+    const id = reg.id;
     const cancelado = reg.fase === 'cancelado';
-    // Retirada / instalação na Ranor: sem NF, etiqueta, rastreio nem frete
     const sem = semEnvio(reg.dados_completos);
 
     // Junção de pedidos: este foi absorvido por outro envio, ou absorveu outros
@@ -305,7 +415,7 @@ window.abrirDetalheHistorico = function (id) {
     if (reg.mesclado_em) {
         const destino = acharPedido(reg.mesclado_em);
         juncaoInfo = `<div class="detalhe-juncao">🔗 Juntado ao envio
-            ${destino ? `<a href="#" onclick="event.preventDefault(); abrirDetalheHistorico('${reg.mesclado_em}')">${escapeHtml(destino.referencia || destino.destinatario)}</a>` : `#${escapeHtml(reg.mesclado_em)}`}
+            <a href="#" onclick="event.preventDefault(); abrirPedido('h:${reg.mesclado_em}')">${escapeHtml(destino ? (destino.referencia || destino.destinatario) : '#' + reg.mesclado_em)}</a>
             — os itens seguiram nele.</div>`;
     } else if (mesclados.length) {
         const separavel = podeEditarItens(reg);
@@ -313,172 +423,139 @@ window.abrirDetalheHistorico = function (id) {
             ${mesclados.map((m, i) => `<div class="detalhe-juncao-item">
                 <span>${escapeHtml(m.referencia || m.unidade || 'sem referência')}${m.itens ? ` &middot; ${m.itens.length} item(ns)` : ''}</span>
                 ${separavel && podeSeparar(m)
-                    ? `<button class="btn-sm btn-neutral" onclick="separarPedidoDoModal('${id}', ${i})" title="Tira os itens deste pedido e devolve um card próprio a ele">Separar</button>`
+                    ? `<button class="btn-sm btn-neutral" onclick="separarPedidoAberto(${i})" title="Tira os itens deste pedido e devolve um card próprio a ele">Separar</button>`
                     : ''}
             </div>`).join('')}
         </div>`;
     }
 
-    function statusItem(campo, label, feito, tipo) {
-        const cor = feito ? '#22c55e' : '#e5e7eb';
-        const textCor = feito ? '#fff' : '#aaa';
-        const riscado = feito ? 'text-decoration:line-through; color:#aaa;' : '';
-        const btnHtml = (tipo === 'etiqueta' || tipo === 'romaneio')
-            ? `<button onclick="gerarDoHistorico('${id}', '${tipo}')" style="padding:5px 12px; font-size:12px; margin:0; background:#b70f0f; border-radius:6px; box-shadow:none; white-space:nowrap;">Gerar agora</button>`
-            : '';
-        return `
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:#fafafa; border-radius:10px; border:1px solid #eee;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <div onclick="toggleStatusHistorico('${id}', '${campo}')"
-                         style="width:24px; height:24px; border-radius:50%; background:${cor}; color:${textCor}; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:14px; font-weight:700; transition:all 0.2s; flex-shrink:0; user-select:none;">
-                        ${feito ? '&#10003;' : ''}
-                    </div>
-                    <span style="font-size:13px; color:#333; ${riscado}">${label}</span>
-                </div>
-                ${btnHtml}
-            </div>`;
-    }
-
-    document.getElementById('modal-historico-body').innerHTML = `
-        <div style="margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid #f0f0f0;">
-            <div style="font-size:12px; color:#999; margin-bottom:6px;">${dataFormatada}</div>
-            <div style="font-size:18px; font-weight:700; color:#222;">${escapeHtml(reg.destinatario)}</div>
-            ${reg.unidade && reg.unidade !== reg.destinatario ? `<div style="font-size:13px; color:#555; margin-top:2px;">Unidade: ${escapeHtml(reg.unidade)}</div>` : ''}
-            ${reg.referencia ? `<div style="font-size:13px; color:#b70f0f; margin-top:4px; font-weight:600;">Ref: ${escapeHtml(reg.referencia)}</div>` : ''}
-            ${sem ? `<div style="font-size:12px; color:#888; margin-top:2px;">Saída: ${escapeHtml(rotuloEntrega(entregaDe(reg.dados_completos)))} (sem NF)</div>`
-                : reg.transportadora ? `<div style="font-size:12px; color:#888; margin-top:2px;">Transportadora: ${escapeHtml(reg.transportadora)}</div>` : ''}
-        </div>
-
-        <div style="margin-bottom:20px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <div style="font-weight:700; font-size:12px; color:#888; text-transform:uppercase; letter-spacing:0.5px;">Itens</div>
-                ${podeEditarItens(reg)
-                    ? `<button class="btn-sm btn-neutral" onclick="editarPedidoNoFormulario('${id}')" title="Abre no formulário para mudar itens, ou substituir ou excluir um número">Editar itens / números</button>`
-                    : FASES_ENVIADO.includes(reg.fase) ? '<span style="font-size:11px; color:#888;" title="Depois de despachado, os itens não mudam mais. Se o pedido ainda não saiu de fato, volte a fase dele.">Enviado: itens bloqueados</span>' : ''}
-            </div>
-            <ul style="margin:0; padding-left:18px; font-size:13px; color:#555; line-height:1.8;">${itens || '<li style="color:#bbb;">Sem itens registrados</li>'}</ul>
-        </div>
-
-        <div>
-            <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Status das Ações</div>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-                ${sem ? '' : statusItem('email',    'E-mail enviado',       st.email,    'email')}
-                ${statusItem('romaneio', 'Romaneio impresso',    st.romaneio, 'romaneio')}
-                ${sem ? '' : statusItem('etiqueta', 'Etiqueta impressa',    st.etiqueta, 'etiqueta')}
-            </div>
-        </div>
-
-        <div class="detalhe-fase">
-            <div style="font-weight:700; font-size:12px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">Fase</div>
+    pintar(el, `${tituloLateral('Situação')}
+        <div class="situacao-linha"><span class="situacao-rotulo">Fase</span>
             ${cancelado
-                ? `<span class="fase-badge fase-cancelado">Cancelado</span>`
-                : `<select onchange="mudarFaseDoModal('${id}', this.value)">
+                ? '<span class="fase-badge fase-cancelado">Cancelado</span>'
+                : `<select onchange="mudarFaseDoPedido(this.value)">
                     ${FASES.map(f => `<option value="${f.chave}"${f.chave === reg.fase ? ' selected' : ''}>${f.rotulo}</option>`).join('')}
                    </select>`}
-            <div style="font-weight:700; font-size:12px; color:#888; margin:14px 0 10px; text-transform:uppercase; letter-spacing:0.5px;">Configuração dos equipamentos</div>
-            <select onchange="mudarPreparoDoModal('${id}', this.value)">
-                ${ETAPAS_PREPARO.map(e => `<option value="${e.chave}"${e.chave === preparoDe(reg.dados_completos) ? ' selected' : ''}>${e.rotulo}</option>`).join('')}
-            </select>
-            <div class="detalhe-rastreio"${sem ? ' style="display:none"' : ''}>
-                Rastreio: <strong>${escapeHtml(reg.rastreio) || '—'}</strong>
-                · Frete: <strong>${reg.frete != null ? 'R$ ' + formatarFrete(reg.frete) : '—'}</strong>
-                <button class="btn-sm btn-neutral" onclick="editarRastreioDoModal('${id}')">Editar</button>
-                ${FASES_ENVIADO.includes(reg.fase) ? `<button class="btn-sm btn-neutral" onclick="pedirPixFrete('${id}')">Pedir PIX do frete</button>` : ''}
-            </div>
-            ${juncaoInfo}
         </div>
-
-        <div class="modal-actions">
+        ${seletorPreparo('h:' + id, reg.dados_completos)}
+        ${sem
+            ? `<div class="situacao-linha"><span class="situacao-rotulo">Saída</span><span>${escapeHtml(rotuloEntrega(entregaDe(reg.dados_completos)))}</span></div>`
+            : `<div class="situacao-linha"><span class="situacao-rotulo">Rastreio</span><span>${escapeHtml(reg.rastreio) || '—'}</span></div>
+               <div class="situacao-linha"><span class="situacao-rotulo">Frete</span><span>${reg.frete != null ? 'R$ ' + formatarFrete(reg.frete) : '—'}</span></div>
+               <div class="situacao-acoes">
+                   <button type="button" class="btn-sm btn-neutral" onclick="editarRastreioDoPedido()">Editar rastreio e frete</button>
+                   ${FASES_ENVIADO.includes(reg.fase) ? `<button type="button" class="btn-sm btn-neutral" onclick="pedirPixFrete('${id}')">Pedir PIX do frete</button>` : ''}
+               </div>`}
+        ${juncaoInfo}
+        <div class="small" style="margin-top:12px;">Criado em ${new Date(reg.created_at).toLocaleString('pt-BR')}${reg.dados_completos ? '' : ' · registro antigo, só com os dados básicos'}</div>
+        <div class="situacao-acoes">
             ${cancelado
-                ? `<button class="btn-neutral" onclick="reativarPedidoDoModal('${id}')">Reativar pedido</button>`
-                : `<button class="btn-danger" onclick="cancelarPedidoDoModal('${id}')">Cancelar pedido</button>`}
-            <button class="btn-neutral" onclick="copiarPlanilhaDoHistorico('${id}')">Linhas p/ Planilha</button>
-            <button class="btn-neutral" onclick="copiarVeiculosDoHistorico('${id}')">Linhas p/ Veículos</button>
-        </div>
-    `;
+                ? '<button type="button" class="btn-sm btn-neutral" onclick="reativarPedidoAberto()">Reativar pedido</button>'
+                : '<button type="button" class="btn-sm btn-danger" onclick="cancelarPedidoAberto()">Cancelar pedido</button>'}
+        </div>`);
+}
 
-    document.getElementById('modal-historico-detalhe').style.display = 'flex';
-};
-
-window.fecharDetalheHistorico = function () {
-    document.getElementById('modal-historico-detalhe').style.display = 'none';
-    window.__detalheHistoricoAtual = null;
-    // Atualiza a tela de onde o modal foi aberto para refletir novos status
-    if (kanbanVisivel()) renderKanban();
-    else if (painelVisivel()) carregarPainel(true); // ex. frete preenchido pelo detalhe
-    else loadHistoricoView();
-};
-
-window.toggleStatusHistorico = async function (id, campo) {
-    const reg = window.__detalheHistoricoAtual;
+// Marca ou desmarca à mão uma etapa (e-mail, romaneio, etiqueta) do pedido aberto
+window.alternarEtapa = async function (campo) {
+    const reg = pedidoAberto();
     if (!reg) return;
-    const novoStatus = { ...(reg.status || { email: false, etiqueta: false, romaneio: false }) };
+    const novoStatus = { email: false, etiqueta: false, romaneio: false, ...(reg.status || {}) };
     novoStatus[campo] = !novoStatus[campo];
     const resultado = await atualizarStatusHistorico(reg, novoStatus);
-    if (resultado) {
-        atualizarCaches(id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
-        await avisarProntoSemNF(id, resultado, semEnvio(reg.dados_completos));
-        abrirDetalheHistorico(id); // Recarrega o modal com status atualizado
+    if (!resultado) { toast('Não foi possível gravar. Verifique a conexão.', 'error'); return; }
+    aplicarNoPedido(reg.id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
+    atualizarEditor();
+    await avisarProntoSemNF(reg.id, resultado, semEnvio(reg.dados_completos));
+    atualizarEditor();
+};
+
+window.mudarFaseDoPedido = async function (fase) {
+    const reg = pedidoAberto();
+    if (!reg) return;
+    esquecerSituacao(); // o seletor precisa voltar à fase gravada se a mudança for cancelada
+    // Despachar trava os itens: o que foi digitado precisa ser gravado antes
+    if (fase !== reg.fase && !somenteLeitura() && formularioAlterado()) {
+        const salvar = await confirmar({
+            titulo: 'Salvar antes de mudar a fase?',
+            mensagem: 'O pedido tem alterações que ainda não foram salvas.',
+            sim: 'Salvar e continuar',
+            nao: 'Voltar'
+        });
+        if (!salvar || !(await salvarPedido())) { atualizarEditor(); return; }
     }
+    await moverPedidoPara(reg.id, fase);
+    if (String(AppState.regAberto?.id) === String(reg.id) && AppState.regAberto !== acharPedido(reg.id)) {
+        await recarregarPedidoAberto();
+    }
+    atualizarEditor(); // mostra a fase gravada (ou a anterior, se cancelou/falhou)
 };
 
-window.mudarFaseDoModal = async function (id, fase) {
-    await moverPedidoPara(id, fase);
-    abrirDetalheHistorico(id); // mostra a fase gravada (ou a anterior, se cancelou/falhou)
+window.mudarPreparoDoPedido = async function (chave, preparo) {
+    esquecerSituacao();
+    await definirPreparo(chave, preparo);
+    renderSituacao(); // mostra a etapa gravada (ou a anterior, se falhou)
 };
 
-window.mudarPreparoDoModal = async function (id, preparo) {
-    await definirPreparo('h:' + id, preparo);
-    abrirDetalheHistorico(id); // mostra a etapa gravada (ou a anterior, se falhou)
-};
-
-window.editarRastreioDoModal = async function (id) {
-    const reg = acharPedido(id);
+window.editarRastreioDoPedido = async function () {
+    const reg = pedidoAberto();
     if (!reg) return;
     const despacho = await pedirDadosDespacho(reg);
     if (!despacho) return;
-    if (await atualizarDespacho(id, despacho)) {
-        atualizarCaches(id, despacho);
-        abrirDetalheHistorico(id);
+    if (await atualizarDespacho(reg.id, despacho)) {
+        aplicarNoPedido(reg.id, despacho);
+        renderSituacao();
     } else {
         toast('Não foi possível salvar o rastreio e o frete.', 'error');
     }
 };
 
-window.pedirPixFrete = id => abrirPixFrete(acharPedido(id));
+window.pedirPixFrete = id => abrirPixFrete(acharPedido(id) || pedidoAberto());
 
-window.cancelarPedidoDoModal = async function (id) {
-    const reg = acharPedido(id);
+window.cancelarPedidoAberto = async function () {
+    const reg = pedidoAberto();
     if (!reg) return;
+    const alterado = !somenteLeitura() && formularioAlterado();
     const ok = await confirmar({
         titulo: 'Cancelar este pedido?',
         mensagem: `"${reg.destinatario}" sai do quadro de Pedidos, mas continua no Histórico e pode ser reativado depois.`,
+        detalhe: alterado ? 'As alterações não salvas no formulário serão descartadas.' : '',
         tipo: 'perigo',
         sim: 'Cancelar pedido',
         nao: 'Manter pedido'
     });
     if (!ok) return;
-    if (await cancelarPedido(id)) {
-        atualizarCaches(id, { fase: 'cancelado', fase_em: new Date().toISOString() });
+    if (await cancelarPedido(reg.id)) {
+        aplicarNoPedido(reg.id, { fase: 'cancelado', fase_em: new Date().toISOString() });
         toast('Pedido cancelado.');
-        abrirDetalheHistorico(id);
+        // Volta o formulário ao que está gravado (agora só leitura)
+        abrirPedidoGravado(reg);
     } else {
         toast('Não foi possível cancelar o pedido.', 'error');
     }
 };
 
+// Volta para a fase que as ações já feitas indicam
+window.reativarPedidoAberto = async function () {
+    const reg = pedidoAberto();
+    if (!reg) return;
+    if (await moverPedidoPara(reg.id, faseSugerida(reg.status, semEnvio(reg.dados_completos)), { mesclado_em: null })) {
+        toast(`Pedido reativado em "${rotuloFase(pedidoAberto()?.fase)}".`);
+    }
+    atualizarEditor();
+};
+
 // Desfaz a junção de um pedido: os itens dele saem deste e ele volta a ter card próprio
-window.separarPedidoDoModal = async function (id, idx) {
-    const reg = acharPedido(id);
+window.separarPedidoAberto = async function (idx) {
+    const reg = pedidoAberto();
     const m = reg?.dados_completos?.mesclados?.[idx];
     if (!m) return;
-    if (String(AppState.currentHistoricoId) === String(id)) {
-        toast('Este pedido está aberto no formulário. Clique em "Novo envio" lá antes de separar.', 'warning', 7000);
+    if (formularioAlterado()) {
+        toast('Salve as alterações do pedido antes de separar.', 'warning', 6000);
         return;
     }
     const ok = await confirmar({
         titulo: `Separar ${m.referencia || 'este pedido'}?`,
-        mensagem: `${m.itens.length} item(ns) saem de "${reg.referencia || reg.destinatario}" e voltam para um card próprio no kanban.`,
+        mensagem: `${m.itens.length} item(ns) saem de "${reg.referencia || reg.destinatario}" e voltam para um card próprio no quadro.`,
         detalhe: reg.status?.email ? 'O e-mail com tudo junto já foi enviado: avise o financeiro da separação.' : '',
         tipo: 'aviso',
         sim: 'Separar',
@@ -486,41 +563,17 @@ window.separarPedidoDoModal = async function (id, idx) {
     });
     if (!ok) return;
     if (await separarPedido(reg, idx)) toast(`${m.referencia || 'Pedido'} separado.`);
-    await carregarViewKanban();
-    if (acharPedido(id)) abrirDetalheHistorico(id); else fecharDetalheHistorico();
+    // Recarrega o formulário com os itens que ficaram
+    const novo = await carregarPedido(reg.id);
+    if (novo) { atualizarCaches(novo.id, novo); abrirPedidoGravado(acharPedido(novo.id) || novo); }
 };
 
-// Volta para a fase que as ações já feitas indicam
-window.reativarPedidoDoModal = async function (id) {
-    const reg = acharPedido(id);
-    if (!reg) return;
-    if (await moverPedidoPara(id, faseSugerida(reg.status, semEnvio(reg.dados_completos)), { mesclado_em: null })) {
-        toast(`Pedido reativado em "${rotuloFase(reg.fase)}".`);
-    }
-    abrirDetalheHistorico(id);
-};
-
-window.gerarDoHistorico = function (id, tipo) {
-    const reg = window.__detalheHistoricoAtual;
-    if (!reg || !reg.dados_completos) {
-        toast('Este registro antigo não guardou os dados do envio. Gere um novo documento pelo formulário.', 'warning');
-        return;
-    }
-    const dados = reg.dados_completos;
-    const docType = tipo === 'etiqueta' ? 'labels' : 'romaneio';
-    const documentElements = composeDocuments(dados, docType);
-    let documentsHtml = '';
-    documentElements.forEach(el => { documentsHtml += el.outerHTML; });
-    const linkHrefs = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map(l => l.href).filter(Boolean);
-    const linksHtml = linkHrefs.map(h => `<link rel="stylesheet" href="${h}">`).join('\n');
-    const baseHref = location.origin + location.pathname;
-    const fullHtml = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><base href="${baseHref}"><title>Documentos para Impressão</title>${linksHtml}<style>body{margin:0;padding:0;background:#f3f3f3;}.page{page-break-before:always;break-before:page;}.page:first-child{page-break-before:avoid;break-before:avoid;}@media print{body{background:#fff;}.page{margin:0;box-shadow:none;page-break-after:always;}}</style></head><body><div style="padding:16px;">${documentsHtml}</div></body></html>`;
-    const win = window.open('', '_blank');
-    if (!win) { toast('O navegador bloqueou a nova aba. Permita pop-ups para este site e tente de novo.', 'warning'); return; }
-    win.document.open(); win.document.write(fullHtml); win.document.close(); win.focus();
-
-    // Marca automaticamente a etapa como feita
-    if (!(reg.status || {})[tipo]) toggleStatusHistorico(id, tipo);
+window.excluirRascunhoAberto = async function () {
+    const id = AppState.currentDraftId;
+    if (!id || !(await deletarPendente(id))) return;
+    limparEditor();
+    window.switchTab('tab-pedidos');
+    toast('Rascunho excluído.');
 };
 
 // Carregar e exibir lista de destinatários
@@ -566,59 +619,95 @@ window.deleteDestinatario = async function (idx) {
 };
 
 
-// --- LÓGICA DE PEDIDOS EM ANDAMENTO ---
+// --- EDITOR DO PEDIDO ---
+// Um pedido existe em um lugar só: rascunho (pedidos_pendentes) até o primeiro e-mail, impressão ou
+// arrasto no quadro; depois, só no quadro (historico). "Salvar" grava sempre no lugar certo.
 window.AppState = AppState;
-AppState.currentDraftId = null;
-// Registro no histórico do envio que está no formulário (gerar de novo atualiza em vez de duplicar)
-AppState.currentHistoricoId = null;
+AppState.currentDraftId = null;     // rascunho aberto no editor
+AppState.currentHistoricoId = null; // pedido do quadro aberto no editor
+AppState.regAberto = null;          // registro do pedido aberto (quando não está nas listas carregadas)
+AppState.editorAberto = false;
 
-// Grava/atualiza o envio atual no histórico, marcando as etapas feitas.
-// Se houver rascunho aberto, guarda nele o vínculo para que "Concluir" não duplique o registro.
-// Retorna o id do registro, ou null se falhou.
+// Grava o envio no quadro marcando as etapas feitas (e-mail, romaneio, etiqueta).
+// O rascunho, se havia, deixa de existir: a partir daqui o pedido fica só no quadro.
+// Retorna o id do pedido, ou null se falhou.
 async function registrarEnvio(dados, etapas) {
     const resultado = await registrarNoHistorico(dados, AppState.currentHistoricoId, etapas);
     if (!resultado) {
-        toast('Não foi possível registrar no histórico.', 'error', 5000);
+        toast('Não foi possível salvar o pedido. Verifique a conexão.', 'error', 5000);
         return null;
     }
     const { id } = resultado;
     const novo = !AppState.currentHistoricoId;
     AppState.currentHistoricoId = String(id);
-    toast(novo ? 'Envio registrado no histórico.' : 'Registro do histórico atualizado.');
+    if (AppState.currentDraftId) {
+        await deletarPendente(AppState.currentDraftId, false);
+        AppState.currentDraftId = null;
+    }
+    await recarregarPedidoAberto();
     marcarFormularioSalvo();
-    atualizarIndicadorRascunho();
+    atualizarEditor();
+    toast(novo ? 'Pedido salvo e colocado no quadro.' : 'Pedido salvo.');
 
     // Impresso antes da NF: avança mesmo assim, mas avisa e permite voltar
-    avisarProntoSemNF(id, resultado, semEnvio(dados));
-
-    if (AppState.currentDraftId) {
-        await salvarPendente({ ...dados, historico_id: AppState.currentHistoricoId }, AppState.currentDraftId, true);
-    }
+    await avisarProntoSemNF(id, resultado, semEnvio(dados));
+    atualizarEditor();
     return id;
 }
 
-// Mostra/oculta o aviso de que o formulário está editando um rascunho existente
-function atualizarIndicadorRascunho() {
-    const el = $('draft_indicator');
-    if (!el) return;
-    const pedido = AppState.currentHistoricoId;
-    el.style.display = AppState.currentDraftId || pedido ? 'flex' : 'none';
-    $('btn_salvar_no_pedido').style.display = pedido ? '' : 'none';
-    const reg = pedido ? acharPedido(pedido) : null;
-    const alterado = formularioAlterado();
-    const destino = pedido ? 'Salvar no pedido' : 'Salvar Rascunho';
-    const assunto = pedido
-        ? `Editando o pedido${reg ? ` "${reg.referencia || reg.destinatario}"` : ''} do quadro.`
-        : 'Editando um rascunho salvo.';
-    $('draft_indicator_texto').textContent = alterado
-        ? `${assunto} Há alterações não salvas: clique em "${destino}" para gravar.`
-        : `${assunto} Tudo salvo.`;
-    el.classList.toggle('draft-alterado', alterado);
+// Barra do topo (título, fase, salvo/não salvo) e o botão do pedido aberto no menu
+function atualizarBarra() {
+    const nav = $('nav_pedido_aberto');
+    if (!AppState.editorAberto) {
+        if (nav) nav.style.display = 'none';
+        return;
+    }
+    const d = collectData();
+    const reg = pedidoAberto();
+    const leitura = somenteLeitura();
+    const alterado = !leitura && formularioAlterado();
+    const salvoAntes = !!(reg || AppState.currentDraftId);
+
+    const nome = d.dest_name.trim() || reg?.destinatario || '';
+    const ref = d.reference_type !== 'none' && String(d.reference).trim()
+        ? `${d.reference_type === 'os' ? 'OS' : 'Ticket'} ${String(d.reference).trim()}` : '';
+    $('editor_titulo').textContent = [nome || 'Novo pedido', ref].filter(Boolean).join(' · ');
+
+    const fase = reg?.fase || (AppState.currentDraftId ? 'rascunho' : '');
+    const badge = $('editor_fase');
+    badge.textContent = fase ? rotuloFase(fase) : 'Novo';
+    badge.className = `fase-badge fase-${fase || 'novo'}`;
+
+    const estado = $('editor_estado');
+    estado.textContent = leitura
+        ? (reg.fase === 'cancelado' ? '🔒 Cancelado: só leitura' : !reg.dados_completos ? '🔒 Registro antigo: só leitura' : '🔒 Já saiu: só leitura')
+        : alterado ? (salvoAntes ? '● Alterações não salvas' : '● Ainda não salvo')
+        : salvoAntes ? '✓ Tudo salvo' : '';
+    estado.className = 'editor-estado' + (leitura ? ' leitura' : alterado ? ' alterado' : '');
+    $('editor_barra').classList.toggle('alterado', alterado);
+    $('btn_salvar').disabled = leitura || !alterado;
+    $('btn_salvar').style.display = leitura ? 'none' : ''; // só leitura: não há o que salvar
+    $('editor_campos').disabled = leitura;
+
+    if (nav) {
+        nav.style.display = '';
+        const curto = nome.length > 22 ? nome.slice(0, 21) + '…' : nome;
+        nav.textContent = `✎ ${curto || 'Novo pedido'}${alterado ? ' ●' : ''}`;
+    }
 }
 
-// Antes de carregar outra coisa no formulário: não perde o que foi digitado sem perguntar
-async function podeTrocarFormulario(mensagem = 'O formulário tem alterações que ainda não foram salvas e elas serão perdidas.') {
-    if (!formularioAlterado()) return true;
+function atualizarEditor() {
+    atualizarBarra();
+    if (!AppState.editorAberto) return;
+    renderPassos();
+    renderSituacao();
+}
+// O quadro recarregou (outra aba, junção, mudança de fase): a coluna do pedido aberto acompanha
+window.aoAtualizarPedidos = () => { if (AppState.editorAberto) atualizarEditor(); };
+
+// Antes de carregar outra coisa no editor: não perde o que foi digitado sem perguntar
+async function podeTrocarFormulario(mensagem = 'O pedido aberto tem alterações que ainda não foram salvas e elas serão perdidas.') {
+    if (!AppState.editorAberto || somenteLeitura() || !formularioAlterado()) return true;
     return confirmar({
         titulo: 'Descartar alterações não salvas?',
         mensagem,
@@ -645,95 +734,18 @@ async function orientarDocumentosDesatualizados(reg, dados) {
     if (reg.status?.romaneio && itensMudaram) {
         const gerar = await confirmar({
             titulo: 'Romaneio impresso ficou desatualizado',
-            mensagem: `Os itens mudaram depois da impressão. Gere o romaneio de novo e troque a via em papel.${avisoEmail ? `\n\n${avisoEmail}` : ''}`,
+            mensagem: `Os itens mudaram depois da impressão. Imprima o romaneio de novo e troque a via em papel.${avisoEmail ? `\n\n${avisoEmail}` : ''}`,
             tipo: 'aviso',
-            sim: 'Gerar romaneio agora',
+            sim: 'Imprimir romaneio agora',
             nao: 'Fazer depois'
         });
-        if (gerar) {
-            $('doc-selector').value = 'romaneio';
-            await generateNewTab();
-        }
+        if (gerar) await window.imprimir('romaneio');
     } else if (avisoEmail) {
         toast(avisoEmail, 'warning');
     }
 }
 
-// Pedido despachado ou entregue já saiu: os itens não mudam mais
-const FASES_ENVIADO = ['despachado', 'entregue'];
-const podeEditarItens = reg => !!reg?.dados_completos && reg.fase !== 'cancelado' && !FASES_ENVIADO.includes(reg.fase);
-
-// Abre um pedido do kanban no formulário para mudar itens (ou qualquer outro dado)
-window.editarPedidoNoFormulario = async function (id) {
-    const reg = acharPedido(id);
-    if (!reg) return;
-    if (!podeEditarItens(reg)) {
-        toast(reg.dados_completos ? 'Pedido já enviado: os itens não podem mais ser alterados.' : 'Registro antigo sem os dados do formulário.', 'warning');
-        return;
-    }
-    // Este pedido já está no formulário com alterações: só volta para lá, sem perder nada
-    if (String(AppState.currentHistoricoId) === String(id) && formularioAlterado()) {
-        fecharDetalheHistorico();
-        window.switchTab('tab-romaneio');
-        return;
-    }
-    if (!(await podeTrocarFormulario())) return;
-    fecharDetalheHistorico();
-    // Rascunho aberto para este pedido: edita por ele, para não ficar com duas versões
-    const draftId = rascunhoDoPedido(id);
-    if (draftId) { abrirRascunhoNoFormulario(draftId); return; }
-
-    preencherFormulario(reg.dados_completos);
-    AppState.currentDraftId = null;
-    AppState.currentHistoricoId = String(reg.id);
-    AppState.juncaoPendente = [];
-    AppState.extrasEnvio = extrasDoEnvio(reg.dados_completos);
-    marcarFormularioSalvo();
-    atualizarIndicadorRascunho();
-    atualizarPendencias();
-    window.switchTab('tab-romaneio');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-};
-
-// Grava o formulário no pedido vinculado, sem marcar etapas nem mudar a fase
-window.salvarNoPedido = async function () {
-    const id = AppState.currentHistoricoId;
-    if (!id) return;
-    const dados = collectData();
-    if (!dados.items.length) { toast('Adicione pelo menos um item.', 'warning'); return; }
-
-    // Confere no banco: o pedido pode ter sido despachado em outra aba ou aparelho
-    const fase = await faseDoPedido(id);
-    if (fase === null) { toast('Não foi possível conferir o pedido. Verifique a conexão.', 'error', 5000); return; }
-    if (FASES_ENVIADO.includes(fase) || fase === 'cancelado') {
-        toast(`Pedido em "${rotuloFase(fase)}": os itens não podem mais ser alterados.`, 'warning', 6000);
-        return;
-    }
-    const salvar = await confirmar({
-        titulo: 'Salvar as alterações no pedido?',
-        mensagem: 'Confira como o pedido vai ficar:',
-        detalhe: resumoDoPedido(dados),
-        sim: 'Salvar no pedido',
-        nao: 'Continuar editando'
-    });
-    if (!salvar) return;
-
-    const regAntes = acharPedido(id);
-    const antes = regAntes ? { dados_completos: regAntes.dados_completos, status: regAntes.status } : null;
-    const resultado = await registrarNoHistorico(dados, id);
-    if (!resultado) { toast('Não foi possível salvar no pedido.', 'error', 5000); return; }
-    if (AppState.currentDraftId) {
-        await salvarPendente({ ...dados, historico_id: id }, AppState.currentDraftId, true);
-    }
-    atualizarCaches(id, { dados_completos: dados, itens: dados.items });
-    marcarFormularioSalvo();
-    atualizarIndicadorRascunho();
-    toast('Pedido atualizado.');
-    if (kanbanVisivel()) carregarViewKanban();
-    await orientarDocumentosDesatualizados(antes, dados);
-};
-
-// Dados do envio que não têm campo no formulário e precisam sobreviver a "Salvar rascunho"
+// Dados do envio que não têm campo no formulário e precisam sobreviver a "Salvar"
 function extrasDoEnvio(dados) {
     const extras = {};
     if (dados?.origem) extras.origem = dados.origem;
@@ -747,6 +759,109 @@ function extrasDoEnvio(dados) {
     return extras;
 }
 
+// Registro antigo, anterior ao formulário completo: monta o que dá a partir das colunas
+const dadosBasicos = reg => ({
+    sender_company: reg.remetente || '', dest_name: reg.destinatario || '', unit_name: reg.unidade || '',
+    reference: reg.referencia || '', carrier: reg.transportadora || '', items: reg.itens || [], client_mode: 'single'
+});
+
+// Põe os dados no editor e abre a aba do pedido.
+// novo: ainda não está gravado em lugar nenhum (o que veio conta como não salvo)
+function carregarNoEditor(dados, { draftId = null, historicoId = null, reg = null, rascunhoEm = null, novo = false } = {}) {
+    limparFormulario();
+    preencherFormulario(dados);
+    AppState.currentDraftId = draftId ? String(draftId) : null;
+    AppState.currentHistoricoId = historicoId ? String(historicoId) : null;
+    AppState.regAberto = reg;
+    AppState.juncaoPendente = [];
+    AppState.extrasEnvio = novo ? {} : { ...extrasDoEnvio(dados), ...(rascunhoEm ? { rascunho_em: rascunhoEm } : {}) };
+    AppState.editorAberto = true;
+    if (!novo) marcarFormularioSalvo();
+    atualizarPendencias();
+    atualizarEditor();
+    window.switchTab('tab-romaneio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Pedido do quadro, como está gravado (usa o rascunho ligado a ele, de versões anteriores, se houver)
+function abrirPedidoGravado(reg) {
+    const draftId = rascunhoDoPedido(reg.id);
+    const draft = draftId && (window.__rascunhosCache || []).find(r => String(r.id) === String(draftId));
+    const dados = (podeEditarItens(reg) && draft?.dados_completos) || reg.dados_completos || dadosBasicos(reg);
+    carregarNoEditor(dados, { draftId: draft && podeEditarItens(reg) ? draftId : null, historicoId: reg.id, reg, rascunhoEm: draft?.created_at });
+}
+
+// Abre um pedido no editor. chave: 'r:<id>' (rascunho) ou 'h:<id>' (pedido do quadro)
+window.abrirPedido = async function (chave) {
+    const id = String(chave).slice(2);
+    const rascunho = String(chave).startsWith('r:');
+    const jaAberto = AppState.editorAberto && (rascunho ? AppState.currentDraftId === id : AppState.currentHistoricoId === id);
+    if (jaAberto) { window.switchTab('tab-romaneio'); return; }
+    if (!(await podeTrocarFormulario())) return;
+
+    if (rascunho) {
+        const r = (window.__rascunhosCache || []).find(x => String(x.id) === id);
+        if (!r) { toast('Rascunho não encontrado. Atualize o quadro.', 'warning'); return; }
+        const hid = r.dados_completos?.historico_id;
+        const reg = hid ? acharPedido(hid) : null;
+        if (reg) { abrirPedidoGravado(reg); return; }
+        carregarNoEditor(r.dados_completos, { draftId: id, rascunhoEm: r.created_at });
+        return;
+    }
+    const reg = acharPedido(id) || await carregarPedido(id);
+    if (!reg) { toast('Não foi possível abrir o pedido.', 'error'); return; }
+    abrirPedidoGravado(reg);
+};
+// Nomes antigos (painel, histórico e kanban chamam por eles)
+window.abrirDetalheHistorico = id => window.abrirPedido('h:' + id);
+window.editarRascunho = id => window.abrirPedido('r:' + id);
+
+// O botão Salvar: rascunho enquanto não saiu nenhum passo; depois, o próprio pedido do quadro
+window.salvarPedido = async function () {
+    if (!AppState.editorAberto) return false;
+    if (somenteLeitura()) { toast('Pedido já enviado ou cancelado: não dá para alterar.', 'warning'); return false; }
+    const dados = collectData();
+    if (!dados.items.length) { toast('Adicione pelo menos um item antes de salvar.', 'warning'); return false; }
+
+    const id = AppState.currentHistoricoId;
+    if (!id) {
+        const salvo = await salvarPendente(dados, AppState.currentDraftId, true);
+        if (!salvo) return false;
+        const novo = !AppState.currentDraftId;
+        AppState.currentDraftId = String(salvo.id);
+        // O pedido guarda quando o rascunho nasceu (a data de criação do registro no quadro é outra)
+        AppState.extrasEnvio = { rascunho_em: salvo.created_at, ...(AppState.extrasEnvio || {}) };
+        marcarFormularioSalvo();
+        atualizarEditor();
+        toast(novo ? 'Pedido salvo como rascunho: ele está na coluna Rascunho do quadro.' : 'Rascunho salvo.');
+        return true;
+    }
+
+    // Confere no banco: o pedido pode ter sido despachado em outra aba ou aparelho
+    const fase = await faseDoPedido(id);
+    if (fase === null) { toast('Não foi possível conferir o pedido. Verifique a conexão.', 'error', 5000); return false; }
+    if (FASES_ENVIADO.includes(fase) || fase === 'cancelado') {
+        toast(`Pedido em "${rotuloFase(fase)}": os itens não podem mais ser alterados.`, 'warning', 6000);
+        await recarregarPedidoAberto();
+        atualizarEditor();
+        return false;
+    }
+    const regAntes = pedidoAberto();
+    const antes = regAntes ? { dados_completos: regAntes.dados_completos, status: regAntes.status } : null;
+    if (!(await registrarNoHistorico(dados, id))) { toast('Não foi possível salvar o pedido.', 'error', 5000); return false; }
+    // Rascunho ligado ao pedido (versões anteriores): o pedido passa a ser o único lugar
+    if (AppState.currentDraftId) {
+        await deletarPendente(AppState.currentDraftId, false);
+        AppState.currentDraftId = null;
+    }
+    await recarregarPedidoAberto();
+    marcarFormularioSalvo();
+    atualizarEditor();
+    toast('Pedido salvo.');
+    await orientarDocumentosDesatualizados(antes, dados);
+    return true;
+};
+
 // Campo do formulário de cada pendência (destacado até ser preenchido)
 const CAMPO_DA_PENDENCIA = {
     'CPF/CNPJ': 'dest_doc', 'Endereço': 'dest_addr1', 'Contato': 'dest_phone',
@@ -757,7 +872,7 @@ const CAMPO_DA_PENDENCIA = {
 function atualizarPendencias() {
     const banner = $('pendencias_banner');
     if (!banner) return;
-    const importado = AppState.extrasEnvio?.origem?.perfil === 'estoque';
+    const importado = AppState.editorAberto && AppState.extrasEnvio?.origem?.perfil === 'estoque';
     const pendencias = importado ? pendenciasEnvio(collectData()) : [];
 
     Object.entries(CAMPO_DA_PENDENCIA).forEach(([nome, id]) =>
@@ -768,150 +883,46 @@ function atualizarPendencias() {
         ? `<span>⚠ Importado da planilha de estoque. Complete à mão: <b>${pendencias.join(', ')}</b>.</span>` : '';
 }
 
-window.salvarRascunhoAtual = async function(silencioso = false) {
-    // Coleta todos os dados do form
-    const dados = collectData();
-    if (dados.items.length === 0) { toast('Adicione pelo menos um item antes de salvar o rascunho.', 'warning'); return false; }
-    if (AppState.currentHistoricoId) dados.historico_id = AppState.currentHistoricoId;
-
-    const draftId = AppState.currentDraftId; // se existir, vai atualizar, se nao, cria novo
-
-    // Chama o DB
-    const salvo = await salvarPendente(dados, draftId, silencioso);
-
-    if (salvo) {
-        // Guarda o ID que voltou do supabase
-        AppState.currentDraftId = String(salvo.id);
-        // O registro do histórico guarda quando o rascunho nasceu (a data de criação do pedido é outra)
-        AppState.extrasEnvio = { rascunho_em: salvo.created_at, ...(AppState.extrasEnvio || {}) };
-        marcarFormularioSalvo();
-        atualizarIndicadorRascunho();
-        return true;
-    }
-    return false;
-};
-
-// Limpa o formulário e desvincula do rascunho atual (evita sobrescrever rascunho antigo)
-window.novoEnvio = async function() {
-    if (!(await podeTrocarFormulario('O formulário tem alterações que ainda não foram salvas. Ao iniciar um novo envio, elas serão perdidas.'))) return;
+// Esvazia o editor (nenhum pedido aberto)
+function limparEditor() {
     limparFormulario();
     AppState.currentDraftId = null;
     AppState.currentHistoricoId = null;
+    AppState.regAberto = null;
     AppState.juncaoPendente = [];
-    atualizarIndicadorRascunho();
+    AppState.editorAberto = false;
+    $('editor_campos').disabled = false;
     atualizarPendencias();
-};
-
-window.carregarViewAndamento = async function() {
-    const container = document.getElementById('andamento_list');
-    container.innerHTML = '<div class="empty-state">Carregando rascunhos...</div>';
-
-    const rascunhos = await carregarPendentes();
-    window.__rascunhosCache = rascunhos;
-
-    if (rascunhos.length === 0) {
-        container.innerHTML = '<div class="empty-state">Nenhum pedido em andamento.</div>';
-        return;
-    }
-
-    let html = '<table class="data-table"><thead><tr>';
-    html += '<th>Data Criação</th><th>Destinatário / Unidade</th><th>Ref.</th><th style="text-align:center;">Ações</th>';
-    html += '</tr></thead><tbody>';
-
-    rascunhos.forEach(reg => {
-        const data = new Date(reg.created_at).toLocaleString('pt-BR');
-
-        let destLabel = `<strong>${escapeHtml(reg.destinatario || 'Sem Destinatário')}</strong>`;
-        if (reg.unidade && reg.unidade !== reg.destinatario) {
-            destLabel += '<br><small>' + escapeHtml(reg.unidade) + '</small>';
-        }
-
-        html += `<tr>
-            <td class="col-date">${data}</td>
-            <td>${destLabel}</td>
-            <td class="col-ref">${escapeHtml(reg.referencia) || '–'}</td>
-            <td>
-                <div class="btn-group" style="justify-content:center;">
-                    <button class="btn-sm btn-neutral" onclick="editarRascunho('${reg.id}')">Editar</button>
-                    <button class="btn-sm btn-danger" onclick="excluirRascunhoUI('${reg.id}')">Excluir</button>
-                    <button class="btn-sm btn-success" onclick="concluirRascunhoUI('${reg.id}')">Concluir</button>
-                </div>
-            </td>
-        </tr>`;
-    });
-
-    html += '</tbody></table>';
-    container.innerHTML = html;
-};
-
-window.editarRascunho = async function(id) {
-    // Este rascunho já está no formulário com alterações: só volta para lá, sem perder nada
-    if (AppState.currentDraftId === String(id) && formularioAlterado()) {
-        window.switchTab('tab-romaneio');
-        return;
-    }
-    if (await podeTrocarFormulario()) abrirRascunhoNoFormulario(id);
-};
-
-function abrirRascunhoNoFormulario(id) {
-    const rascunho = (window.__rascunhosCache || []).find(r => String(r.id) === String(id));
-    if(rascunho) {
-        // Preenche o formulário
-        preencherFormulario(rascunho.dados_completos);
-
-        // Seta o ID atual (e o registro do histórico, se este rascunho já foi gerado antes)
-        AppState.currentDraftId = String(id);
-        AppState.currentHistoricoId = rascunho.dados_completos?.historico_id || null;
-        AppState.juncaoPendente = [];
-        AppState.extrasEnvio = { ...extrasDoEnvio(rascunho.dados_completos), rascunho_em: rascunho.created_at };
-        marcarFormularioSalvo();
-        atualizarIndicadorRascunho();
-        atualizarPendencias();
-
-        // Vai para a aba do romaneio
-        window.switchTab('tab-romaneio');
-    }
+    atualizarEditor();
 }
 
-window.excluirRascunhoUI = async function(id) {
-    const ok = await deletarPendente(id);
-    if(ok) {
-        if(AppState.currentDraftId === String(id)) {
-            AppState.currentDraftId = null;
-            atualizarIndicadorRascunho();
-        }
-        carregarViewAndamento();
-    }
+window.novoPedido = async function () {
+    fecharMenuNovo();
+    if (!(await podeTrocarFormulario('O pedido aberto tem alterações que ainda não foram salvas. Ao começar outro, elas serão perdidas.'))) return;
+    limparEditor();
+    AppState.editorAberto = true;
+    atualizarEditor();
+    window.switchTab('tab-romaneio');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+window.novoEnvio = window.novoPedido;
+
+window.fecharPedido = async function () {
+    if (!(await podeTrocarFormulario('O pedido tem alterações que ainda não foram salvas. Ao fechar, elas serão perdidas.'))) return;
+    limparEditor();
+    window.switchTab('tab-pedidos');
 };
 
-window.concluirRascunhoUI = async function(id) {
-    // Resumo do que vai para o Histórico (o rascunho aberto na tela vale pelo formulário)
-    const aberto = AppState.currentDraftId === String(id);
-    const dados = aberto ? collectData() : (window.__rascunhosCache || []).find(r => String(r.id) === String(id))?.dados_completos;
-    const concluir = await confirmar({
-        titulo: 'Concluir este rascunho?',
-        mensagem: 'Ele vai para o Histórico e sai da lista de rascunhos. Confira os dados:',
-        detalhe: dados ? resumoDoPedido(dados) : undefined,
-        sim: 'Concluir',
-        nao: 'Voltar'
-    });
-    if (!concluir) return;
-
-    // Certifique-se de que se o usuário clicou Concluir, salvamos o atual se for o memo rascunho aberto na tela
-    if (AppState.currentDraftId === String(id)) {
-       const salvo = await salvarRascunhoAtual(true); // Força update do que ta na tela antes de fechar
-       if (!salvo) return;
-    }
-
-    const ok = await concluirPendente(id);
-    if(ok) {
-        if(AppState.currentDraftId === String(id)) { // reseta a UI ativa se fomos nós
-            AppState.currentDraftId = null;
-            AppState.currentHistoricoId = null;
-            atualizarIndicadorRascunho();
-        }
-        carregarViewAndamento();
-    }
+// Menu "+ Novo pedido" do quadro: em branco, da planilha de estoque ou da planilha de controle
+function fecharMenuNovo() {
+    const m = $('menu_novo');
+    if (m) m.style.display = 'none';
+}
+window.fecharMenuNovo = fecharMenuNovo;
+window.alternarMenuNovo = function (ev) {
+    ev.stopPropagation();
+    const m = $('menu_novo');
+    if (m) m.style.display = m.style.display === 'none' ? 'flex' : 'none';
 };
 
 
@@ -984,10 +995,13 @@ window.copiarParaPlanilha = function () {
     const ref = d.reference_type !== 'none' && d.reference ? ` · ${d.reference_type === 'os' ? 'OS' : 'Ticket'} ${d.reference}` : '';
     abrirLinhas(d, `Linhas para a planilha${ref}`, async montar => {
         AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), montar_kits: montar };
-        // Rascunho/registro já salvos guardam a escolha na hora; envio novo guarda ao salvar ou gerar
-        if (AppState.currentDraftId) await salvarRascunhoAtual(true);
+        // Pedido já gravado guarda a escolha na hora; rascunho, se não houver outra alteração pendente;
+        // senão ela vai junto no próximo Salvar
         if (AppState.currentHistoricoId) await gravarEscolhaKits(AppState.currentHistoricoId, montar);
-    }, AppState.currentHistoricoId ? acharPedido(AppState.currentHistoricoId) : null);
+        else if (AppState.currentDraftId && !formularioAlterado()) {
+            if (await salvarPendente(collectData(), AppState.currentDraftId, true)) marcarFormularioSalvo();
+        }
+    }, pedidoAberto());
 };
 
 // Botão no detalhe do histórico
@@ -1028,42 +1042,23 @@ window.usarEnvioImportado = usarEnvioImportado;
 
 const normNome = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-// Preenche o formulário com um envio da planilha. Retorna false se o usuário cancelar.
+// Abre um pedido novo com um envio da planilha de controle. Retorna false se o usuário cancelar.
 async function preencherComEnvioImportado(grupo) {
-    const atual = collectData();
-    if (atual.dest_name.trim() || atual.items.length) {
-        const ok = await confirmar({
-            titulo: 'Substituir o formulário?',
-            mensagem: 'Os dados que estão no formulário dão lugar ao envio da planilha.',
-            tipo: 'aviso',
-            sim: 'Substituir',
-            nao: 'Cancelar'
-        });
-        if (!ok) return false;
-    }
+    if (!(await podeTrocarFormulario())) return false;
 
-    // Remetente, transportadora, volumes etc. continuam como estão no formulário
-    const dados = grupoParaFormulario(grupo, atual);
+    // Remetente, transportadora etc. vêm do padrão de um pedido novo
+    limparFormulario();
+    const dados = grupoParaFormulario(grupo, collectData());
 
     // A planilha não tem CPF/CNPJ: busca no cadastro pelo nome do destinatário
     const cad = (window.__destinatariosSupabase || []).find(d => normNome(d.nome) === normNome(dados.dest_name));
     dados.dest_doc = cad?.cpf_cnpj || '';
     if (cad && !dados.dest_phone) dados.dest_phone = cad.contato || '';
 
-    preencherFormulario(dados);
-    // É um envio novo: não vincula a rascunho nem a registro do histórico anteriores
-    AppState.currentDraftId = null;
-    AppState.currentHistoricoId = null;
-    AppState.juncaoPendente = [];
-    AppState.extrasEnvio = {};
-    atualizarPendencias();
-    atualizarIndicadorRascunho();
-    window.switchTab('tab-romaneio');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
+    carregarNoEditor(dados, { novo: true });
     const ref = grupo.os ? `OS/Ticket ${grupo.os}` : 'o envio';
-    toast(`Formulário preenchido com ${ref}${cad ? ' (CPF/CNPJ do cadastro)' : ' (destinatário fora do cadastro: confira o CPF/CNPJ)'}.`,
-        cad ? 'success' : 'warning', 6000);
+    toast(`Pedido aberto com ${ref}${cad ? ' (CPF/CNPJ do cadastro)' : ' (destinatário fora do cadastro: confira o CPF/CNPJ)'}. Confira e clique em Salvar.`,
+        cad ? 'success' : 'warning', 7000);
     return true;
 }
 
@@ -1103,54 +1098,19 @@ async function validarAntesDeGerar(d) {
     return true;
 }
 
-// Documentos escolhidos no select; retirada / instalação na Ranor só tem romaneio (sem etiqueta)
-function tipoDocumento() {
-    const docType = $('doc-selector').value;
-    if (!docType) { toast('Selecione quais documentos gerar.', 'warning'); $('doc-selector').focus(); return null; }
-    if (semEnvio(collectData()) && docType !== 'romaneio') {
-        if (docType === 'labels') { toast('Retirada / instalação na Ranor não tem etiqueta. Gere o romaneio.', 'warning'); return null; }
-        $('doc-selector').value = 'romaneio';
-        return 'romaneio';
-    }
-    return docType;
-}
+// Documentos: um botão por documento (romaneio, etiqueta, os dois)
+const TIPOS_DOC = { romaneio: 'romaneio', etiqueta: 'labels', ambos: 'both' };
+const etapasDoDocumento = docType => ({
+    ...(docType === 'labels' || docType === 'both' ? { etiqueta: true } : {}),
+    ...(docType === 'romaneio' || docType === 'both' ? { romaneio: true } : {})
+});
 
-async function generatePreview() {
-    const docType = tipoDocumento();
-    if (!docType) return;
-
-    AppState.formData = collectData();
-    if (!(await validarAntesDeGerar(AppState.formData))) return;
-
-    const documentElements = composeDocuments(AppState.formData, docType);
-    const emailElement = renderEmailPreview(AppState.formData);
-
-    const previewDocuments = $('preview-documents');
-    previewDocuments.innerHTML = '';
-    documentElements.forEach(el => previewDocuments.appendChild(el));
-
-    const previewEmail = $('preview-email');
-    previewEmail.innerHTML = '';
-    previewEmail.appendChild(emailElement);
-
-    abrirModalPreview();
-}
-
-async function generateNewTab() {
-    const docType = tipoDocumento();
-    if (!docType) return;
-
-    AppState.formData = collectData();
-    if (!(await validarAntesDeGerar(AppState.formData))) return;
-
-    const documentElements = composeDocuments(AppState.formData, docType);
-    let documentsHtml = '';
-    documentElements.forEach(el => { documentsHtml += el.outerHTML; });
-
-    const linkHrefs = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map(l => l.href).filter(Boolean);
-    const linksHtml = linkHrefs.map(h => `<link rel="stylesheet" href="${h}">`).join('\n');
+// Abre os documentos numa aba pronta para imprimir. false se o navegador bloqueou.
+function abrirAbaImpressao(elementos) {
+    const documentsHtml = elementos.map(el => el.outerHTML).join('');
+    const linksHtml = Array.from(document.querySelectorAll('link[rel="stylesheet"]')).map(l => l.href).filter(Boolean)
+        .map(h => `<link rel="stylesheet" href="${h}">`).join('\n');
     const baseHref = location.origin + location.pathname;
-
     const fullHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -1170,19 +1130,64 @@ async function generateNewTab() {
 </html>`;
 
     const win = window.open('', '_blank');
-    if (!win) { toast('O navegador bloqueou a nova aba. Permita pop-ups para este site e tente de novo.', 'warning'); return; }
-    const doc = win.document;
-    doc.open();
-    doc.write(fullHtml);
-    doc.close();
+    if (!win) { toast('O navegador bloqueou a nova aba. Permita pop-ups para este site e tente de novo.', 'warning'); return false; }
+    win.document.open();
+    win.document.write(fullHtml);
+    win.document.close();
     try { win.focus(); } catch (e) { }
-
-    // Registra no histórico depois de abrir a aba (abrir precisa ser imediato para não cair no bloqueador)
-    const etapas = {};
-    if (docType === 'labels' || docType === 'both') etapas.etiqueta = true;
-    if (docType === 'romaneio' || docType === 'both') etapas.romaneio = true;
-    registrarEnvio(AppState.formData, etapas);
+    return true;
 }
+
+// Imprime e registra a etapa no pedido (salvando o que está no formulário)
+window.imprimir = async function (tipo) {
+    if (somenteLeitura()) { await imprimirDoRegistro(pedidoAberto(), tipo); return; }
+    const dados = collectData();
+    if (semEnvio(dados) && tipo !== 'romaneio') {
+        toast('Retirada / instalação na Ranor não tem etiqueta. Imprima o romaneio.', 'warning');
+        return;
+    }
+    if (!(await validarAntesDeGerar(dados))) return;
+    const docType = TIPOS_DOC[tipo];
+    dados.doc_type = docType;
+    if (!abrirAbaImpressao(composeDocuments(dados, docType))) return;
+    // Registra depois de abrir a aba (abrir precisa ser imediato para não cair no bloqueador)
+    await registrarEnvio(dados, etapasDoDocumento(docType));
+};
+
+// Pedido já enviado: imprime de novo a partir do que está gravado
+async function imprimirDoRegistro(reg, tipo) {
+    if (!reg?.dados_completos) {
+        toast('Este registro antigo não guardou os dados do envio: não dá para gerar o documento.', 'warning');
+        return;
+    }
+    const docType = TIPOS_DOC[tipo];
+    if (!abrirAbaImpressao(composeDocuments(reg.dados_completos, docType))) return;
+    const etapas = etapasDoDocumento(docType);
+    if (Object.keys(etapas).every(k => reg.status?.[k])) return;
+    const novoStatus = { email: false, etiqueta: false, romaneio: false, ...(reg.status || {}), ...etapas };
+    const resultado = await atualizarStatusHistorico(reg, novoStatus);
+    if (resultado) {
+        aplicarNoPedido(reg.id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
+        atualizarEditor();
+    }
+}
+
+// Mostra os documentos e o e-mail numa janela, sem registrar nada
+window.preVisualizar = async function () {
+    const dados = collectData();
+    if (!(await validarAntesDeGerar(dados))) return;
+    const docType = semEnvio(dados) ? 'romaneio' : 'both';
+    AppState.formData = dados;
+
+    const previewDocuments = $('preview-documents');
+    previewDocuments.innerHTML = '';
+    composeDocuments(dados, docType).forEach(el => previewDocuments.appendChild(el));
+    const previewEmail = $('preview-email');
+    previewEmail.innerHTML = '';
+    if (!semEnvio(dados)) previewEmail.appendChild(renderEmailPreview(dados));
+
+    abrirModalPreview();
+};
 
 function copyEmailBody() {
     // Sempre gera a partir do formulário atual (não do último preview)
@@ -1193,6 +1198,7 @@ function copyEmailBody() {
 }
 
 async function enviarEmailViaMailtoUsingData() {
+    if (somenteLeitura()) return;
     const d = collectData();
     if (semEnvio(d)) {
         const pedir = await confirmar({
@@ -1218,7 +1224,7 @@ async function enviarEmailViaMailtoUsingData() {
     // Confere (e edita, se precisar) o e-mail antes de abrir
     const conferido = await conferirEmail({ assunto: buildEmailSubject(d), corpo: buildEmailBody(d), avisos: avisosEmail(d) });
     if (!conferido) return;
-    // E-mails do financeiro que recebem o pedido de nota fiscal (Gerenciar Dados > Configurações)
+    // E-mails do financeiro que recebem o pedido de nota fiscal (Cadastros > Configurações)
     const emails = config('financeiro_emails').join(';');
     const { assunto, corpo: body } = conferido;
     window.location.href = `mailto:${emails}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(body)}`;
@@ -1292,8 +1298,6 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-window.generatePreview = generatePreview;
-window.generateNewTab = generateNewTab;
 window.copyEmailBody = copyEmailBody;
 window.enviarEmailViaMailtoUsingData = enviarEmailViaMailtoUsingData;
 window.toggleReferenceInput = toggleReferenceInput;
@@ -1306,14 +1310,6 @@ document.addEventListener('DOMContentLoaded', () => {
     $('client_select').addEventListener('change', onClientSelect);
     $('reference_type').addEventListener('change', toggleReferenceInput);
 
-    const botaoEnviar = $('btnEnviar');
-    if (botaoEnviar) {
-        botaoEnviar.addEventListener('click', (ev) => {
-            ev.preventDefault();
-            enviarEmailViaMailtoUsingData();
-        });
-    }
-
     // Inicialização Visual
     // Remetentes padrão até o login carregar as configurações (auth.js popula de novo)
     popularSelectRemetentes();
@@ -1324,11 +1320,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // Máscara + validação de CPF/CNPJ nos três formulários de destinatário
     ['dest_doc', 'new_dest_doc', 'modal_dest_doc'].forEach(id => ligarMascaraDoc($(id)));
 
-    // Faixa de pendências do envio importado: some à medida que os campos são preenchidos
-    ['input', 'change'].forEach(ev => $('tab-romaneio')?.addEventListener(ev, () => {
+    // Barra do pedido (salvo / não salvo), passos e pendências acompanham o que é digitado.
+    // Só os campos do formulário: os seletores da coluna Situação redesenham a coluna sozinhos.
+    ['input', 'change'].forEach(ev => $('editor_campos')?.addEventListener(ev, () => {
         atualizarPendencias();
-        atualizarIndicadorRascunho();
+        atualizarBarra();
+        if (ev === 'change') renderPassos();
     }));
+
+    // Ctrl+S salva o pedido aberto
+    document.addEventListener('keydown', e => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && $('tab-romaneio')?.style.display === 'block') {
+            e.preventDefault();
+            window.salvarPedido();
+        }
+    });
+
+    // Fechar a página com alterações não salvas: o navegador pergunta antes
+    window.addEventListener('beforeunload', e => {
+        if (AppState.editorAberto && !somenteLeitura() && formularioAlterado()) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // Clique fora do menu "+ Novo pedido" fecha o menu
+    document.addEventListener('click', e => { if (!e.target.closest('.menu-novo')) fecharMenuNovo(); });
 
     // Auth pipeline init (Dispara checagem do Supabase e carrega BD se logado)
     checkSession();
@@ -1344,11 +1358,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (importarPlanilhaAberto()) { fecharImportarPlanilha(); return; }
         if (aberto('modal-preview')) fecharModalPreview();
         if (aberto('modal-edit-dest')) fecharModalEdit();
-        if (aberto('modal-historico-detalhe')) fecharDetalheHistorico();
+        fecharMenuNovo();
     });
 
     // Clique fora do card fecha o modal (não no de edição, para não perder o que foi digitado)
-    [['modal-preview', () => fecharModalPreview()], ['modal-historico-detalhe', () => fecharDetalheHistorico()]]
+    [['modal-preview', () => fecharModalPreview()]]
         .forEach(([id, fechar]) => $(id)?.addEventListener('click', function (e) {
             if (e.target === this) fechar();
         }));
@@ -1357,7 +1371,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 window.switchSubTab = function(subTabName) {
     // 1. Esconder TODAS as sub-abas conhecidas
-    const idsToHide = ['sub-andamento', 'sub-historico', 'sub-destinatarios', 'sub-itens', 'sub-depara', 'sub-config'];
+    const idsToHide = ['sub-destinatarios', 'sub-itens', 'sub-depara', 'sub-config'];
     idsToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -1380,11 +1394,7 @@ window.switchSubTab = function(subTabName) {
     if(atvBtn) atvBtn.classList.add('active');
 
     // 4. Carregar seus dados
-    if(subTabName === 'sub-andamento') {
-        carregarViewAndamento();
-    } else if (subTabName === 'sub-historico') {
-        loadHistoricoView();
-    } else if (subTabName === 'sub-destinatarios') {
+    if (subTabName === 'sub-destinatarios') {
         window.loadDestinatariosList();
     } else if (subTabName === 'sub-itens') {
         window.switchTabToItens();

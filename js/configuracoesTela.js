@@ -1,4 +1,4 @@
-// Tela Gerenciar Dados > Configurações: um cartão por configuração (salvar / restaurar padrão)
+// Tela Cadastros > Configurações: um cartão por configuração (salvar / restaurar padrão)
 // e as receitas de kit. Os valores ficam em js/configuracoes.js e js/kitReceitas.js.
 import { $, escapeHtml } from './config.js';
 import { config, PADROES, infoConfiguracao, salvarConfiguracao, restaurarPadrao, configuracoesNoBanco, carregarConfiguracoes } from './configuracoes.js';
@@ -28,7 +28,7 @@ const CARTOES = {
     },
     remetentes: {
         titulo: 'Remetentes',
-        ajuda: 'Opções de "Selecionar remetente" no formulário. O marcado como padrão vem preenchido no Novo envio e nos envios importados do estoque. Rascunhos já salvos não mudam.',
+        ajuda: 'Opções de "Selecionar remetente" no formulário. O marcado como padrão vem preenchido no Novo pedido e nos envios importados do estoque. Rascunhos já salvos não mudam.',
         campos: v => `${v.map((r, i) => `
             <div class="cfg-bloco">
                 <div class="cfg-linha">
@@ -117,7 +117,7 @@ const CARTOES = {
     },
     transportadora_padrao: {
         titulo: 'Transportadora padrão',
-        ajuda: 'Vem preenchida no Novo envio.',
+        ajuda: 'Vem preenchida no Novo pedido.',
         campos: v => `<input type="text" value="${escapeHtml(v)}" oninput="cfgValor('transportadora_padrao', this.value)">`,
         limpar: v => String(v || '').trim(),
         validar: v => v ? null : 'Informe a transportadora.'

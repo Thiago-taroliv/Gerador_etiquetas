@@ -11,7 +11,7 @@ import { config } from './configuracoes.js';
 import { formularioAlterado } from './ui.js';
 import { semEnvio, entregaDe, rotuloEntrega, iconeEntrega } from './entrega.js';
 
-// Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Gerenciar Dados > Configurações)
+// Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Cadastros > Configurações)
 const limitesAtraso = () => config('kanban_atraso') || {};
 
 let pedidos = [];          // registros do histórico
@@ -68,28 +68,32 @@ export async function carregarViewKanban() {
     pendentes.forEach(r => { if (r.dados_completos?.historico_id) rascunhoPorPedido[r.dados_completos.historico_id] = r.id; });
     renderKanban();
 
-    // Pedidos já enviados antes desta regra que ainda têm rascunho: conclui em segundo plano
-    pedidos.filter(r => FASES_ENVIADO.includes(r.fase) && rascunhoPorPedido[r.id])
-        .forEach(r => concluirRascunhoDoPedido(r.id));
+    // Pedidos que ainda têm rascunho ligado (versões anteriores): passam a existir só no quadro
+    pedidos.filter(r => rascunhoPorPedido[r.id]).forEach(r => concluirRascunhoDoPedido(r.id));
 }
 
 // Id do rascunho aberto para o pedido do histórico, se houver
 export const rascunhoDoPedido = id => rascunhoPorPedido[id] || null;
 
-// Depois de despachado os itens não mudam mais: o rascunho ligado ao pedido é concluído (apagado).
-// O pedido continua no kanban e no histórico com todos os dados.
+// Um pedido existe num lugar só: depois que vai para o quadro, o rascunho dele não existe mais.
+// Versões anteriores deixavam um rascunho ligado ao pedido: os dados dele (sempre os mais novos)
+// vão para o pedido e o rascunho é apagado. Despachado/entregue/cancelado: os itens já não mudam.
 const FASES_ENVIADO = ['despachado', 'entregue'];
 
 async function concluirRascunhoDoPedido(historicoId) {
     const draftId = rascunhoPorPedido[historicoId];
     if (!draftId) return;
-    // Rascunho na tela com alterações não salvas: deixa para a próxima vez
-    if (String(AppState.currentDraftId) === String(draftId) && formularioAlterado()) return;
+    // Rascunho aberto no editor: o Salvar de lá faz a mesma coisa
+    if (String(AppState.currentDraftId) === String(draftId)) return;
+    const reg = acharPedido(historicoId);
+    const rasc = (window.__rascunhosCache || []).find(r => String(r.id) === String(draftId));
+    if (reg && rasc?.dados_completos && !FASES_ENVIADO.includes(reg.fase) && reg.fase !== 'cancelado') {
+        const dados = { ...rasc.dados_completos, rascunho_em: rasc.dados_completos.rascunho_em || rasc.created_at };
+        if (!(await registrarNoHistorico(dados, historicoId))) return;
+        atualizarCaches(historicoId, { dados_completos: { ...dados, historico_id: undefined }, itens: dados.items });
+    }
     if (!(await deletarPendente(draftId, false))) return;
     delete rascunhoPorPedido[historicoId];
-    // Formulário com este rascunho segue ligado ao pedido do histórico
-    if (String(AppState.currentDraftId) === String(draftId)) AppState.currentDraftId = null;
-    if (kanbanVisivel()) renderKanban();
 }
 
 // Registro do histórico por id, venha do kanban ou da lista do Histórico
@@ -213,11 +217,10 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     if (atraso) classes.push('atraso-' + atraso);
     if (destacado && (destacado === chave || (grupos[destacado] || []).includes(chave))) classes.push('destaque');
 
-    const idDraft = rascunho ? reg.id : rascunhoPorPedido[reg.id];
     // Rascunho criado da planilha de estoque: ícone e o que ainda falta preencher
     const doEstoque = reg.dados_completos?.origem?.perfil === 'estoque';
     const falta = rascunho && doEstoque ? pendenciasEnvio(reg.dados_completos) : [];
-    const acao = rascunho ? `editarRascunho('${reg.id}')` : `abrirDetalheHistorico('${reg.id}')`;
+    const acao = `abrirPedido('${chave}')`;
     // Depois de despachado, só mostra a etapa de configuração se ela foi marcada
     const preparo = preparoDe(reg.dados_completos);
     const mostraPreparo = reg.dados_completos?.preparo || !['despachado', 'entregue'].includes(fase);
@@ -242,10 +245,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
         reg.rastreio && `Rastreio <strong>${escapeHtml(reg.rastreio)}</strong>`,
         reg.frete != null && `Frete <strong>R$ ${formatarFrete(reg.frete)}</strong>`
     ].filter(Boolean).join(' &middot; ');
-    const icones = [
-        doEstoque ? '<span class="kanban-icone" title="Importado da planilha de estoque">📥</span>' : '',
-        !rascunho && idDraft ? `<span class="kanban-icone clicavel" title="Editar no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">✎</span>` : ''
-    ].join('');
+    const icones = doEstoque ? '<span class="kanban-icone" title="Importado da planilha de estoque">📥</span>' : '';
 
     return `
         <div class="${classes.join(' ')}" ${arrastar} ${soltar} onclick="${acao}">
@@ -374,6 +374,7 @@ export function renderKanban() {
                 </div>
             </div>`;
     }).join('');
+    window.aoAtualizarPedidos?.(); // a coluna do pedido aberto no editor acompanha
 }
 
 window.destacarMesmoTecnico = function (chave) {
@@ -408,7 +409,7 @@ function abertoNoFormulario(chaves) {
             || (!!rascunhoPorPedido[id] && String(AppState.currentDraftId) === String(rascunhoPorPedido[id]));
     });
 }
-const AVISO_FORMULARIO = 'Um destes pedidos está aberto no formulário. Clique em "Novo envio" lá antes de juntar.';
+const AVISO_FORMULARIO = 'Um destes pedidos está aberto. Feche o pedido (botão Fechar) antes de juntar.';
 
 async function executarJuncao(chaveAlvo, outrasChaves) {
     const alvo = pedidoDoCard(chaveAlvo);
@@ -599,13 +600,11 @@ async function moverRascunhoPara(draftId, fase) {
         return false;
     }
     if (salvo.fase !== fase || Object.keys(extras).length) await moverFase(salvo.id, fase, extras);
-    // Formulário com este rascunho aberto passa a atualizar o mesmo registro
-    if (String(AppState.currentDraftId) === String(draftId)) AppState.currentHistoricoId = String(salvo.id);
-    if (FASES_ENVIADO.includes(fase)) {
-        // Já enviado: não precisa mais do rascunho
-        if (await deletarPendente(draftId, false) && String(AppState.currentDraftId) === String(draftId)) AppState.currentDraftId = null;
-    } else {
-        await salvarPendente({ ...rasc.dados_completos, historico_id: salvo.id }, draftId, true);
+    // O rascunho virou pedido do quadro: deixa de existir (o pedido fica num lugar só)
+    const aberto = String(AppState.currentDraftId) === String(draftId);
+    if (await deletarPendente(draftId, false) && aberto) {
+        AppState.currentDraftId = null;
+        AppState.currentHistoricoId = String(salvo.id);
     }
 
     await carregarViewKanban();
