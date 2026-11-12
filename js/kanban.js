@@ -4,7 +4,7 @@ import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverF
 import { formatarFrete, lerValor } from './planilha.js';
 import { oferecerPixFrete } from './pixFrete.js';
 import { confirmar, pedirCampos } from './dialogo.js';
-import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao } from './juncao.js';
+import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao, pedidoDoHistorico, pedidoDoRascunho, juntarPedidos, precisaNovoEmail, escolherParaJuntar } from './juncao.js';
 import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
 import { config } from './configuracoes.js';
@@ -168,15 +168,18 @@ function gruposMesmoTecnico() {
     return grupos;
 }
 
+const transportadoraDe = (reg, rascunho) => rascunho ? reg.dados_completos?.carrier : reg.transportadora;
+const qtdItens = (reg, rascunho) => (rascunho ? (reg.dados_completos?.items || []) : (reg.itens || []))
+    .reduce((s, it) => s + (parseInt(it.qty) || 1), 0);
+
 function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
-    const itens = rascunho ? (reg.dados_completos?.items || []) : (reg.itens || []);
-    const qtd = itens.reduce((s, it) => s + (parseInt(it.qty) || 1), 0);
-    const transportadora = rascunho ? reg.dados_completos?.carrier : reg.transportadora;
+    const qtd = qtdItens(reg, rascunho);
+    const transportadora = transportadoraDe(reg, rascunho);
     const st = reg.status || {};
     const fase = rascunho ? 'rascunho' : reg.fase;
     const dias = diasDesde(rascunho ? reg.created_at : reg.fase_em);
     const atraso = rascunho ? 0 : nivelAtraso(fase, dias);
-    const selo = (feito, label) => `<span class="status-badge${feito ? ' done' : ''}">${label}</span>`;
+    const selo = (feito, label, titulo) => `<span class="status-badge${feito ? ' done' : ''}" title="${titulo}${feito ? ': feito' : ': pendente'}">${label}</span>`;
 
     const outros = grupos[chave];
     const classes = ['kanban-card'];
@@ -185,7 +188,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     if (destacado && (destacado === chave || (grupos[destacado] || []).includes(chave))) classes.push('destaque');
 
     const idDraft = rascunho ? reg.id : rascunhoPorPedido[reg.id];
-    // Rascunho criado da planilha de estoque: etiqueta e o que ainda falta preencher
+    // Rascunho criado da planilha de estoque: ícone e o que ainda falta preencher
     const doEstoque = reg.dados_completos?.origem?.perfil === 'estoque';
     const falta = rascunho && doEstoque ? pendenciasEnvio(reg.dados_completos) : [];
     const acao = rascunho ? `editarRascunho('${reg.id}')` : `abrirDetalheHistorico('${reg.id}')`;
@@ -195,30 +198,42 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     const seloPreparo = mostraPreparo
         ? `<span class="kanban-tag preparo preparo-${preparo}" title="Configuração dos equipamentos. Clique para avançar a etapa."
                  onclick="event.stopPropagation(); avancarPreparo('${chave}')">⚙ ${rotuloPreparo(preparo)}</span>` : '';
+    const seloJuncao = outros ? `
+        <span class="kanban-tag juncao" title="Outros pedidos sem NF para este técnico. Clique para destacar." onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length}</span>
+        <span class="kanban-tag juncao juntar" title="Juntar com os outros pedidos deste técnico, para pedir uma NF só. Também dá para arrastar um card sobre o outro." onclick="event.stopPropagation(); juntarPedidoDoKanban('${chave}')">Juntar</span>` : '';
     const arrastar = `draggable="true" ondragstart="kanbanDragStart(event, '${rascunho ? 'r:' : ''}${reg.id}')" ondragend="kanbanDragEnd(event)"`;
+    // Soltar outro card em cima deste junta os dois (se forem do mesmo técnico e sem NF)
+    const soltar = `ondragover="kanbanDragOverCard(event, '${chave}')" ondragleave="kanbanDragLeaveCard(event)" ondrop="kanbanDropCard(event, '${chave}')"`;
+
+    const sub = [
+        reg.unidade && reg.unidade !== reg.destinatario ? escapeHtml(reg.unidade) : '',
+        reg.referencia ? `<span class="kanban-card-ref">${escapeHtml(reg.referencia)}</span>` : ''
+    ].filter(Boolean).join(' &middot; ');
+    const meta = [
+        transportadora && escapeHtml(transportadora),
+        qtd && `${qtd} item(ns)`,
+        reg.rastreio && `Rastreio <strong>${escapeHtml(reg.rastreio)}</strong>`,
+        reg.frete != null && `Frete <strong>R$ ${formatarFrete(reg.frete)}</strong>`
+    ].filter(Boolean).join(' &middot; ');
+    const icones = [
+        doEstoque ? '<span class="kanban-icone" title="Importado da planilha de estoque">📥</span>' : '',
+        !rascunho && idDraft ? `<span class="kanban-icone clicavel" title="Tem rascunho aberto: clique para abrir no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">✎</span>` : ''
+    ].join('');
 
     return `
-        <div class="${classes.join(' ')}" ${arrastar} onclick="${acao}">
-            <div class="kanban-card-titulo">${escapeHtml(reg.destinatario || 'Sem destinatário')}</div>
-            ${reg.unidade && reg.unidade !== reg.destinatario ? `<div class="kanban-card-sub">${escapeHtml(reg.unidade)}</div>` : ''}
-            ${reg.referencia ? `<div class="kanban-card-ref">${escapeHtml(reg.referencia)}</div>` : ''}
-            <div class="kanban-card-meta">
-                ${[transportadora, qtd ? `${qtd} item(ns)` : ''].filter(Boolean).map(escapeHtml).join(' &middot; ')}
-            </div>
-            ${reg.rastreio ? `<div class="kanban-card-meta">Rastreio: <strong>${escapeHtml(reg.rastreio)}</strong></div>` : ''}
-            ${reg.frete != null ? `<div class="kanban-card-meta">Frete: <strong>R$ ${formatarFrete(reg.frete)}</strong></div>` : ''}
-            ${falta.length ? `<div class="kanban-card-falta">Falta: ${falta.map(escapeHtml).join(', ')}</div>` : ''}
-            <div class="kanban-card-tags">
-                ${seloPreparo}
-                ${doEstoque ? '<span class="kanban-tag estoque" title="Importado da planilha de estoque">estoque</span>' : ''}
-                ${outros ? `<span class="kanban-tag juncao" title="Clique para destacar" onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length} p/ este técnico</span>
-                    <span class="kanban-tag juncao juntar" title="Abre este pedido no formulário e junta os outros do mesmo técnico, para pedir uma NF só" onclick="event.stopPropagation(); juntarPedidoDoKanban('${chave}')">Juntar</span>` : ''}
-                ${!rascunho && idDraft ? `<span class="kanban-tag rasc" title="Abrir rascunho no formulário" onclick="event.stopPropagation(); editarRascunho('${idDraft}')">rascunho aberto</span>` : ''}
-            </div>
-            <div class="kanban-card-rodape">
-                ${rascunho ? '<span class="status-badge">não gerado</span>'
-                    : `<div class="status-badges">${selo(st.email, 'E')}${selo(st.romaneio, 'R')}${selo(st.etiqueta, 'Et')}</div>`}
+        <div class="${classes.join(' ')}" ${arrastar} ${soltar} onclick="${acao}">
+            <div class="kanban-card-topo">
+                <div class="kanban-card-titulo">${escapeHtml(reg.destinatario || 'Sem destinatário')}</div>
                 <span class="kanban-dias">${textoDias(dias)}</span>
+            </div>
+            ${sub ? `<div class="kanban-card-sub">${sub}</div>` : ''}
+            ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
+            ${falta.length ? `<div class="kanban-card-falta">Falta: ${falta.map(escapeHtml).join(', ')}</div>` : ''}
+            <div class="kanban-card-tags">${seloPreparo}${seloJuncao}</div>
+            <div class="kanban-card-rodape">
+                ${rascunho ? '<span class="status-badge" title="Ainda não gerou e-mail, romaneio nem etiqueta">não gerado</span>'
+                    : `<div class="status-badges">${selo(st.email, 'E', 'E-mail de NF')}${selo(st.romaneio, 'R', 'Romaneio')}${selo(st.etiqueta, 'Et', 'Etiqueta')}</div>`}
+                <span class="kanban-icones">${icones}</span>
             </div>
         </div>`;
 }
@@ -256,13 +271,44 @@ window.filtrarResumoKanban = function (filtro) {
     renderKanban();
 };
 
+// Filtros de destinatário (técnico) e transportadora: opções a partir dos pedidos do quadro
+function popularFiltros() {
+    const preencher = (id, valores, rotuloTodos) => {
+        const el = $(id);
+        if (!el) return;
+        const atual = el.value;
+        const lista = [...new Set(valores.map(v => String(v || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+        el.innerHTML = `<option value="">${rotuloTodos}</option>` +
+            lista.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+        el.value = lista.includes(atual) ? atual : '';
+        el.classList.toggle('ativo', !!el.value);
+    };
+    preencher('kanban_tecnico', [...pedidos, ...rascunhos].map(r => r.destinatario), 'Todos os destinatários');
+    preencher('kanban_transportadora', [...pedidos.map(r => r.transportadora), ...rascunhos.map(r => r.dados_completos?.carrier)], 'Todas as transportadoras');
+}
+
+// Cada coluna mostra os mais recentes; o resto fica atrás de "Ver mais" (atrasados e junções sempre aparecem)
+const LIMITE_COLUNA = 8;
+const colunasAbertas = new Set();
+
+window.verMaisColuna = function (fase) {
+    if (colunasAbertas.has(fase)) colunasAbertas.delete(fase); else colunasAbertas.add(fase);
+    renderKanban();
+};
+
 export function renderKanban() {
     const board = $('kanban_board');
     if (!board) return;
+    popularFiltros();
     const termo = ($('kanban_search')?.value || '').trim().toLowerCase();
+    const tecnico = $('kanban_tecnico')?.value || '';
+    const transp = $('kanban_transportadora')?.value || '';
+    const filtrando = !!(termo || filtroResumo || tecnico || transp);
     const grupos = gruposMesmoTecnico();
     const bate = (r, chave, rascunho = false) => {
         if (termo && ![r.destinatario, r.unidade, r.referencia, r.rastreio].join(' ').toLowerCase().includes(termo)) return false;
+        if (tecnico && String(r.destinatario || '').trim() !== tecnico) return false;
+        if (transp && String(transportadoraDe(r, rascunho) || '').trim() !== transp) return false;
         if (filtroResumo === 'atrasados') return !rascunho && atrasado(r);
         if (filtroResumo === 'juncao') return !!grupos[chave];
         return true;
@@ -271,21 +317,31 @@ export function renderKanban() {
     renderResumo(grupos);
 
     board.innerHTML = FASES.map(({ chave: fase, rotulo }) => {
-        const doHistorico = pedidos.filter(r => r.fase === fase && bate(r, 'h:' + r.id));
-        const dosRascunhos = fase === 'rascunho' ? rascunhos.filter(r => bate(r, 'r:' + r.id, true)) : [];
-        const cards = [
-            ...dosRascunhos.map(r => cardHtml(r, 'r:' + r.id, grupos, { rascunho: true })),
-            ...doHistorico.map(r => cardHtml(r, 'h:' + r.id, grupos))
-        ];
+        const todos = [
+            ...(fase === 'rascunho' ? rascunhos.map(r => ({ reg: r, chave: 'r:' + r.id, rascunho: true })) : []),
+            ...pedidos.filter(r => r.fase === fase).map(r => ({ reg: r, chave: 'h:' + r.id, rascunho: false }))
+        ].filter(x => bate(x.reg, x.chave, x.rascunho));
+
+        const aberta = filtrando || colunasAbertas.has(fase);
+        const fixo = x => grupos[x.chave] || (!x.rascunho && atrasado(x.reg));
+        const visiveis = aberta ? todos : todos.filter((x, i) => i < LIMITE_COLUNA || fixo(x));
+        const escondidos = todos.length - visiveis.length;
+        const itens = todos.reduce((s, x) => s + qtdItens(x.reg, x.rascunho), 0);
+        const botaoMais = escondidos
+            ? `<button class="kanban-ver-mais" onclick="verMaisColuna('${fase}')">Ver mais ${escondidos}</button>`
+            : !filtrando && colunasAbertas.has(fase) && todos.length > LIMITE_COLUNA
+                ? `<button class="kanban-ver-mais" onclick="verMaisColuna('${fase}')">Ver menos</button>` : '';
+
         return `
             <div class="kanban-col" data-fase="${fase}"
                  ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event, '${fase}')">
                 <div class="kanban-col-header">
                     <span>${rotulo}</span>
-                    <span class="kanban-count">${cards.length}</span>
+                    <span class="kanban-count" title="${todos.length} pedido(s), ${itens} item(ns)">${todos.length}${itens ? ` &middot; ${itens} it.` : ''}</span>
                 </div>
                 <div class="kanban-col-body">
-                    ${cards.join('') || '<div class="kanban-vazio">Nenhum pedido</div>'}
+                    ${visiveis.map(x => cardHtml(x.reg, x.chave, grupos, { rascunho: x.rascunho })).join('') || '<div class="kanban-vazio">Nenhum pedido</div>'}
+                    ${botaoMais}
                     ${fase === 'entregue' ? '<div class="kanban-nota">Últimos 30 dias</div>' : ''}
                 </div>
             </div>`;
@@ -295,6 +351,106 @@ export function renderKanban() {
 window.destacarMesmoTecnico = function (chave) {
     destacado = destacado === chave ? null : chave;
     renderKanban();
+};
+
+// --- Juntar pelo kanban (botão "Juntar" ou card arrastado sobre outro) ---
+
+// Pedido do card no formato da junção (null se for registro antigo, sem os dados do formulário)
+function pedidoDoCard(chave) {
+    const reg = registroDaChave(chave);
+    if (!reg?.dados_completos) return null;
+    return chave.startsWith('r:') ? pedidoDoRascunho(reg) : pedidoDoHistorico(reg);
+}
+
+const chaveDoPedido = p => (p.origem === 'rascunho' ? 'r:' : 'h:') + p.id;
+
+function semNF(chave) {
+    if (chave.startsWith('r:')) return true;
+    const reg = acharPedido(chave.slice(2));
+    return !!reg && FASES_SEM_NF.includes(reg.fase) && !reg.mesclado_em;
+}
+
+// Algum dos cards está no formulário? Juntar por fora deixaria o formulário desatualizado
+function abertoNoFormulario(chaves) {
+    return chaves.some(c => {
+        const id = c.slice(2);
+        if (c.startsWith('r:')) return String(AppState.currentDraftId) === id;
+        return String(AppState.currentHistoricoId) === id
+            || (!!rascunhoPorPedido[id] && String(AppState.currentDraftId) === String(rascunhoPorPedido[id]));
+    });
+}
+const AVISO_FORMULARIO = 'Um destes pedidos está aberto no formulário. Clique em "Novo envio" lá antes de juntar.';
+
+async function executarJuncao(chaveAlvo, outrasChaves) {
+    const alvo = pedidoDoCard(chaveAlvo);
+    const outros = outrasChaves.map(pedidoDoCard).filter(Boolean);
+    if (!alvo || !outros.length) return;
+    const id = await juntarPedidos(alvo, outros);
+    destacado = null;
+    await carregarViewKanban();
+    if (!id) return;
+    toast(precisaNovoEmail(alvo, outros)
+        ? 'Pedidos juntados em um só. A NF já tinha sido pedida: abra o pedido, confira os volumes e envie o e-mail de novo (ele avisa o financeiro para desconsiderar os pedidos anteriores).'
+        : 'Pedidos juntados em um só. Confira os volumes antes de pedir a NF.', 'success', 10000);
+}
+
+window.juntarPedidoDoKanban = async function (chave) {
+    const alvo = pedidoDoCard(chave);
+    const candidatos = (gruposMesmoTecnico()[chave] || []).map(pedidoDoCard).filter(Boolean);
+    if (!alvo || !candidatos.length) {
+        toast('Nenhum outro pedido sem NF para este técnico.', 'warning');
+        return;
+    }
+    if (abertoNoFormulario([chave, ...candidatos.map(chaveDoPedido)])) {
+        toast(AVISO_FORMULARIO, 'warning', 7000);
+        return;
+    }
+    const escolhidos = await escolherParaJuntar(registroDaChave(chave)?.destinatario, candidatos);
+    if (escolhidos) await executarJuncao(chave, escolhidos.map(chaveDoPedido));
+};
+
+// Card arrastado sobre outro: dá para juntar se forem do mesmo técnico e os dois ainda sem NF.
+// Se não der, o card de baixo não "pega" o arraste e a coluna move de fase, como sempre.
+let chaveArrastada = null;
+
+function podeJuntarCom(chave) {
+    const a = chaveArrastada;
+    if (!a || a === chave || !semNF(a) || !semNF(chave)) return false;
+    const ra = registroDaChave(a), rb = registroDaChave(chave);
+    return !!ra?.dados_completos && !!rb?.dados_completos && mesmoTecnico(pessoaDoRegistro(ra), pessoaDoRegistro(rb));
+}
+
+window.kanbanDragOverCard = function (ev, chave) {
+    if (!podeJuntarCom(chave)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.currentTarget.classList.add('drop-juntar');
+    ev.currentTarget.closest('.kanban-col')?.classList.remove('drag-over');
+};
+window.kanbanDragLeaveCard = function (ev) {
+    if (!ev.currentTarget.contains(ev.relatedTarget)) ev.currentTarget.classList.remove('drop-juntar');
+};
+window.kanbanDropCard = async function (ev, chave) {
+    if (!podeJuntarCom(chave)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    ev.currentTarget.classList.remove('drop-juntar');
+    const origem = chaveArrastada;
+    if (abertoNoFormulario([origem, chave])) {
+        toast(AVISO_FORMULARIO, 'warning', 7000);
+        return;
+    }
+    const ro = registroDaChave(origem), ra = registroDaChave(chave);
+    const nome = r => r.referencia || r.unidade || 'sem referência';
+    const ok = await confirmar({
+        titulo: 'Juntar estes pedidos?',
+        mensagem: `Os itens de "${nome(ro)}" vão para "${nome(ra)}", e o card de "${nome(ro)}" sai do quadro.`,
+        detalhe: ([ro, ra].some(r => r.status?.email) ? 'A NF de um deles já foi pedida: depois, envie o e-mail de novo com tudo junto. ' : '')
+            + 'Dá para separar depois, no detalhe do pedido.',
+        sim: 'Juntar',
+        nao: 'Cancelar'
+    });
+    if (ok) await executarJuncao(chave, [origem]);
 };
 
 // Move o pedido de fase com atualização otimista; volta ao estado anterior se o banco falhar
@@ -436,10 +592,13 @@ window.kanbanDragStart = function (ev, id) {
     ev.dataTransfer.effectAllowed = 'move';
     ev.currentTarget.classList.add('arrastando');
     arrastando = true;
+    chaveArrastada = id.startsWith('r:') ? id : 'h:' + id;
 };
 window.kanbanDragEnd = ev => {
     ev.currentTarget.classList.remove('arrastando');
     arrastando = false;
+    chaveArrastada = null;
+    document.querySelectorAll('.kanban-card.drop-juntar').forEach(el => el.classList.remove('drop-juntar'));
 };
 window.kanbanDragOver = function (ev) {
     ev.preventDefault();

@@ -410,17 +410,25 @@ export async function gravarPreparo(tabela, id, preparo) {
 
 // Envios que vieram da planilha de estoque (para reconhecer uma reimportação): rascunhos e histórico
 export async function carregarOrigensEstoque() {
-    const [rasc, hist] = await Promise.all([
+    const [rasc, hist, anexRasc, anexHist] = await Promise.all([
         supabaseClient.from('pedidos_pendentes').select('id, dados_completos')
             .eq('dados_completos->origem->>perfil', 'estoque'),
         supabaseClient.from('historico').select('id, fase, origem:dados_completos->origem')
-            .eq('dados_completos->origem->>perfil', 'estoque')
+            .eq('dados_completos->origem->>perfil', 'estoque'),
+        // Envios da planilha juntados dentro de outro pedido (dados_completos.origens_estoque)
+        supabaseClient.from('pedidos_pendentes').select('id, origens:dados_completos->origens_estoque')
+            .not('dados_completos->origens_estoque', 'is', null),
+        supabaseClient.from('historico').select('id, fase, origens:dados_completos->origens_estoque')
+            .not('dados_completos->origens_estoque', 'is', null)
     ]);
-    if (rasc.error || hist.error) {
-        console.error('Erro ao buscar envios importados:', (rasc.error || hist.error).message);
+    const erro = [rasc, hist, anexRasc, anexHist].find(r => r.error)?.error;
+    if (erro) {
+        console.error('Erro ao buscar envios importados:', erro.message);
         return null;
     }
-    return { rascunhos: rasc.data || [], historico: hist.data || [] };
+    const anexados = [...(anexRasc.data || []), ...(anexHist.data || []).filter(h => h.fase !== 'cancelado')]
+        .flatMap(r => Array.isArray(r.origens) ? r.origens : []);
+    return { rascunhos: rasc.data || [], historico: hist.data || [], anexados };
 }
 
 // --- FUNÇÕES DE PEDIDOS EM ANDAMENTO (RASCUNHOS) ---

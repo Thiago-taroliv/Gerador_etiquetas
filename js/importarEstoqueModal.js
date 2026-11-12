@@ -8,7 +8,8 @@ import { sugerirKit, montarKit, totalKits } from './kit.js';
 import { abrirMontarKit } from './kitModal.js';
 import { carregarReceitas } from './kitReceitas.js';
 import { garantirDePara, acharDePara, salvarDePara, sugerirPapel, sugerirNome, normDesc, datalistItensHtml, selectPapelHtml } from './dePara.js';
-import { carregarOrigensEstoque, salvarPendente } from './db.js';
+import { carregarOrigensEstoque, salvarPendente, carregarCandidatosJuncao, rotuloFase } from './db.js';
+import { pedidosAbertosDoTecnico, inicioJanelaJuncao, juntarPedidos } from './juncao.js';
 import { toast } from './toast.js';
 import { confirmar } from './dialogo.js';
 
@@ -17,7 +18,7 @@ let ignoradas = [];
 let grupos = [];
 let nomeArquivo = '';
 let semCabecalho = false; // linhas coladas sem cabeçalho: colunas na ordem padrão da planilha
-let existentes = { rascunhos: new Map(), historico: new Set(), historicoIds: new Set() }; // chave do envio -> rascunho / já gerado
+let existentes = { rascunhos: new Map(), historico: new Set(), historicoIds: new Set(), anexados: new Set() }; // chave do envio -> rascunho / já gerado / juntado a outro pedido
 let marcados = new Set();
 let descartes = new Map(); // chave do envio -> origens (código/descrição do estoque) dos itens descartados
 let aoConcluir = null;
@@ -25,6 +26,8 @@ let kits = new Map();      // chave do envio -> kit confirmado na tela "Montar k
 let separados = new Set(); // agrupamentos separados por OS/ticket
 let juntar = new Map();    // agrupamento -> agrupamento com que foi juntado
 let receitaSugestao = null;
+let abertos = null;        // pedidos sem NF já no sistema (carregarCandidatosJuncao), para adicionar a eles
+let anexar = new Map();    // chave do envio -> chave do pedido existente ('h:<id>' | 'r:<id>') ou '' para criar card novo
 
 const descartado = (g, it) => it.origens.every(o => descartes.get(g.chave)?.has(o));
 // Com kit confirmado, os componentes viram o item kit (g.itensKit); a sobra continua avulsa
@@ -78,6 +81,7 @@ function acharCadastro(nome) {
 
 function statusDoGrupo(g) {
     if (existentes.historico.has(g.chave)) return 'gerado';
+    if (existentes.anexados.has(g.chave)) return 'anexado';
     const r = existentes.rascunhos.get(g.chave);
     if (!r) return 'novo';
     const histId = r.dados_completos?.historico_id;
@@ -92,13 +96,59 @@ const ROTULO_STATUS = {
     novo: ['Novo', 'novo'],
     atualizar: ['Atualizar rascunho', 'atualizar'],
     igual: ['Já importado, sem mudanças', 'igual'],
-    gerado: ['Já gerado (no histórico)', 'gerado']
+    gerado: ['Já gerado (no histórico)', 'gerado'],
+    anexado: ['Já adicionado a outro pedido', 'gerado']
+};
+const bloqueadoStatus = st => st === 'gerado' || st === 'anexado';
+
+// --- Adicionar a um pedido que já existe (mesmo técnico, ainda sem NF) ---
+const chaveDoAberto = p => (p.origem === 'rascunho' ? 'r:' : 'h:') + p.id;
+
+// Pedidos abertos do técnico deste envio. Fica de fora o rascunho de outro envio desta mesma planilha
+// (a importação vai regravá-lo e perderia o que foi adicionado).
+function alvosDoGrupo(g) {
+    if (g.status !== 'novo' || !abertos) return [];
+    const daPlanilha = new Set(grupos.map(o => o.chave));
+    return pedidosAbertosDoTecnico(abertos, { doc: g.cad?.cpf_cnpj, nome: g.destinatario })
+        .filter(p => !(p.origem === 'rascunho' && daPlanilha.has(p.dados?.origem?.chave)));
+}
+
+const alvoEscolhido = g => {
+    const chave = anexar.get(g.chave);
+    return chave ? alvosDoGrupo(g).find(p => chaveDoAberto(p) === chave) || null : null;
+};
+
+function anexarHtml(g, i) {
+    const alvos = alvosDoGrupo(g);
+    if (!alvos.length) return '';
+    const escolhido = alvoEscolhido(g);
+    const rotulo = p => `${p.referencia || 'Sem referência'} (${p.origem === 'rascunho' ? 'Rascunho' : rotuloFase(p.fase)}${p.pediuNF ? ', NF já pedida' : ''}) · ${(p.dados?.items || p.itens || []).length} item(ns)`;
+    return `<div class="estoque-aviso juncao estoque-acoes">🔗 ${escapeHtml(g.destinatario)} já tem pedido aberto sem NF.
+        <select class="estoque-juntar" onclick="event.stopPropagation()" onchange="anexarEnvioEstoque(${i}, this.value)">
+            <option value="">Criar card novo</option>
+            ${alvos.map(p => `<option value="${chaveDoAberto(p)}"${escolhido && chaveDoAberto(p) === chaveDoAberto(escolhido) ? ' selected' : ''}>Adicionar a ${escapeHtml(rotulo(p))}</option>`).join('')}
+        </select>
+        ${escolhido?.pediuNF ? '<div>⚠ A NF desse pedido já foi pedida: depois, envie o e-mail de novo com tudo junto.</div>' : ''}
+    </div>`;
+}
+
+window.anexarEnvioEstoque = function (i, chave) {
+    const g = grupos[i];
+    if (!g) return;
+    anexar.set(g.chave, chave);
+    render();
 };
 
 function reagrupar() {
     definirMotivoTipo(config('motivo_tipo'));
     grupos = agruparEnviosEstoque(registros, resolverItem, chaveDoReg).map(g => ({ ...g, ...acharCadastro(g.destinatario), status: null }));
     grupos.forEach(g => { aplicarKit(g); g.status = statusDoGrupo(g); });
+    // Envio novo de técnico que já tem pedido aberto sem NF: sugere adicionar a ele (o mais recente)
+    grupos.forEach(g => {
+        if (anexar.has(g.chave)) return;
+        const [alvo] = alvosDoGrupo(g);
+        if (alvo) anexar.set(g.chave, chaveDoAberto(alvo));
+    });
     marcados = new Set(grupos.filter(g => g.status === 'novo' || g.status === 'atualizar').map(g => g.chave));
 }
 
@@ -127,7 +177,11 @@ async function receber(grade, bruta, origem) {
         return;
     }
     $('estoque_status').textContent = 'Carregando de-para e envios já importados...';
-    const [okDePara, origens] = await Promise.all([garantirDePara(), carregarOrigensEstoque()]);
+    const [okDePara, origens, candidatos] = await Promise.all([
+        garantirDePara(), carregarOrigensEstoque(), carregarCandidatosJuncao(inicioJanelaJuncao())
+    ]);
+    abertos = candidatos;
+    anexar = new Map();
     $('estoque_status').textContent = '';
     if (!okDePara) {
         toast('Não foi possível carregar o de-para. Rode o sql/estoque.sql no Supabase.', 'error', 7000);
@@ -140,7 +194,8 @@ async function receber(grade, bruta, origem) {
     existentes = {
         rascunhos: new Map((origens?.rascunhos || []).map(r => [r.dados_completos?.origem?.chave, r])),
         historico: new Set(historicoAtivo.map(h => h.origem?.chave)),
-        historicoIds: new Set(historicoAtivo.map(h => String(h.id)))
+        historicoIds: new Set(historicoAtivo.map(h => String(h.id))),
+        anexados: new Set(origens?.anexados || [])
     };
     // Reimportação: os itens descartados e o kit confirmado da última vez continuam valendo
     descartes = new Map();
@@ -200,7 +255,9 @@ window.alternarItemEstoque = function (i, j) {
 
 function render() {
     const novos = itensNovos();
-    const qtdMarcados = grupos.filter(g => marcados.has(g.chave) && itensMantidos(g).length).length;
+    const prontos = grupos.filter(g => marcados.has(g.chave) && itensMantidos(g).length);
+    const qtdMarcados = prontos.length;
+    const qtdAnexar = prontos.filter(g => alvoEscolhido(g)).length;
     const linhasLidas = registros.length;
 
     $('estoque_info').innerHTML = `${escapeHtml(nomeArquivo)} &middot; ${linhasLidas} linha(s) &middot; ${grupos.length} envio(s)` +
@@ -242,7 +299,7 @@ function render() {
             : `<span class="estoque-tag falta">${g.parecidos > 1 ? `${g.parecidos} cadastros parecidos` : 'fora do cadastro'}: preencher à mão</span>`;
         const meta = [g.clienteFinal && `Unidade: ${g.clienteFinal}`, g.clienteInicial && `Cliente: ${g.clienteInicial}`,
             g.tipo || g.motivo, g.data, `linhas ${g.linhas[0]}–${g.linhas[g.linhas.length - 1]}`].filter(Boolean);
-        const bloqueado = g.status === 'gerado';
+        const bloqueado = bloqueadoStatus(g.status);
         return `
             <label class="imp-item estoque-envio${bloqueado ? ' bloqueado' : ''}">
                 <input type="checkbox" ${marcados.has(g.chave) ? 'checked' : ''} ${bloqueado ? 'disabled' : ''}
@@ -258,6 +315,7 @@ function render() {
                     ${itensHtml(g, i)}
                     ${marcados.has(g.chave) && !itensMantidos(g).length ? '<div class="estoque-aviso">⚠ Todos os itens descartados: este envio não vira rascunho.</div>' : ''}
                     ${kitHtml(g, i)}
+                    ${marcados.has(g.chave) ? anexarHtml(g, i) : ''}
                     ${agrupamentoHtml(g, i)}
                     ${g.avisos.map(a => `<div class="estoque-aviso">⚠ ${escapeHtml(a)}</div>`).join('')}
                 </div>
@@ -268,7 +326,9 @@ function render() {
 
     const btn = $('estoque_criar');
     btn.disabled = novos.length > 0 || qtdMarcados === 0;
-    btn.textContent = `Criar ${qtdMarcados} rascunho(s)`;
+    const qtdCriar = qtdMarcados - qtdAnexar;
+    btn.textContent = [qtdCriar ? `Criar ${qtdCriar} rascunho(s)` : '', qtdAnexar ? `Adicionar ${qtdAnexar} a pedido(s) existente(s)` : '']
+        .filter(Boolean).join(' e ') || 'Criar 0 rascunho(s)';
     btn.title = novos.length ? 'Defina o de-para dos itens novos primeiro' : '';
 }
 
@@ -330,10 +390,10 @@ function atualizarGrupo(g) {
 
 // Separar um envio por OS/ticket, juntar com outro envio, e desfazer
 function agrupamentoHtml(g, i) {
-    if (g.status === 'gerado') return '';
+    if (bloqueadoStatus(g.status)) return '';
     const base = [...separados].find(b => g.agrupamento.startsWith(b + '|'));
     const juntados = [...juntar.values()].includes(g.agrupamento);
-    const outros = grupos.map((o, j) => ({ o, j })).filter(({ o }) => o !== g && o.status !== 'gerado');
+    const outros = grupos.map((o, j) => ({ o, j })).filter(({ o }) => o !== g && !bloqueadoStatus(o.status));
     const acoes = [
         g.refs.length > 1 ? botao(`Separar por ${rotuloRef(g)}`, `separarEnvioEstoque(${i})`, 'Um envio para cada OS/ticket') : '',
         base ? botao(`Juntar as ${rotuloRef(g)} de novo`, `reunirEnvioEstoque(${i})`) : '',
@@ -448,7 +508,7 @@ function montarDados(g) {
 }
 
 window.criarRascunhosEstoque = async function () {
-    const escolhidos = grupos.filter(g => marcados.has(g.chave) && g.status !== 'gerado' && itensMantidos(g).length);
+    const escolhidos = grupos.filter(g => marcados.has(g.chave) && !bloqueadoStatus(g.status) && itensMantidos(g).length);
     if (!escolhidos.length || itensNovos().length) return;
 
     const atualizacoes = escolhidos.filter(g => g.status !== 'novo').length;
@@ -467,14 +527,37 @@ window.criarRascunhosEstoque = async function () {
     btn.disabled = true;
     btn.textContent = 'Criando...';
     const resultados = [];
+    // Envios a adicionar a um pedido existente: agrupados por pedido, para juntar de uma vez
+    const porAlvo = new Map();
     for (const g of escolhidos) {
+        const alvo = alvoEscolhido(g);
+        if (alvo) {
+            const k = chaveDoAberto(alvo);
+            if (!porAlvo.has(k)) porAlvo.set(k, { alvo, envios: [] });
+            porAlvo.get(k).envios.push(g);
+            continue;
+        }
         const draftId = existentes.rascunhos.get(g.chave)?.id || null;
         resultados.push(await salvarPendente(montarDados(g), draftId, true));
     }
+    let adicionados = 0, falhasAnexo = 0, pedirEmail = false;
+    for (const { alvo, envios } of porAlvo.values()) {
+        const outros = envios.map(g => ({
+            origem: 'rascunho', id: null, referencia: g.referencia, unidade: g.clienteFinal, dados: montarDados(g), pediuNF: false
+        }));
+        if (await juntarPedidos(alvo, outros)) {
+            adicionados += envios.length;
+            if (alvo.pediuNF) pedirEmail = true;
+        } else falhasAnexo += envios.length;
+    }
     const criados = resultados.filter(Boolean).length;
-    const falhas = resultados.length - criados;
-    toast(`${criados} rascunho(s) criado(s)/atualizado(s) a partir da planilha de estoque.` + (falhas ? ` ${falhas} falharam.` : ''),
-        falhas ? 'warning' : 'success', 6000);
+    const falhas = resultados.length - criados + falhasAnexo;
+    toast([
+        criados ? `${criados} rascunho(s) criado(s)/atualizado(s) a partir da planilha de estoque.` : '',
+        adicionados ? `${adicionados} envio(s) adicionado(s) a pedido(s) existente(s).` : '',
+        pedirEmail ? 'A NF de algum desses pedidos já tinha sido pedida: envie o e-mail de novo com tudo junto.' : '',
+        falhas ? `${falhas} falharam.` : ''
+    ].filter(Boolean).join(' '), falhas ? 'warning' : 'success', pedirEmail ? 10000 : 6000);
 
     if (!falhas) {
         fecharImportarEstoque();

@@ -2,7 +2,7 @@ import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
 import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, carregarPendentes, deletarPendente, concluirPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido } from './db.js';
 import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido, ETAPAS_PREPARO, preparoDe, definirPreparo } from './kanban.js';
-import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao, juntarNoFormulario } from './juncao.js';
+import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao, separarPedido, podeSeparar } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
 import { pendenciasEnvio } from './importarEstoque.js';
 import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } from './importarEstoqueModal.js';
@@ -302,7 +302,15 @@ window.abrirDetalheHistorico = function (id) {
             ${destino ? `<a href="#" onclick="event.preventDefault(); abrirDetalheHistorico('${reg.mesclado_em}')">${escapeHtml(destino.referencia || destino.destinatario)}</a>` : `#${escapeHtml(reg.mesclado_em)}`}
             — os itens seguiram nele.</div>`;
     } else if (mesclados.length) {
-        juncaoInfo = `<div class="detalhe-juncao">🔗 Inclui os pedidos: ${mesclados.map(m => escapeHtml(m.referencia || m.unidade || 'sem referência')).join(', ')}</div>`;
+        const separavel = podeEditarItens(reg);
+        juncaoInfo = `<div class="detalhe-juncao">🔗 Inclui os pedidos:
+            ${mesclados.map((m, i) => `<div class="detalhe-juncao-item">
+                <span>${escapeHtml(m.referencia || m.unidade || 'sem referência')}${m.itens ? ` &middot; ${m.itens.length} item(ns)` : ''}</span>
+                ${separavel && podeSeparar(m)
+                    ? `<button class="btn-sm btn-neutral" onclick="separarPedidoDoModal('${id}', ${i})" title="Tira os itens deste pedido e devolve um card próprio a ele">Separar</button>`
+                    : ''}
+            </div>`).join('')}
+        </div>`;
     }
 
     function statusItem(campo, label, feito, tipo) {
@@ -449,6 +457,29 @@ window.cancelarPedidoDoModal = async function (id) {
     } else {
         toast('Não foi possível cancelar o pedido.', 'error');
     }
+};
+
+// Desfaz a junção de um pedido: os itens dele saem deste e ele volta a ter card próprio
+window.separarPedidoDoModal = async function (id, idx) {
+    const reg = acharPedido(id);
+    const m = reg?.dados_completos?.mesclados?.[idx];
+    if (!m) return;
+    if (String(AppState.currentHistoricoId) === String(id)) {
+        toast('Este pedido está aberto no formulário. Clique em "Novo envio" lá antes de separar.', 'warning', 7000);
+        return;
+    }
+    const ok = await confirmar({
+        titulo: `Separar ${m.referencia || 'este pedido'}?`,
+        mensagem: `${m.itens.length} item(ns) saem de "${reg.referencia || reg.destinatario}" e voltam para um card próprio no kanban.`,
+        detalhe: reg.status?.email ? 'O e-mail com tudo junto já foi enviado: avise o financeiro da separação.' : '',
+        tipo: 'aviso',
+        sim: 'Separar',
+        nao: 'Cancelar'
+    });
+    if (!ok) return;
+    if (await separarPedido(reg, idx)) toast(`${m.referencia || 'Pedido'} separado.`);
+    await carregarViewKanban();
+    if (acharPedido(id)) abrirDetalheHistorico(id); else fecharDetalheHistorico();
 };
 
 // Volta para a fase que as ações já feitas indicam
@@ -656,40 +687,6 @@ window.editarPedidoNoFormulario = async function (id) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-// Botão "Juntar" do card do kanban (chave 'h:<id>' ou 'r:<id>'): abre o pedido no formulário
-// e já mostra os outros pedidos do mesmo técnico para juntar
-window.juntarPedidoDoKanban = async function (chave) {
-    const id = chave.slice(2);
-    const rascunho = chave.startsWith('r:');
-    if (rascunho) await window.editarRascunho(id);
-    else await window.editarPedidoNoFormulario(id);
-
-    // Usuário desistiu de trocar o formulário, ou o pedido não pôde ser aberto
-    const aberto = String(rascunho ? AppState.currentDraftId : AppState.currentHistoricoId) === String(id);
-    if (!aberto) return;
-
-    // Este pedido já tinha pedido NF? O próximo e-mail precisa dizer que o substitui
-    const atual = AppState.currentHistoricoId ? acharPedido(AppState.currentHistoricoId) : null;
-    const jaPediuNF = !!atual?.status?.email;
-
-    if (!(await juntarNoFormulario(collectData()))) return;
-
-    // Grava a junção já: este pedido fica com todos os itens e os outros cards são fechados
-    const d = collectData();
-    d.mesclados = [...(d.mesclados || []), ...AppState.juncaoPendente];
-    if (jaPediuNF) d.nf_anterior = { referencia: atual.referencia, unidade: atual.unidade };
-    const idPedido = await registrarEnvio(d, {});
-    if (!idPedido) return; // registrarEnvio já avisou; a junção continua no formulário
-    AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), mesclados: d.mesclados, ...(d.nf_anterior ? { nf_anterior: d.nf_anterior } : {}) };
-    await finalizarJuncao(idPedido);
-    if (kanbanVisivel()) carregarViewKanban();
-
-    const algumPediuNF = jaPediuNF || d.mesclados.some(m => m.pediuNF);
-    toast(algumPediuNF
-        ? 'Pedidos juntados em um só. Confira os volumes e clique em "Enviar E-mail": o e-mail avisa o financeiro para desconsiderar os pedidos de NF anteriores.'
-        : 'Pedidos juntados em um só. Confira os volumes antes de pedir a NF.', 'success', 10000);
-};
-
 // Grava o formulário no pedido vinculado, sem marcar etapas nem mudar a fase
 window.salvarNoPedido = async function () {
     const id = AppState.currentHistoricoId;
@@ -738,6 +735,7 @@ function extrasDoEnvio(dados) {
     // Junção já gravada: o próximo e-mail ainda precisa citar os pedidos substituídos
     if (dados?.mesclados?.length) extras.mesclados = dados.mesclados;
     if (dados?.nf_anterior) extras.nf_anterior = dados.nf_anterior;
+    if (dados?.origens_estoque?.length) extras.origens_estoque = dados.origens_estoque;
     return extras;
 }
 
@@ -1174,7 +1172,12 @@ async function enviarEmailViaMailtoUsingData() {
 
     // Outro pedido do mesmo técnico sem NF? Oferece juntar antes de pedir a nota
     if (!(await verificarJuncao(d))) return;
-    if (AppState.juncaoPendente.length) d.mesclados = [...(d.mesclados || []), ...AppState.juncaoPendente];
+    if (AppState.juncaoPendente.length) {
+        d.mesclados = [...(d.mesclados || []), ...AppState.juncaoPendente];
+        // Este pedido já tinha pedido NF: o e-mail avisa que ele também foi substituído
+        const atual = AppState.currentHistoricoId ? acharPedido(AppState.currentHistoricoId) : null;
+        if (atual?.status?.email && !d.nf_anterior) d.nf_anterior = { referencia: atual.referencia, unidade: atual.unidade };
+    }
 
     // Confere (e edita, se precisar) o e-mail antes de abrir
     const conferido = await conferirEmail({ assunto: buildEmailSubject(d), corpo: buildEmailBody(d), avisos: avisosEmail(d) });

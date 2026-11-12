@@ -1410,13 +1410,21 @@ button.secondary:hover {
     flex-wrap: wrap;
     margin-bottom: 16px;
 }
-.kanban-acoes { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; }
-.kanban-acoes input { margin: 0; max-width: 380px; }
+.kanban-acoes { display: flex; gap: 8px; align-items: center; flex: 1; justify-content: flex-end; min-width: 260px; flex-wrap: wrap; }
+.kanban-acoes input { margin: 0; max-width: 340px; }
+.kanban-filtro { margin: 0; width: auto; max-width: 220px; font-size: 13px; }
+.kanban-filtro.ativo { border-color: #1a56b0; color: #1a56b0; font-weight: 600; }
+
+/* O kanban usa mais largura que as outras abas (seis colunas lado a lado) */
+#tab-pedidos {
+    width: min(1880px, calc(100vw - 64px));
+    margin-left: calc((100% - min(1880px, calc(100vw - 64px))) / 2);
+}
 .kanban-acoes button { margin: 0; white-space: nowrap; }
 
 .kanban-board {
     display: grid;
-    grid-template-columns: repeat(6, minmax(210px, 1fr));
+    grid-template-columns: repeat(6, minmax(230px, 1fr));
     gap: 12px;
     overflow-x: auto;
     padding-bottom: 6px;
@@ -1451,7 +1459,18 @@ button.secondary:hover {
     font-size: 11px;
     color: #333;
 }
-.kanban-col-body { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+/* Cada coluna rola por dentro: o cabeçalho fica sempre à vista */
+.kanban-col-body {
+    display: flex; flex-direction: column; gap: 6px; flex: 1;
+    max-height: calc(100vh - 290px); min-height: 120px;
+    overflow-y: auto; margin-right: -4px; padding-right: 4px;
+}
+.kanban-ver-mais {
+    margin: 2px 0 0; padding: 6px; width: 100%;
+    background: #fff; color: #1a56b0; border: 1px dashed #c3d6fb; box-shadow: none;
+    font-size: 12px; font-weight: 700; letter-spacing: 0;
+}
+.kanban-ver-mais:hover { background: #e8f0fe; transform: none; box-shadow: none; }
 .kanban-vazio { font-size: 12px; color: #aaa; text-align: center; padding: 16px 0; }
 .kanban-nota { font-size: 11px; color: #aaa; text-align: center; margin-top: auto; padding-top: 8px; }
 
@@ -1460,9 +1479,10 @@ button.secondary:hover {
     border: 1px solid var(--border-light);
     border-left: 4px solid var(--border-light);
     border-radius: 8px;
-    padding: 10px;
+    padding: 8px 10px;
     font-size: 12.5px;
     cursor: pointer;
+    flex-shrink: 0;
     transition: box-shadow 0.15s, transform 0.15s;
 }
 .kanban-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
@@ -1472,11 +1492,13 @@ button.secondary:hover {
 .kanban-card.atraso-2 { border-left-color: var(--brand); }
 .kanban-card.destaque { box-shadow: 0 0 0 2px #1a73e8; }
 .kanban-card-rascunho { border-style: dashed; border-left-style: solid; background: #fdfdfd; }
-.kanban-card-titulo { font-weight: 700; color: #222; line-height: 1.3; }
-.kanban-card-sub { color: #555; margin-top: 2px; }
-.kanban-card-ref { color: var(--brand); font-weight: 600; margin-top: 4px; }
-.kanban-card-meta { color: #888; font-size: 11.5px; margin-top: 4px; }
-.kanban-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.kanban-card.drop-juntar { box-shadow: 0 0 0 2px #1a56b0; background: #e8f0fe; }
+.kanban-card-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.kanban-card-titulo { font-weight: 700; color: #222; line-height: 1.25; }
+.kanban-card-sub { color: #555; margin-top: 2px; font-size: 12px; }
+.kanban-card-ref { color: var(--brand); font-weight: 600; }
+.kanban-card-meta { color: #888; font-size: 11.5px; margin-top: 2px; }
+.kanban-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .kanban-card-tags:empty { display: none; }
 .kanban-tag {
     font-size: 10.5px;
@@ -1494,7 +1516,11 @@ button.secondary:hover {
 .kanban-tag.preparo-estoque { background: #f1f1f1; color: #666; }
 .kanban-tag.preparo-configurando { background: #fff1db; color: #a35a00; }
 .kanban-tag.preparo-configurado { background: #dcf5e3; color: #1e8e3e; }
-.kanban-card-rodape { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 8px; }
+.kanban-card-rodape { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; }
+.kanban-icones { display: flex; gap: 4px; align-items: center; }
+.kanban-icone { font-size: 13px; line-height: 1; opacity: 0.75; cursor: default; }
+.kanban-icone.clicavel { cursor: pointer; padding: 2px 4px; border-radius: 6px; background: #fff8e1; color: #8a6d00; opacity: 1; }
+.kanban-icone.clicavel:hover { background: #ffecb3; }
 .kanban-dias { font-size: 11px; color: #999; white-space: nowrap; }
 
 /* Resumo no topo do kanban */
@@ -1545,6 +1571,8 @@ button.resumo-chip:hover { transform: none; box-shadow: none; filter: brightness
     border-radius: 8px;
     font-size: 12.5px;
 }
+.detalhe-juncao-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.detalhe-juncao-item button { margin: 0; }
 
 /* Modal de junção de pedidos */
 .juncao-aviso { font-size: 13.5px; color: #333; margin: 0 0 14px; line-height: 1.5; }
@@ -1568,6 +1596,9 @@ button.resumo-chip:hover { transform: none; box-shadow: none; filter: brightness
     .kanban-col { scroll-snap-align: start; min-height: 200px; }
     .kanban-acoes { min-width: 0; }
     .kanban-acoes input { max-width: none; }
+    .kanban-filtro { max-width: none; flex: 1; }
+    #tab-pedidos { width: auto; margin-left: 0; }
+    .kanban-col-body { max-height: none; overflow: visible; }
 }
 
 /* --- DE-PARA DA PLANILHA DE ESTOQUE --- */
@@ -1626,6 +1657,8 @@ button.resumo-chip:hover { transform: none; box-shadow: none; filter: brightness
 .estoque-status.igual, .estoque-status.gerado { background: #eee; color: #777; }
 .estoque-aviso { font-size: 12px; color: #8a5a00; margin-top: 4px; }
 .estoque-aviso.kit { color: #1a56b0; }
+.estoque-aviso.juncao { color: #1a56b0; background: #e8f0fe; padding: 6px 8px; border-radius: 6px; font-weight: 600; }
+.estoque-aviso.juncao div { color: #8a5a00; font-weight: 500; margin-top: 4px; width: 100%; }
 
 .estoque-ignoradas { padding: 10px 14px; border-bottom: 1px solid #f0f0f0; font-size: 12px; color: #888; }
 .estoque-ignoradas summary { cursor: pointer; font-weight: 600; }

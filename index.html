@@ -63,6 +63,12 @@
                         <div class="kanban-acoes">
                             <input id="kanban_search" type="text" placeholder="Filtrar por destinatário, unidade, referência ou rastreio..."
                                 oninput="renderKanban()">
+                            <select id="kanban_tecnico" class="kanban-filtro" onchange="renderKanban()" title="Mostrar só os pedidos deste destinatário">
+                                <option value="">Todos os destinatários</option>
+                            </select>
+                            <select id="kanban_transportadora" class="kanban-filtro" onchange="renderKanban()" title="Mostrar só os pedidos desta transportadora">
+                                <option value="">Todas as transportadoras</option>
+                            </select>
                             <button class="btn-outline" onclick="abrirImportarEstoque()" title="Criar rascunhos a partir da planilha de saída de estoque">📥 Importar estoque</button>
                             <button class="btn-outline" onclick="carregarViewKanban()">🔄 Atualizar</button>
                         </div>
