@@ -31,16 +31,28 @@ export function operadoraDoChip(chip) {
 }
 
 // Rastreadores do envio, na ordem do formulário: { unidade, modelo, imei, iccid, operadora, ref }
+// Teclado não é veículo: fica fora mesmo com papel trocado no de-para, e o número de um teclado
+// que aparecer avulso dentro de um kit (par incompleto) também não entra.
 export function rastreadoresDoEnvio(dados) {
+    const itens = dados.items || [];
+    const teclados = new Set();
+    itens.forEach(it => {
+        const tecladoAvulso = papelDoItem(it) === 'teclado' || (papelDoItem(it) !== 'kit' && /TECLADO/.test(semAcento(it.desc)));
+        (it.imeis || []).forEach(im => {
+            if (im.tipo === 'kit' && im.teclado) teclados.add(String(im.teclado).trim());
+            else if (tecladoAvulso && im.imei) teclados.add(String(im.imei).trim());
+        });
+    });
     const lista = [];
-    (dados.items || []).forEach(it => {
+    itens.forEach(it => {
         const papel = papelDoItem(it);
         if (papel !== 'rastreador' && papel !== 'kit') return;
+        if (papel === 'rastreador' && /TECLADO/.test(semAcento(it.desc))) return;
         const unidade = (dados.client_mode === 'multi' ? it.client : '') || dados.unit_name || dados.dest_name || '';
         const modelo = modeloDoItem(it.desc);
         (it.imeis || []).forEach(im => {
             const imei = im.tipo === 'kit' ? im.rastreador : im.imei;
-            if (!imei) return;
+            if (!imei || teclados.has(String(imei).trim())) return;
             lista.push({ unidade, modelo, imei: String(imei).trim(), iccid: String(im.iccid || '').trim(),
                 operadora: operadoraDoChip(im.chip), ref: im.ref || '' });
         });

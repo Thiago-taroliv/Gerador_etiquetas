@@ -8,6 +8,7 @@ import { confirmar } from './dialogo.js';
 
 let linhas = [];
 let unidades = []; // [{ unidade, cliente }] dos rastreadores deste envio
+let excluidas = []; // [{ r, linha }] tiradas pelo botão ×, para desfazer
 
 function garantirModal() {
     if (document.getElementById('modal-veiculos')) return;
@@ -33,6 +34,7 @@ function garantirModal() {
 export function abrirLinhasVeiculos(dados, titulo = '') {
     const clientes = config('plataforma_clientes') || [];
     linhas = gerarLinhasVeiculos(dados, { clientes, telefone: config('veiculos_telefone') || '' });
+    excluidas = [];
     if (!linhas.length) {
         toast('Nenhum rastreador com IMEI neste envio.', 'warning');
         return;
@@ -82,7 +84,8 @@ function render() {
 
     document.getElementById('veiculos_tabela').innerHTML =
         `<thead><tr class="nomes"><th class="col-acoes">#</th>${COLUNAS_VEICULOS.map(n => `<th>${escapeHtml(n)}</th>`).join('')}</tr></thead>
-        <tbody>${linhas.map((l, r) => `<tr><td class="col-acoes">${r + 1}</td>${COLUNAS_VEICULOS.map((_, c) =>
+        <tbody>${linhas.map((l, r) => `<tr><td class="col-acoes" style="white-space:nowrap">${r + 1}
+            <button type="button" class="btn-sm btn-danger" onclick="veiculosExcluir(${r})" title="Tirar esta linha (veículo que não vai ser cadastrado)">&times;</button></td>${COLUNAS_VEICULOS.map((_, c) =>
             `<td data-r="${r}" data-c="${c}"><input type="text" value="${escapeHtml(l[c])}" oninput="veiculosCelula(${r}, ${c}, this.value)"></td>`).join('')}</tr>`).join('')}
         </tbody>`;
     atualizarResumo();
@@ -97,10 +100,24 @@ function atualizarResumo() {
     });
     const n = new Set([...erros.keys()]).size;
     document.getElementById('veiculos_resumo').innerHTML = `${linhas.length} veículo(s)` +
-        (n ? ` &middot; <span style="color:#b26a00;font-weight:700;">${n} célula(s) para conferir</span>` : '');
+        (n ? ` &middot; <span style="color:#b26a00;font-weight:700;">${n} célula(s) para conferir</span>` : '') +
+        (excluidas.length ? ` &middot; ${excluidas.length} excluída(s) <button type="button" class="btn-sm btn-neutral" onclick="veiculosDesfazer()">Desfazer exclusão</button>` : '');
 }
 
 window.veiculosCelula = (r, c, v) => { linhas[r][c] = v; atualizarResumo(); };
+
+// Tira a linha da cópia; "Desfazer exclusão" devolve a última na mesma posição
+window.veiculosExcluir = r => {
+    excluidas.push({ r, linha: linhas[r] });
+    linhas.splice(r, 1);
+    render();
+};
+window.veiculosDesfazer = () => {
+    const ultima = excluidas.pop();
+    if (!ultima) return;
+    linhas.splice(Math.min(ultima.r, linhas.length), 0, ultima.linha);
+    render();
+};
 
 // Muda o cliente de todas as linhas daquela unidade
 window.veiculosCliente = (i, v) => {
