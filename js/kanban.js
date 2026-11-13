@@ -1,18 +1,18 @@
-// Kanban de pedidos: uma coluna por fase, cards arrastáveis entre elas
+// Kanban de pedidos: uma coluna por etapa da configuração, cards arrastáveis entre elas; a NF é um selo no card
 import { $, escapeHtml, supabaseClient, AppState } from './config.js';
-import { FASES, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, salvarPendente, gravarPreparo, deletarPendente } from './db.js';
+import { FASES, FASES_ANTES_DA_SAIDA, ordemFase, rotuloFase, carregarKanban, carregarPendentes, moverFase, registrarNoHistorico, deletarPendente, estadoNF, ROTULOS_NF, atualizarStatusHistorico } from './db.js';
 import { formatarFrete, lerValor } from './planilha.js';
 import { oferecerPixFrete } from './pixFrete.js';
 import { confirmar, pedirCampos } from './dialogo.js';
-import { FASES_SEM_NF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao, pedidoDoHistorico, pedidoDoRascunho, juntarPedidos, precisaNovoEmail, escolherParaJuntar } from './juncao.js';
+import { pedidoSemNF, mesmoTecnico, pessoaDoRegistro, inicioJanelaJuncao, pedidoDoHistorico, pedidoDoRascunho, juntarPedidos, precisaNovoEmail, escolherParaJuntar } from './juncao.js';
 import { toast } from './toast.js';
 import { pendenciasEnvio } from './importarEstoque.js';
-import { config } from './configuracoes.js';
+import { prazosAtraso } from './configuracoes.js';
 import { formularioAlterado } from './ui.js';
 import { semEnvio, entregaDe, rotuloEntrega, iconeEntrega } from './entrega.js';
 
 // Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Cadastros > Configurações)
-const limitesAtraso = () => config('kanban_atraso') || {};
+const limitesAtraso = prazosAtraso;
 
 let pedidos = [];          // registros do histórico
 let rascunhos = [];        // rascunhos que ainda não têm registro no histórico
@@ -110,57 +110,49 @@ export function atualizarCaches(id, campos) {
         .forEach(r => Object.assign(r, campos));
 }
 
-// --- Configuração dos equipamentos: etapa paralela às fases (pode configurar enquanto espera a NF) ---
-export const ETAPAS_PREPARO = [
-    { chave: 'estoque',      rotulo: 'Saída do estoque' },
-    { chave: 'configurando', rotulo: 'Em configuração' },
-    { chave: 'configurado',  rotulo: 'Configurado' }
-];
-// Pedido sem etapa gravada acabou de sair do estoque
-export const preparoDe = dados => ETAPAS_PREPARO.some(e => e.chave === dados?.preparo) ? dados.preparo : 'estoque';
-const rotuloPreparo = chave => ETAPAS_PREPARO.find(e => e.chave === chave)?.rotulo || chave;
+// --- NF: selo no card, anda em paralelo às colunas ---
 
-// chave do card: 'h:<id>' (histórico) ou 'r:<id>' (rascunho)
-function registroDaChave(chave) {
-    const id = chave.slice(2);
-    return chave.startsWith('r:')
-        ? rascunhos.find(r => String(r.id) === id) || (window.__rascunhosCache || []).find(r => String(r.id) === id)
-        : acharPedido(id);
-}
-
-// Grava a etapa com atualização otimista; volta se o banco falhar
-export async function definirPreparo(chave, preparo) {
-    const reg = registroDaChave(chave);
-    if (!reg) return false;
-    const rascunho = chave.startsWith('r:');
-    const id = chave.slice(2);
-    const anterior = reg.dados_completos?.preparo;
-    const aplicar = valor => {
-        const copias = rascunho ? [reg] : [...pedidos, ...(window.__historicoCache || [])].filter(r => String(r.id) === id);
-        copias.forEach(r => { r.dados_completos = { ...(r.dados_completos || {}), preparo: valor }; });
-        // Formulário com este pedido aberto: "Salvar rascunho" não pode desfazer a etapa
-        const aberto = rascunho ? String(AppState.currentDraftId) === id : String(AppState.currentHistoricoId) === id;
-        if (aberto) AppState.extrasEnvio = { ...(AppState.extrasEnvio || {}), preparo: valor };
-        if (kanbanVisivel()) renderKanban();
-    };
-
-    aplicar(preparo);
-    const ok = await gravarPreparo(rascunho ? 'pedidos_pendentes' : 'historico', id, preparo);
-    if (!ok) {
-        aplicar(anterior);
-        toast('Não foi possível salvar a etapa de configuração. Verifique a conexão.', 'error', 5000);
-    }
-    return ok;
-}
-
-// Clique no selo do card: avança para a próxima etapa (de "Configurado" volta ao começo)
-window.avancarPreparo = function (chave) {
-    const reg = registroDaChave(chave);
+// Clique no selo do card: pedida -> emitida; não pedida ou emitida -> pergunta antes
+window.alternarNFDoCard = async function (id) {
+    const reg = acharPedido(id);
     if (!reg) return;
-    const i = ETAPAS_PREPARO.findIndex(e => e.chave === preparoDe(reg.dados_completos));
-    const proxima = ETAPAS_PREPARO[(i + 1) % ETAPAS_PREPARO.length].chave;
-    definirPreparo(chave, proxima).then(ok => ok && toast(`${reg.destinatario || 'Pedido'}: ${rotuloPreparo(proxima)}.`));
+    const estado = estadoNF(reg.status);
+    const nome = reg.destinatario || 'Pedido';
+    if (estado === 'emitida' || estado === 'nao_pedida') {
+        const ok = await confirmar(estado === 'emitida'
+            ? { titulo: 'Desmarcar a NF emitida?', mensagem: `"${nome}" volta a aparecer como "NF pedida".`, tipo: 'aviso', sim: 'Desmarcar', nao: 'Deixar emitida' }
+            : { titulo: 'Marcar a NF como emitida?', mensagem: `O pedido de NF de "${nome}" não foi enviado por aqui. Marcar como emitida mesmo assim?`, sim: 'Marcar emitida', nao: 'Cancelar' });
+        if (!ok) return;
+    }
+    await marcarNF(id, estado !== 'emitida');
 };
+
+// Grava a NF emitida (ou desmarca) com atualização otimista; volta se o banco falhar
+export async function marcarNF(id, emitida) {
+    const aberto = String(AppState.regAberto?.id) === String(id) ? AppState.regAberto : null;
+    const reg = acharPedido(id) || aberto;
+    if (!reg) return false;
+    const antes = { status: reg.status };
+    const marcado = { email: false, etiqueta: false, romaneio: false, ...(reg.status || {}), nf_emitida: emitida };
+    const base = { ...reg, status: antes.status };
+    atualizarCaches(id, { status: marcado });
+    if (kanbanVisivel()) renderKanban();
+    const r = await atualizarStatusHistorico(base, marcado);
+    if (!r) {
+        atualizarCaches(id, antes);
+        if (kanbanVisivel()) renderKanban();
+        toast('Não foi possível gravar a NF. Verifique a conexão.', 'error', 5000);
+        return false;
+    }
+    atualizarCaches(id, { status: r.status, fase: r.fase, fase_em: r.fase_em });
+    if (aberto) Object.assign(aberto, { status: r.status, fase: r.fase, fase_em: r.fase_em });
+    if (kanbanVisivel()) renderKanban();
+    toast(`${reg.destinatario || 'Pedido'}: ${emitida ? 'NF emitida' : 'NF desmarcada'}.`);
+    return true;
+}
+
+// Pedido com a NF pedida e ainda não emitida (para o resumo do topo)
+const esperandoNF = r => !semEnvio(r.dados_completos) && FASES_ANTES_DA_SAIDA.includes(r.fase) && estadoNF(r.status) === 'pedida';
 
 const diasDesde = data => Math.max(0, Math.floor((Date.now() - new Date(data)) / 864e5));
 const textoDias = n => n === 0 ? 'hoje' : `há ${n} dia${n > 1 ? 's' : ''}`;
@@ -177,7 +169,7 @@ function candidatosJuncao() {
     const desde = new Date(inicioJanelaJuncao());
     const recente = (...datas) => datas.some(d => d && new Date(d) >= desde);
     return [
-        ...pedidos.filter(r => FASES_SEM_NF.includes(r.fase) && !r.mesclado_em && recente(r.created_at, r.fase_em))
+        ...pedidos.filter(r => pedidoSemNF(r) && recente(r.created_at, r.fase_em))
             .map(r => ({ chave: 'h:' + r.id, pessoa: pessoaDoRegistro(r), sem: semEnvio(r.dados_completos) })),
         ...rascunhos.filter(r => recente(r.created_at))
             .map(r => ({ chave: 'r:' + r.id, pessoa: pessoaDoRegistro(r), sem: semEnvio(r.dados_completos) }))
@@ -221,12 +213,11 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
     const doEstoque = reg.dados_completos?.origem?.perfil === 'estoque';
     const falta = rascunho && doEstoque ? pendenciasEnvio(reg.dados_completos) : [];
     const acao = `abrirPedido('${chave}')`;
-    // Depois de despachado, só mostra a etapa de configuração se ela foi marcada
-    const preparo = preparoDe(reg.dados_completos);
-    const mostraPreparo = reg.dados_completos?.preparo || !['despachado', 'entregue'].includes(fase);
-    const seloPreparo = mostraPreparo
-        ? `<span class="kanban-tag preparo preparo-${preparo}" title="Configuração dos equipamentos. Clique para avançar a etapa."
-                 onclick="event.stopPropagation(); avancarPreparo('${chave}')">⚙ ${rotuloPreparo(preparo)}</span>` : '';
+    // NF: só antes da saída e só para quem pede NF (retirada / instalação na Ranor não pede)
+    const nf = estadoNF(st);
+    const seloNF = !rascunho && !semEnvio(reg.dados_completos) && FASES_ANTES_DA_SAIDA.includes(fase)
+        ? `<span class="kanban-tag nf nf-${nf}" title="${nf === 'emitida' ? 'NF emitida. Clique para desmarcar.' : 'Clique quando a NF for emitida.'}"
+                 onclick="event.stopPropagation(); alternarNFDoCard('${reg.id}')">🧾 ${ROTULOS_NF[nf]}</span>` : '';
     const seloJuncao = outros ? `
         <span class="kanban-tag juncao" title="Outros pedidos sem NF para este técnico. Clique para destacar." onclick="event.stopPropagation(); destacarMesmoTecnico('${chave}')">🔗 +${outros.length}</span>
         <span class="kanban-tag juncao juntar" title="Juntar com os outros pedidos deste técnico, para pedir uma NF só. Também dá para arrastar um card sobre o outro." onclick="event.stopPropagation(); juntarPedidoDoKanban('${chave}')">Juntar</span>` : '';
@@ -256,7 +247,7 @@ function cardHtml(reg, chave, grupos, { rascunho = false } = {}) {
             ${sub ? `<div class="kanban-card-sub">${sub}</div>` : ''}
             ${meta ? `<div class="kanban-card-meta">${meta}</div>` : ''}
             ${falta.length ? `<div class="kanban-card-falta">Falta: ${falta.map(escapeHtml).join(', ')}</div>` : ''}
-            <div class="kanban-card-tags">${seloPreparo}${seloJuncao}</div>
+            <div class="kanban-card-tags">${seloNF}${seloJuncao}</div>
             <div class="kanban-card-rodape">
                 ${rascunho ? '<span class="status-badge" title="Ainda não gerou e-mail, romaneio nem etiqueta">não gerado</span>'
                     : sem ? `<div class="status-badges">${selo(st.romaneio, 'R', 'Romaneio')}</div>`
@@ -280,6 +271,7 @@ function renderResumo(grupos) {
         .filter(x => x.qtd);
     const totalAtrasados = atrasadosPorFase.reduce((s, x) => s + x.qtd, 0);
     const paraJuntar = Object.keys(grupos).length;
+    const aguardandoNF = pedidos.filter(esperandoNF).length;
 
     const chip = (filtro, classe, texto) => `
         <button class="resumo-chip ${classe}${filtroResumo === filtro ? ' ativo' : ''}"
@@ -289,6 +281,7 @@ function renderResumo(grupos) {
         <span class="resumo-chip neutro">${andamento} em andamento</span>
         ${atrasadosPorFase.map(({ fase, qtd }) => chip('atrasados', 'alerta',
             `${qtd} em ${rotuloFase(fase)} há ${limites[fase][0]}+ dia${limites[fase][0] > 1 ? 's' : ''}`)).join('')}
+        ${aguardandoNF ? chip('nf', 'nf', `🧾 ${aguardandoNF} aguardando NF`) : ''}
         ${paraJuntar ? chip('juncao', 'juncao', `🔗 ${paraJuntar} pedidos podem ser juntados`) : ''}
         ${!totalAtrasados && !paraJuntar ? '<span class="resumo-chip ok">Nada atrasado</span>' : ''}
         ${filtroResumo ? `<button class="resumo-chip limpar" onclick="filtrarResumoKanban(null)">Mostrar todos</button>` : ''}`;
@@ -339,6 +332,7 @@ export function renderKanban() {
         if (transp && String(transportadoraDe(r, rascunho) || '').trim() !== transp) return false;
         if (filtroResumo === 'atrasados') return !rascunho && atrasado(r);
         if (filtroResumo === 'juncao') return !!grupos[chave];
+        if (filtroResumo === 'nf') return !rascunho && esperandoNF(r);
         return true;
     };
 
@@ -396,8 +390,7 @@ const chaveDoPedido = p => (p.origem === 'rascunho' ? 'r:' : 'h:') + p.id;
 function semNF(chave) {
     if (semEnvio(registroDaChave(chave)?.dados_completos)) return false; // não pede NF: não junta
     if (chave.startsWith('r:')) return true;
-    const reg = acharPedido(chave.slice(2));
-    return !!reg && FASES_SEM_NF.includes(reg.fase) && !reg.mesclado_em;
+    return pedidoSemNF(acharPedido(chave.slice(2)));
 }
 
 // Algum dos cards está no formulário? Juntar por fora deixaria o formulário desatualizado
@@ -541,14 +534,15 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
 
 // Despachar trava os itens: avisa se ainda falta alguma etapa do pedido
 // Retirada / instalação na Ranor não tem NF nem etiqueta: só confere romaneio e configuração
-async function confirmarEtapasDoDespacho({ destinatario, status, dados_completos } = {}) {
-    const preparo = preparoDe(dados_completos);
+async function confirmarEtapasDoDespacho({ destinatario, status, dados_completos, fase } = {}) {
     const sem = semEnvio(dados_completos);
+    const nf = estadoNF(status);
     const faltam = [
-        !sem && !status?.email && 'pedido de NF por e-mail',
+        !sem && nf === 'nao_pedida' && 'pedido de NF por e-mail',
+        !sem && nf === 'pedida' && 'NF emitida (foi pedida, mas não está marcada como emitida)',
         !status?.romaneio && 'romaneio',
         !sem && !status?.etiqueta && 'etiqueta',
-        preparo !== 'configurado' && `configuração dos equipamentos (está em "${rotuloPreparo(preparo)}")`
+        fase !== 'pronto' && `configuração dos equipamentos (está em "${rotuloFase(fase || 'rascunho')}")`
     ].filter(Boolean);
     if (!faltam.length) return true;
     return confirmar({
@@ -588,7 +582,7 @@ async function moverRascunhoPara(draftId, fase) {
 
     let extras = {};
     if (fase === 'despachado' || (sem && fase === 'entregue')) {
-        if (!(await confirmarEtapasDoDespacho({ destinatario: rasc.destinatario, dados_completos: rasc.dados_completos }))) return false;
+        if (!(await confirmarEtapasDoDespacho({ destinatario: rasc.destinatario, dados_completos: rasc.dados_completos, fase: 'rascunho' }))) return false;
         extras = sem ? {} : await pedirDadosDespacho({}, { despachando: true });
         if (!extras) return false;
         extras.despachado_em = new Date().toISOString();
@@ -610,28 +604,6 @@ async function moverRascunhoPara(draftId, fase) {
     await carregarViewKanban();
     if (fase === 'despachado') oferecerPixFrete(acharPedido(salvo.id));
     return true;
-}
-
-// Impresso antes da NF: o pedido já avançou para "Pronto"; avisa e permite voltar
-// semEnv: retirada / instalação na Ranor não tem NF: não há o que avisar
-export async function avisarProntoSemNF(id, { fase, faseAnterior, faseEmAnterior }, semEnv = false) {
-    if (semEnv) return;
-    if (fase !== 'pronto' || faseAnterior === fase || ordemFase(faseAnterior) >= ordemFase('nf_emitida')) return;
-    const voltar = await confirmar({
-        titulo: 'Pedido pronto, mas sem NF emitida',
-        mensagem: `Com etiqueta e romaneio impressos, o pedido foi para "Pronto p/ envio", mas a NF ainda não foi emitida.\n\nQuer manter ou voltar para "${rotuloFase(faseAnterior)}"?`,
-        tipo: 'aviso',
-        sim: `Voltar para "${rotuloFase(faseAnterior)}"`,
-        nao: 'Manter em Pronto'
-    });
-    if (!voltar) return;
-    const extras = faseEmAnterior ? { fase_em: faseEmAnterior } : {};
-    const ok = await moverFase(id, faseAnterior, extras);
-    if (ok) {
-        atualizarCaches(id, { fase: faseAnterior, fase_em: faseEmAnterior || new Date().toISOString() });
-        if (kanbanVisivel()) renderKanban();
-    }
-    toast(ok ? 'Fase restaurada.' : 'Não foi possível voltar a fase. Verifique a conexão.', ok ? 'success' : 'error');
 }
 
 // --- Arrastar e soltar (HTML5) ---

@@ -1,0 +1,362 @@
+[33mcommit 983791b70de8124168f0f246d5a4d0fa8f2f9a41[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Nov 13 11:55:59 2026 -0300
+
+    melhoria-tabela-veiculos
+
+[33mcommit dbd51233cc21b02c07a1fc8bf2f2239a5dca12dc[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 18:02:28 2026 -0300
+
+    reorganizacao-fluxo-pedido
+    
+    Um pedido, um lugar, um botão Salvar:
+    - rascunho até o primeiro e-mail/impressão/arrasto; depois só no quadro
+      (rascunhos ligados a pedidos de versões anteriores migram sozinhos)
+    - barra fixa no pedido: título, fase, salvo/não salvo, Salvar (Ctrl+S) e Fechar
+    - clique no card abre o pedido; detalhe vira a coluna Situação
+      (fase, configuração, rastreio/frete, PIX, junção, cancelar/reativar)
+    - Próximos passos na ordem do quadro: pedir NF, imprimir, planilhas, despachar
+    - pedido despachado/entregue/cancelado abre só para leitura
+    - menu: Pedidos | Painel | Histórico | Cadastros; "+ Novo pedido" junta
+      em branco, planilha de estoque e planilha de controle
+    - aviso ao sair da página com alterações não salvas
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 7638be3c2407107eedeb2b4100da616f53d73026[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 17:18:45 2026 -0300
+
+    retirada-instalacao-ranor
+    
+    Forma de saída do pedido (Transportadora, Retirada na Ranor, Instalação na Ranor).
+    Sem transportadora: sem NF, etiqueta, rastreio e frete; romaneio como comprovante;
+    vai direto para Entregue e fica fora das contas de frete do painel.
+    Importação do estoque define a forma por regra (padrão: Rfleet -> Retirada).
+    Linhas p/ Veículos: LV12 vira LV-12.
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit f06bee1cc69cb1b243f00fbe33a45a846b3924d3[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 16:28:34 2026 -0300
+
+    dashboard
+
+[33mcommit 70ba2558b3c878151ef4806f10dc0f286eaf0490[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 15:15:15 2026 -0300
+
+    rascunho-corrigido
+
+[33mcommit ace317fc0fb98ca78416d9fdd4daf1c2b0bc5713[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 14:59:56 2026 -0300
+
+    remodelagem kanban
+
+[33mcommit f94fc36c7cbe5a78216ec71ea44301b46023b4d5[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 12:55:28 2026 -0300
+
+    correcai-juncao
+
+[33mcommit 25d4b35a76e2670427e6ba50b48e8bcb40ff6c78[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 12:48:16 2026 -0300
+
+    juncao-nf
+
+[33mcommit eb750139f0bd9f70fc210c3c5baf43ef8de45a2a[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 12 11:22:32 2026 -0300
+
+    Etapa de configuração dos equipamentos no card do kanban
+    
+    Selo ⚙ em cada card (Saída do estoque → Em configuração → Configurado):
+    um clique avança a etapa, e o detalhe do pedido permite escolher direto.
+    Anda em paralelo às fases e entra no aviso do despacho quando falta.
+    Fica em dados_completos.preparo e é mantida ao salvar rascunho,
+    reimportar a planilha de estoque e regerar documentos.
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 00ae285dab979e1683fcdf8837a9ffda249d4069[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Nov 6 16:34:29 2026 -0300
+
+    Linhas p/ Planilha: Data Recebimento vem do rascunho e Data Envio do despacho
+    
+    Exige rodar sql/kanban.sql (nova coluna despachado_em em historico).
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit b1c6df291a9113f2a29e173a404bb4ee34c97724[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 5 17:40:50 2026 -0300
+
+    correcao-bug-kit
+
+[33mcommit a844ebbb75436505e361b0583d5a73a9d4eafe99[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 5 13:06:28 2026 -0300
+
+    modais e crus imei
+
+[33mcommit c53f276710c0ab8973df2f01670653f87d236dd2[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Nov 5 08:45:38 2026 -0300
+
+    pix frete
+
+[33mcommit a954caf86677bace6461bcf3a6f02eee2e009b67[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Tue Nov 3 14:43:59 2026 -0300
+
+    Linhas p/ Veículos: cabeçalho da prévia não sobrepõe mais a primeira linha
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 4a23a3ed5abee0de0d035c23cd387bf95d925e40[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Tue Nov 3 14:32:35 2026 -0300
+
+    Linhas p/ Veículos: planilha de importação de veículos da plataforma
+    
+    - Botão no formulário e no detalhe do histórico: um veículo por
+      rastreador (avulso ou dentro de kit), na ordem das colunas da planilha
+      modelo (Cliente, Placa, Descricao, Chip_ICCID, Chip_Telefone,
+      Chip_Operadora, Equip_Tipo, Equip_Imei)
+    - Placa/descrição provisória "RA24 52-01" (modelo + OS de origem +
+      sequência); ICCID e operadora vêm do chip preso ao rastreador
+    - Cliente sugerido pela Unidade; o nome corrigido na prévia é lembrado
+      por unidade (configuração plataforma_clientes)
+    - Prévia editável com conferência (obrigatórios, IMEI 15 dígitos, ICCID
+      19-20, IMEI repetido); cópia com todas as células como texto
+    - Configurações: telefone do chip e lista unidade -> cliente na plataforma
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit c16de12182df0980a04de544654a2659c1fd594c[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Tue Nov 3 14:21:11 2026 -0300
+
+    Aba de Configurações em Gerenciar Dados
+    
+    - Tabela configuracoes (sql/configuracoes.sql): uma linha por
+      configuração; sem linha (ou sem a tabela) vale o padrão do código
+    - Editáveis na tela, com Salvar e Restaurar padrão: e-mails do
+      financeiro, remetentes (select do formulário montado a partir deles),
+      motivo -> tipo da importação, prazos de atraso do kanban, janela da
+      junção, transportadora padrão e textos do e-mail ao financeiro
+    - Receitas de kit editadas na mesma tela (criar, renomear, excluir)
+    - Configurações carregadas logo após o login, antes do kanban
+    - Remetentes saem do config.example.js; README atualizado
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 0751b6eaf5ffe4ed2ea120c24fb79dc30ede5814[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Tue Nov 3 14:10:59 2026 -0300
+
+    Importação do estoque: histórico apagado ou cancelado não bloqueia mais
+    
+    - Rascunho ligado a um registro do histórico que não existe mais (apagado)
+      aparecia como "Já gerado" e sumia do kanban; agora aparece como
+      "Atualizar rascunho" e, ao importar, é regravado sem o vínculo
+    - Pedido cancelado no histórico também deixa importar de novo
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 83655d4ac009948e674d0e8e3b2d2c361e121e94[m[33m ([m[1;31morigin/kit-e-conferencias[m[33m, [m[1;32mkit-e-conferencias[m[33m)[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Tue Nov 3 12:27:07 2026 -0300
+
+    Envio único com várias OS, kit com confirmação e conferências
+    
+    - Linhas do mesmo dia/destinatário/unidade viram um envio só, mesmo com
+      OS diferentes (referência "52 / 207 / 228"); envio com uma OS mantém a
+      chave antiga dos rascunhos
+    - Cada item e IMEI guarda de qual OS veio; o e-mail ao financeiro separa
+      os itens por OS (o que não fecha vai em "Sem OS separada")
+    - Prévia da importação: separar envio por OS, juntar com outro envio e
+      desfazer
+    - Tela "Montar kit" (prévia e formulário): sugere o item de cada
+      componente e quantos kits por OS, tudo ajustável antes de montar; mostra
+      o que fica fora do kit; botão "Desmontar kit" no formulário
+    - Receitas de kit editáveis, salvas no Supabase (sql/kit.sql), pelos
+      nomes do romaneio em vez do código do estoque
+    - E-mail ao financeiro passa por uma tela de conferência editável
+    - Concluir rascunho mostra o resumo do pedido antes de confirmar
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 74de678b3670250963cd4ceff150434e66a08909[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Oct 30 17:48:09 2026 -0300
+
+    arrastar rascunho
+
+[33mcommit a4dcb6d014c9f7cf60ed7ccd80396e0240320f94[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Oct 29 16:58:43 2026 -0300
+
+    Importação do estoque sem cabeçalho, nomes sugeridos e descarte de itens
+    
+    - Linhas coladas sem o cabeçalho usam a ordem padrão das colunas da
+      planilha de estoque (a prévia avisa)
+    - Nome no romaneio sugerido no padrão do cadastro: chicotes C1 a C4,
+      lacre âncora como LACRE, rastreador/teclado/sensor de colisão pelo modelo
+    - Sugestão de papel reconhece acessórios primeiro ("Suporte Ferro Teclado"
+      não é teclado)
+    - Cada item da prévia pode ser descartado (✕) para não ir ao rascunho;
+      o descarte sobrevive ao salvar o de-para e às reimportações
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 68ae49386b916a56d2658635b9db830b45a8a9de[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Oct 29 16:45:25 2026 -0300
+
+    finalização importacao-estoque
+
+[33mcommit 6fa93364651d0bdf86d7e778f2ab435f38f848d5[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Oct 29 16:38:35 2026 -0300
+
+    Importação da planilha de estoque com de-para, rascunhos e kits
+    
+    - Leitor da planilha de saída de estoque: reconhece as colunas pelo nome
+      (tolera variações), detecta os blocos de saída, ignora entradas e
+      retornos para RANOR, agrupa as linhas por envio e lê .xlsx sem perder
+      código (8.10), IMEI nem ticket (2.456)
+    - Tabela de-para (sql/estoque.sql) com papel do item: rastreador, teclado,
+      chip, acessório ou ignorar; manutenção em Gerenciar Dados e mapeamento
+      dos itens novos direto na prévia
+    - Prévia da importação cria um rascunho por envio no kanban, completa o
+      destinatário pelo cadastro e reconhece reimportações (atualiza sem
+      apagar o que foi digitado)
+    - Formulário preserva chip, ICCID, papel e origem; faixa e campos
+      destacados com o que falta preencher; volumes vazio exige preenchimento
+    - Planilha de envio usa o papel dos itens, põe o chip (ICCID) na linha do
+      rastreador e ganha a opção "Montar kits" (rastreador + teclado na mesma
+      linha); corrige "KIT" em acessório e "Equipamento" sem IMEI
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 483825969d30c15d99d9309cce2d8677a915295f[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Oct 29 15:25:47 2026 -0300
+
+    Kanban em tempo real e resumo de atrasos no topo
+    
+    - O quadro recarrega sozinho quando um pedido muda em outra aba ou aparelho
+      (Supabase Realtime), agrupando rajadas e esperando o fim de um arraste
+    - Resumo no topo: pedidos em andamento, atrasados por fase e pedidos que
+      podem ser juntados; clicar filtra o quadro
+    - sql/kanban.sql ativa a publicação realtime de historico e pedidos_pendentes
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit c210d9e257abb351300bee7cfca6174902137174[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Thu Oct 29 15:23:11 2026 -0300
+
+    Kanban de pedidos por fase e junção de pedidos do mesmo técnico
+    
+    - Nova aba principal "Pedidos": colunas Rascunho, Aguardando NF, NF emitida,
+      Pronto p/ envio, Despachado e Entregue, com arrastar e soltar, filtro,
+      alerta de atraso e rastreio
+    - E-mail, etiqueta e romaneio avançam a fase automaticamente (nunca voltam);
+      imprimir antes da NF avança com aviso e opção de desfazer
+    - Modal de detalhe com seletor de fase, rastreio e cancelar/reativar pedido
+    - Ao pedir a NF, alerta sobre outros pedidos do mesmo técnico sem nota
+      (últimos 7 dias) e permite juntar tudo num envio só
+    - sql/kanban.sql cria as colunas fase, fase_em, rastreio e mesclado_em
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 8f797004bfe67447ee111a1057a7c16ee3e25ff1[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Oct 2 09:31:03 2026 -0300
+
+    Importa envios da planilha de controle para o formulário
+    
+    - Botão "Importar da Planilha": colar linhas do Excel (Ctrl+V) ou
+      escolher/arrastar .xlsx/.csv (SheetJS carregado sob demanda)
+    - Detecta o cabeçalho (inclusive a coluna do destinatário sem título),
+      ignora "-------" e agrupa as linhas por envio (OS + destinatário +
+      endereço + data), com filtro
+    - "Preencher formulário" traz destinatário, endereço, OS, cliente, tipo,
+      unidade(s) e itens com IMEIs (rastreador + teclado = kit); busca o
+      CPF/CNPJ no cadastro pelo nome; várias unidades ativam múltiplos clientes
+    - Base importada fica guardada no navegador (localStorage)
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 4b3d133d7f689a000ed731c28cf56c60fd249c6b[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Oct 2 09:20:33 2026 -0300
+
+    Preview editável das linhas da planilha, tipos MAN/FOR e correção do envio
+    
+    - "Linhas p/ Planilha" abre modal com tabela editável (cores Dados /
+      Configuração / Envio) antes de copiar: editar células, colar lista
+      preenchendo para baixo, repetir valor da 1ª linha, duplicar/remover/
+      adicionar linhas, esconder grupos, restaurar original
+    - Destaca IMEI fora de 15 dígitos, ICCID fora de 19-20 e IMEIs repetidos
+    - Corrige separação do endereço (Bairro/Cidade/UF/CEP) com "/" e estado
+      por extenso; antes "Bairro / Cidade - SP /" caía todo em Bairro
+    - Tipo da planilha com MAN e FOR; linhas sem os traços "-------"
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 55a3b4e10398642652dff653f40f2788601cca2c[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Oct 2 09:05:25 2026 -0300
+
+    Copia linhas no padrão da planilha de controle
+    
+    - Botão "Copiar p/ Planilha" no formulário e no detalhe do histórico
+    - Uma linha por equipamento (kit: IMEI rastreador + teclado; teclado
+      avulso marcado "Somente teclado"; acessórios em uma linha com "-------")
+    - Endereço linha 2 separado em Bairro/Cidade/UF/CEP
+    - Campos novos opcionais: Cliente e Tipo (INS/COR), salvos no rascunho
+    - Copia como HTML com IMEIs em formato texto (Excel não vira 8,68E+14)
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 7614f76e6d767767d684e87c431bdc93e7bb1270[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Oct 2 08:48:58 2026 -0300
+
+    Grava no histórico ao gerar documentos ou enviar e-mail
+    
+    - "Gerar em Nova Aba" e "Enviar E-mail" registram o envio no histórico,
+      marcando etiqueta/romaneio/e-mail conforme o que foi gerado
+    - Gerar de novo, ou concluir o rascunho depois, atualiza o mesmo registro
+      (vínculo guardado no formulário e no rascunho) em vez de duplicar
+    - Aviso "IMPORTANTE" do romaneio não sobrepõe mais o título
+    - Fixa a versão do supabase-js no CDN (2.117.2)
+    - Remove clearBase (apagava todos os destinatários, exposta sem botão)
+      e atribuições globais duplicadas
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit 80d50211442d64ddca80b8edb6716e7552a56bf5[m
+Author: Suporte 7 <thiago.aro2002@gmail.com>
+Date:   Fri Oct 2 08:43:31 2026 -0300
+
+    Padroniza visual com classes CSS e pagina o histórico
+    
+    - Classes reutilizáveis (btn-sm, btn-neutral/danger/success, list-box,
+      list-row, data-table, modal-card, item-card) no lugar de estilos inline
+    - Card de item, listas de destinatários/itens, tabelas de rascunhos e
+      histórico e modais usam o mesmo padrão visual
+    - Itens: Enter adiciona, contador de itens cadastrados
+    - Histórico: botão "Carregar mais antigos" (50 por vez) e contagem
+    
+    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+[33mcommit cef64ce19039ed61407c162e9f8f1158ec53bc7d[m

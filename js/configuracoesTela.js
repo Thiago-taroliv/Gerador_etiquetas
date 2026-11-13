@@ -1,7 +1,7 @@
 // Tela Cadastros > Configurações: um cartão por configuração (salvar / restaurar padrão)
 // e as receitas de kit. Os valores ficam em js/configuracoes.js e js/kitReceitas.js.
 import { $, escapeHtml } from './config.js';
-import { config, PADROES, infoConfiguracao, salvarConfiguracao, restaurarPadrao, configuracoesNoBanco, carregarConfiguracoes } from './configuracoes.js';
+import { config, PADROES, infoConfiguracao, salvarConfiguracao, restaurarPadrao, configuracoesNoBanco, carregarConfiguracoes, prazosAtraso } from './configuracoes.js';
 import { carregarReceitas, salvarReceita, excluirReceita, receitasSalvasNoBanco } from './kitReceitas.js';
 import { popularSelectRemetentes, onSenderChange, validarDoc } from './ui.js';
 import { FASES } from './db.js';
@@ -163,7 +163,7 @@ export async function renderConfiguracoes() {
     el.innerHTML = '<div class="empty-state">Carregando...</div>';
     await carregarConfiguracoes();
     receitas = await carregarReceitas(true);
-    edicao = Object.fromEntries(Object.keys(CARTOES).map(k => [k, clonar(config(k))]));
+    edicao = Object.fromEntries(Object.keys(CARTOES).map(k => [k, k === 'kanban_atraso' ? prazosAtraso() : clonar(config(k))]));
     render();
 }
 

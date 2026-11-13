@@ -186,32 +186,50 @@ function montarRegistroHistorico(dados) {
 
 // --- FASES DO PEDIDO (KANBAN) ---
 
-// Colunas do kanban, na ordem do fluxo. 'cancelado' é uma fase válida, mas fica fora das colunas.
+// Colunas do kanban, na ordem do fluxo: as etapas da configuração dos equipamentos.
+// 'cancelado' é uma fase válida, mas fica fora das colunas. A NF anda em paralelo (selo no card, ver estadoNF).
 export const FASES = [
-    { chave: 'rascunho',      rotulo: 'Rascunho' },
-    { chave: 'aguardando_nf', rotulo: 'Aguardando NF' },
-    { chave: 'nf_emitida',    rotulo: 'NF emitida' },
-    { chave: 'pronto',        rotulo: 'Pronto p/ envio' },
-    { chave: 'despachado',    rotulo: 'Despachado' },
-    { chave: 'entregue',      rotulo: 'Entregue' }
+    { chave: 'rascunho',     rotulo: 'Rascunho' },
+    { chave: 'a_configurar', rotulo: 'A configurar' },
+    { chave: 'configurando', rotulo: 'Em configuração' },
+    { chave: 'pronto',       rotulo: 'Pronto p/ envio' },
+    { chave: 'despachado',   rotulo: 'Despachado' },
+    { chave: 'entregue',     rotulo: 'Entregue' }
 ];
 
 export const ordemFase = chave => FASES.findIndex(f => f.chave === chave);
 export const rotuloFase = chave => chave === 'cancelado' ? 'Cancelado' : (FASES.find(f => f.chave === chave)?.rotulo || chave);
 
-// Fase que as ações já feitas (e-mail, etiqueta, romaneio) indicam.
-// semEnv: retirada / instalação na Ranor, sem NF nem etiqueta: o romaneio impresso já deixa pronto.
-export function faseSugerida(status = {}, semEnv = false) {
-    if (semEnv) return status.romaneio ? 'pronto' : 'rascunho';
-    if (status.etiqueta && status.romaneio) return 'pronto';
-    if (status.email) return 'aguardando_nf';
-    return 'rascunho';
+// Fases antes da saída: o pedido ainda pode juntar com outro, ter a NF marcada, mudar os itens
+export const FASES_ANTES_DA_SAIDA = ['rascunho', 'a_configurar', 'configurando', 'pronto'];
+
+// NF do pedido, guardada no status: email = pedida ao financeiro, nf_emitida = emitida.
+// 'nao_pedida' | 'pedida' | 'emitida'
+export const estadoNF = (status = {}) => status?.nf_emitida ? 'emitida' : status?.email ? 'pedida' : 'nao_pedida';
+export const ROTULOS_NF = { nao_pedida: 'NF não pedida', pedida: 'NF pedida', emitida: 'NF emitida' };
+
+// Guarda quando a NF foi pedida e emitida (para o painel); desmarcar apaga a data.
+// Só carimba quando a marcação acabou de mudar (anterior): pedido antigo sem a data fica sem ela.
+function carimbarNF(status, anterior = {}) {
+    const agora = new Date().toISOString();
+    const s = { ...status };
+    if (s.email && !s.email_em && !anterior?.email) s.email_em = agora;
+    if (!s.email) delete s.email_em;
+    if (s.nf_emitida && !s.nf_emitida_em && !anterior?.nf_emitida) s.nf_emitida_em = agora;
+    if (!s.nf_emitida) delete s.nf_emitida_em;
+    return s;
+}
+
+// Fase que as ações já feitas (e-mail, etiqueta, romaneio) indicam: a primeira delas tira o pedido
+// do rascunho e ele vai para "A configurar". Daí em diante ele anda pelo quadro (a configuração é manual).
+export function faseSugerida(status = {}) {
+    return status.email || status.romaneio || status.etiqueta ? 'a_configurar' : 'rascunho';
 }
 
 // Só avança: reimprimir algo de um pedido já despachado não o faz voltar. Cancelado não muda.
-export function proximaFase(faseAtual, status, semEnv = false) {
+export function proximaFase(faseAtual, status) {
     if (faseAtual === 'cancelado') return faseAtual;
-    const sugerida = faseSugerida(status, semEnv);
+    const sugerida = faseSugerida(status);
     return ordemFase(sugerida) > ordemFase(faseAtual) ? sugerida : faseAtual;
 }
 
@@ -275,7 +293,7 @@ export async function carregarKanban() {
 export async function carregarCandidatosJuncao(desde) {
     const [hist, rasc] = await Promise.all([
         supabaseClient.from('historico').select('*')
-            .in('fase', ['rascunho', 'aguardando_nf'])
+            .in('fase', FASES_ANTES_DA_SAIDA)
             .is('mesclado_em', null)
             .or(`created_at.gte."${desde}",fase_em.gte."${desde}"`),
         supabaseClient.from('pedidos_pendentes').select('*').gte('created_at', desde)
@@ -286,7 +304,7 @@ export async function carregarCandidatosJuncao(desde) {
     }
     // Rascunho já gerado aparece pelo registro do histórico
     return {
-        historico: hist.data || [],
+        historico: (hist.data || []).filter(r => !r.status?.nf_emitida),
         rascunhos: (rasc.data || []).filter(r => !r.dados_completos?.historico_id)
     };
 }
@@ -308,13 +326,9 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
             if (mesclados && !registro.dados_completos.mesclados) registro.dados_completos.mesclados = mesclados;
             const rascunhoEm = atual.dados_completos?.rascunho_em;
             if (rascunhoEm && !registro.dados_completos.rascunho_em) registro.dados_completos.rascunho_em = rascunhoEm;
-            // A etapa de configuração é mudada pelo kanban: vale a gravada, não a de um formulário aberto antes
-            const preparo = atual.dados_completos?.preparo;
-            if (preparo) registro.dados_completos.preparo = preparo;
-
-            const status = { email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas };
+            const status = carimbarNF({ email: false, etiqueta: false, romaneio: false, ...(atual.status || {}), ...etapas }, atual.status);
             const faseAnterior = atual.fase || 'rascunho';
-            const fase = proximaFase(faseAnterior, status, semEnvio(dados));
+            const fase = proximaFase(faseAnterior, status);
             const update = { ...registro, status, fase };
             if (fase !== faseAnterior) update.fase_em = new Date().toISOString();
 
@@ -329,8 +343,8 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
         // Registro foi apagado: cai para criar um novo
     }
 
-    const status = { email: false, etiqueta: false, romaneio: false, ...etapas };
-    const fase = faseSugerida(status, semEnvio(dados));
+    const status = carimbarNF({ email: false, etiqueta: false, romaneio: false, ...etapas });
+    const fase = faseSugerida(status);
     const { data, error } = await supabaseClient
         .from('historico').insert([{ ...registro, status, fase }]).select();
 
@@ -359,11 +373,12 @@ export async function carregarHistorico(pagina = 0) {
     return data || [];
 }
 
-// Grava os checkboxes de status e avança a fase se for o caso (desmarcar não faz voltar).
-// Retorna { fase, faseAnterior, faseEmAnterior, fase_em } ou null em caso de erro.
-export async function atualizarStatusHistorico(reg, novoStatus) {
+// Grava as etapas do status (e-mail, romaneio, etiqueta, NF emitida) e avança a fase se for o caso
+// (desmarcar não faz voltar). Retorna { status, fase, faseAnterior, faseEmAnterior, fase_em } ou null em caso de erro.
+export async function atualizarStatusHistorico(reg, statusMarcado) {
+    const novoStatus = carimbarNF(statusMarcado, reg.status);
     const faseAnterior = reg.fase || 'rascunho';
-    const fase = proximaFase(faseAnterior, novoStatus, semEnvio(reg.dados_completos));
+    const fase = proximaFase(faseAnterior, novoStatus);
     const update = { status: novoStatus, fase };
     if (fase !== faseAnterior) update.fase_em = new Date().toISOString();
 
@@ -376,7 +391,7 @@ export async function atualizarStatusHistorico(reg, novoStatus) {
         console.error('Erro ao atualizar status:', error.message);
         return null;
     }
-    return { fase, faseAnterior, faseEmAnterior: reg.fase_em, fase_em: update.fase_em || reg.fase_em };
+    return { status: novoStatus, fase, faseAnterior, faseEmAnterior: reg.fase_em, fase_em: update.fase_em || reg.fase_em };
 }
 
 // Guarda no registro do histórico se as linhas da planilha de envio saem com kits montados
@@ -390,23 +405,6 @@ export async function gravarEscolhaKits(id, montar) {
         .update({ dados_completos: { ...(data.dados_completos || {}), montar_kits: montar } }).eq('id', id);
     if (erroUpdate) {
         console.error('Erro ao gravar escolha de kits:', erroUpdate.message);
-        return false;
-    }
-    return true;
-}
-
-// Etapa de configuração dos equipamentos (estoque -> configurando -> configurado).
-// tabela: 'historico' ou 'pedidos_pendentes' (rascunho). Fica em dados_completos.preparo.
-export async function gravarPreparo(tabela, id, preparo) {
-    const { data, error } = await supabaseClient.from(tabela).select('dados_completos').eq('id', id).single();
-    if (error || !data) {
-        console.error('Erro ao ler pedido para gravar a configuração:', error?.message);
-        return false;
-    }
-    const { error: erroUpdate } = await supabaseClient.from(tabela)
-        .update({ dados_completos: { ...(data.dados_completos || {}), preparo } }).eq('id', id);
-    if (erroUpdate) {
-        console.error('Erro ao gravar a configuração:', erroUpdate.message);
         return false;
     }
     return true;

@@ -5,13 +5,13 @@ alter table public.historico
     add column if not exists entregue_em timestamptz,
     add column if not exists fases_em    jsonb not null default '{}'::jsonb;
 
--- A cada mudança de fase, guarda quando ela aconteceu em fases_em ({"aguardando_nf": "...", ...}).
+-- A cada mudança de fase, guarda quando ela aconteceu em fases_em ({"a_configurar": "...", ...}).
 -- Voltar de fase apaga as datas das fases seguintes (o pedido vai passar por elas de novo).
 -- Fica no banco para valer em qualquer caminho: kanban, formulário, junção ou outra aba.
 create or replace function public.historico_registra_fase() returns trigger
 language plpgsql as $$
 declare
-    ordem constant text[] := array['rascunho','aguardando_nf','nf_emitida','pronto','despachado','entregue'];
+    ordem constant text[] := array['rascunho','a_configurar','configurando','pronto','despachado','entregue'];
     pos int;
     f text;
     quando timestamptz;

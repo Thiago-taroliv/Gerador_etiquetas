@@ -30,7 +30,7 @@ begin
 
     if not exists (select 1 from pg_constraint where conname = 'historico_fase_check') then
         alter table public.historico add constraint historico_fase_check
-            check (fase in ('rascunho','aguardando_nf','nf_emitida','pronto','despachado','entregue','cancelado'));
+            check (fase in ('rascunho','a_configurar','configurando','pronto','despachado','entregue','cancelado'));
     end if;
 
     -- Registros que já existiam antes do kanban começam como entregues (só na primeira execução)

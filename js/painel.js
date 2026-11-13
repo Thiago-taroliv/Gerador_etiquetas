@@ -57,10 +57,14 @@ const comEnvio = r => !SEM_ENVIO.includes(r.entrega);
 const entre = (x, p) => x != null && x >= p.de.getTime() && x < p.ate.getTime();
 const intervalo = (a, b) => a != null && b != null && b >= a ? (b - a) / DIA : null;
 
+// A NF anda em paralelo à configuração: as datas dela ficam no status (email_em, nf_emitida_em)
+const nfPedidaEm = r => t(r.status?.email_em);
+const nfEmitidaEm = r => t(r.status?.nf_emitida_em);
 const ETAPAS = [
-    { rotulo: 'Até pedir a NF', de: inicioDe, ate: r => naFase(r, 'aguardando_nf') },
-    { rotulo: 'Esperando a NF', de: r => naFase(r, 'aguardando_nf'), ate: r => naFase(r, 'nf_emitida') },
-    { rotulo: 'NF emitida até ficar pronto', de: r => naFase(r, 'nf_emitida'), ate: r => naFase(r, 'pronto') },
+    { rotulo: 'Até pedir a NF', de: inicioDe, ate: nfPedidaEm },
+    { rotulo: 'Esperando a NF', de: nfPedidaEm, ate: nfEmitidaEm },
+    { rotulo: 'Esperando configuração', de: r => naFase(r, 'a_configurar'), ate: r => naFase(r, 'configurando') },
+    { rotulo: 'Em configuração', de: r => naFase(r, 'configurando'), ate: r => naFase(r, 'pronto') },
     { rotulo: 'Pronto até despachar', de: r => naFase(r, 'pronto'), ate: despachoDe },
     { rotulo: 'Em trânsito (até entregar)', de: despachoDe, ate: entregaDe }
 ];

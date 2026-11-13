@@ -1,7 +1,7 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, deletarPendente, FASES, rotuloFase, faseSugerida, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido, carregarPedido } from './db.js';
-import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, avisarProntoSemNF, pedirDadosDespacho, rascunhoDoPedido, ETAPAS_PREPARO, preparoDe, definirPreparo } from './kanban.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, deletarPendente, FASES, rotuloFase, faseSugerida, estadoNF, ROTULOS_NF, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido, carregarPedido } from './db.js';
+import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, pedirDadosDespacho, rascunhoDoPedido, marcarNF } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao, separarPedido, podeSeparar } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
 import { pendenciasEnvio } from './importarEstoque.js';
@@ -253,7 +253,7 @@ window.renderHistoricoLista = function () {
             <td>
                 <div class="status-badges">
                     <span class="fase-badge fase-${escapeHtml(reg.fase)}">${escapeHtml(rotuloFase(reg.fase))}</span>
-                    ${selo(st.email, 'E-mail')}${selo(st.romaneio, 'Romaneio')}${selo(st.etiqueta, 'Etiqueta')}
+                    ${selo(st.email, 'E-mail')}${selo(st.nf_emitida, 'NF')}${selo(st.romaneio, 'Romaneio')}${selo(st.etiqueta, 'Etiqueta')}
                 </div>
             </td>
         </tr>`;
@@ -336,7 +336,7 @@ function renderPassos() {
     const nf = sem
         ? passo(1, 'Pedir NF ao financeiro', false, `<div class="passo-nota">Não precisa: ${escapeHtml(rotuloEntrega(entregaDe(d)))}.</div>`)
         : passo(1, 'Pedir NF ao financeiro', !!st.email, `
-            <div class="passo-marcas">${marca('email', !!st.email, 'E-mail enviado')}</div>
+            <div class="passo-marcas">${marca('email', !!st.email, 'E-mail enviado')}${marca('nf_emitida', !!st.nf_emitida, 'NF emitida')}</div>
             ${leitura ? '' : `<div class="passo-acoes">
                 <button type="button" onclick="enviarEmailViaMailtoUsingData()">Enviar e-mail</button>
                 <button type="button" class="btn-neutral" onclick="copyEmailBody()" title="Só copia o texto do e-mail, sem registrar o envio">Copiar texto</button>
@@ -371,11 +371,14 @@ function renderPassos() {
         ${nf}${imprimir}${planilhas}${despachar}`);
 }
 
-function seletorPreparo(chave, dados) {
-    return `<div class="situacao-linha"><span class="situacao-rotulo">Configuração</span>
-        <select onchange="mudarPreparoDoPedido('${chave}', this.value)">
-            ${ETAPAS_PREPARO.map(e => `<option value="${e.chave}"${e.chave === preparoDe(dados) ? ' selected' : ''}>${e.rotulo}</option>`).join('')}
-        </select></div>`;
+// NF do pedido (anda em paralelo às fases): marcar ou desmarcar como emitida
+function linhaNF(reg) {
+    const nf = estadoNF(reg.status);
+    const pode = !somenteLeitura();
+    return `<div class="situacao-linha"><span class="situacao-rotulo">NF</span>
+        <span class="kanban-tag nf nf-${nf}" style="cursor:default">🧾 ${ROTULOS_NF[nf]}</span>
+        ${pode ? `<button type="button" class="btn-sm btn-neutral" onclick="marcarNFDoPedido(${nf !== 'emitida'})">${nf === 'emitida' ? 'Desmarcar' : 'Marcar emitida'}</button>` : ''}
+    </div>`;
 }
 
 // Faz a próxima pintura da coluna Situação redesenhar mesmo com o mesmo HTML (os seletores voltam ao gravado)
@@ -384,7 +387,7 @@ function esquecerSituacao() {
     if (el) el._html = null;
 }
 
-// Fase, configuração, rastreio/frete, junção e cancelar
+// Fase (etapa da configuração), NF, rastreio/frete, junção e cancelar
 function renderSituacao() {
     const el = $('editor_situacao');
     if (!el) return;
@@ -399,7 +402,6 @@ function renderSituacao() {
         const r = (window.__rascunhosCache || []).find(x => String(x.id) === String(draftId));
         pintar(el, `${tituloLateral('Situação')}
             <div class="situacao-linha"><span class="situacao-rotulo">Fase</span><span class="fase-badge">Rascunho</span></div>
-            ${seletorPreparo('r:' + draftId, { preparo: AppState.extrasEnvio?.preparo || r?.dados_completos?.preparo })}
             ${r ? `<div class="small">Criado em ${new Date(r.created_at).toLocaleString('pt-BR')}</div>` : ''}
             <div class="situacao-acoes"><button type="button" class="btn-sm btn-danger" onclick="excluirRascunhoAberto()">Excluir rascunho</button></div>`);
         return;
@@ -437,7 +439,7 @@ function renderSituacao() {
                     ${FASES.map(f => `<option value="${f.chave}"${f.chave === reg.fase ? ' selected' : ''}>${f.rotulo}</option>`).join('')}
                    </select>`}
         </div>
-        ${seletorPreparo('h:' + id, reg.dados_completos)}
+        ${sem ? '' : linhaNF(reg)}
         ${sem
             ? `<div class="situacao-linha"><span class="situacao-rotulo">Saída</span><span>${escapeHtml(rotuloEntrega(entregaDe(reg.dados_completos)))}</span></div>`
             : `<div class="situacao-linha"><span class="situacao-rotulo">Rastreio</span><span>${escapeHtml(reg.rastreio) || '—'}</span></div>
@@ -455,7 +457,7 @@ function renderSituacao() {
         </div>`);
 }
 
-// Marca ou desmarca à mão uma etapa (e-mail, romaneio, etiqueta) do pedido aberto
+// Marca ou desmarca à mão uma etapa (e-mail, NF emitida, romaneio, etiqueta) do pedido aberto
 window.alternarEtapa = async function (campo) {
     const reg = pedidoAberto();
     if (!reg) return;
@@ -463,9 +465,7 @@ window.alternarEtapa = async function (campo) {
     novoStatus[campo] = !novoStatus[campo];
     const resultado = await atualizarStatusHistorico(reg, novoStatus);
     if (!resultado) { toast('Não foi possível gravar. Verifique a conexão.', 'error'); return; }
-    aplicarNoPedido(reg.id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
-    atualizarEditor();
-    await avisarProntoSemNF(reg.id, resultado, semEnvio(reg.dados_completos));
+    aplicarNoPedido(reg.id, { status: resultado.status, fase: resultado.fase, fase_em: resultado.fase_em });
     atualizarEditor();
 };
 
@@ -490,10 +490,11 @@ window.mudarFaseDoPedido = async function (fase) {
     atualizarEditor(); // mostra a fase gravada (ou a anterior, se cancelou/falhou)
 };
 
-window.mudarPreparoDoPedido = async function (chave, preparo) {
-    esquecerSituacao();
-    await definirPreparo(chave, preparo);
-    renderSituacao(); // mostra a etapa gravada (ou a anterior, se falhou)
+window.marcarNFDoPedido = async function (emitida) {
+    const reg = pedidoAberto();
+    if (!reg) return;
+    await marcarNF(reg.id, emitida);
+    atualizarEditor();
 };
 
 window.editarRastreioDoPedido = async function () {
@@ -538,7 +539,7 @@ window.cancelarPedidoAberto = async function () {
 window.reativarPedidoAberto = async function () {
     const reg = pedidoAberto();
     if (!reg) return;
-    if (await moverPedidoPara(reg.id, faseSugerida(reg.status, semEnvio(reg.dados_completos)), { mesclado_em: null })) {
+    if (await moverPedidoPara(reg.id, faseSugerida(reg.status), { mesclado_em: null })) {
         toast(`Pedido reativado em "${rotuloFase(pedidoAberto()?.fase)}".`);
     }
     atualizarEditor();
@@ -648,10 +649,6 @@ async function registrarEnvio(dados, etapas) {
     marcarFormularioSalvo();
     atualizarEditor();
     toast(novo ? 'Pedido salvo e colocado no quadro.' : 'Pedido salvo.');
-
-    // Impresso antes da NF: avança mesmo assim, mas avisa e permite voltar
-    await avisarProntoSemNF(id, resultado, semEnvio(dados));
-    atualizarEditor();
     return id;
 }
 
@@ -751,7 +748,6 @@ function extrasDoEnvio(dados) {
     if (dados?.origem) extras.origem = dados.origem;
     if (dados?.montar_kits !== undefined) extras.montar_kits = dados.montar_kits;
     if (dados?.rascunho_em) extras.rascunho_em = dados.rascunho_em;
-    if (dados?.preparo) extras.preparo = dados.preparo;
     // Junção já gravada: o próximo e-mail ainda precisa citar os pedidos substituídos
     if (dados?.mesclados?.length) extras.mesclados = dados.mesclados;
     if (dados?.nf_anterior) extras.nf_anterior = dados.nf_anterior;
@@ -1167,7 +1163,7 @@ async function imprimirDoRegistro(reg, tipo) {
     const novoStatus = { email: false, etiqueta: false, romaneio: false, ...(reg.status || {}), ...etapas };
     const resultado = await atualizarStatusHistorico(reg, novoStatus);
     if (resultado) {
-        aplicarNoPedido(reg.id, { status: novoStatus, fase: resultado.fase, fase_em: resultado.fase_em });
+        aplicarNoPedido(reg.id, { status: resultado.status, fase: resultado.fase, fase_em: resultado.fase_em });
         atualizarEditor();
     }
 }

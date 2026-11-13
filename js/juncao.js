@@ -2,7 +2,7 @@
 // Caminhos: alerta ao pedir a NF (no formulário), botão "Juntar" e arrastar card sobre card (kanban),
 // e "Adicionar a pedido existente" na importação do estoque. "Separar" desfaz pelo detalhe do pedido.
 import { AppState, $, escapeHtml } from './config.js';
-import { carregarCandidatosJuncao, cancelarPedido, deletarPendente, registrarNoHistorico, salvarPendente, moverFase, FASES } from './db.js';
+import { carregarCandidatosJuncao, cancelarPedido, deletarPendente, registrarNoHistorico, salvarPendente, moverFase, FASES, FASES_ANTES_DA_SAIDA, faseSugerida } from './db.js';
 import { preencherFormulario } from './ui.js';
 import { toast } from './toast.js';
 import { config } from './configuracoes.js';
@@ -10,8 +10,8 @@ import { confirmar } from './dialogo.js';
 import { rascunhoDoPedido } from './kanban.js';
 import { semEnvio } from './entrega.js';
 
-// Fases em que a NF ainda não foi emitida
-export const FASES_SEM_NF = ['rascunho', 'aguardando_nf'];
+// Pedido do quadro que ainda pode juntar: não saiu, não foi juntado a outro e a NF não foi emitida
+export const pedidoSemNF = reg => !!reg && FASES_ANTES_DA_SAIDA.includes(reg.fase) && !reg.mesclado_em && !reg.status?.nf_emitida;
 
 AppState.juncaoPendente = []; // pedidos já juntados no formulário, fechados ao enviar o e-mail
 
@@ -42,7 +42,7 @@ export function pedidoDoHistorico(r) {
     return {
         origem: 'historico', id: r.id, referencia: r.referencia, unidade: r.unidade,
         dados: r.dados_completos, itens: r.itens, fase: r.fase, fase_em: r.fase_em,
-        pediuNF: !!r.status?.email, created_at: r.created_at
+        pediuNF: !!r.status?.email, email_em: r.status?.email_em || r.fase_em, created_at: r.created_at
     };
 }
 export function pedidoDoRascunho(r) {
@@ -216,7 +216,7 @@ export async function separarPedido(reg, idx) {
     }
     // Devolve o card: pedido do histórico volta da fase cancelada; rascunho é recriado
     const ok = m.origem === 'historico'
-        ? await moverFase(m.id, m.pediuNF ? 'aguardando_nf' : 'rascunho', { mesclado_em: null })
+        ? await moverFase(m.id, faseSugerida({ email: m.pediuNF }), { mesclado_em: null })
         : !!(await salvarPendente(m.dados, null, true));
     if (!ok) toast(`Itens retirados, mas não foi possível recriar o card de ${m.referencia || 'o pedido'}.`, 'error', 9000);
     if (naoAchados) toast(`${naoAchados} item(ns) de ${m.referencia || 'o pedido'} foram alterados depois da junção e ficaram neste pedido: confira.`, 'warning', 9000);
@@ -236,7 +236,7 @@ function perguntarJuncao(nome, candidatos, manual = false) {
     const linhas = candidatos.map((c, idx) => {
         const qtd = (c.dados?.items || c.itens || []).length;
         const situacao = c.pediuNF
-            ? `${rotuloFase(c.fase)} (e-mail enviado há ${diasDesde(c.fase_em)} dia(s))`
+            ? `${rotuloFase(c.fase)} (e-mail enviado há ${diasDesde(c.email_em || c.fase_em)} dia(s))`
             : c.origem === 'rascunho' ? 'Rascunho' : rotuloFase(c.fase);
         return `
             <label class="juncao-item">

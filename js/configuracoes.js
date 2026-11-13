@@ -24,7 +24,7 @@ export const PADROES = {
     // Planilha de estoque: envios que não vão por transportadora (o texto aparece no produto, cliente ou motivo)
     entrega_regras: [{ contem: 'rfleet', entrega: 'retirada' }],
     // Dias na fase até o card ficar amarelo / vermelho no kanban
-    kanban_atraso: { aguardando_nf: [2, 5], nf_emitida: [2, 5], pronto: [1, 3] },
+    kanban_atraso: { a_configurar: [2, 5], configurando: [2, 5], pronto: [1, 3] },
     // Pedidos do mesmo técnico nos últimos N dias são oferecidos para juntar
     juncao_dias: 7,
     transportadora_padrao: 'Jadlog',
@@ -52,6 +52,13 @@ export async function carregarConfiguracoes() {
 export const configuracoesNoBanco = () => tabelaOk;
 export const config = chave => salvas.has(chave) ? salvas.get(chave).valor : PADROES[chave];
 export const infoConfiguracao = chave => salvas.get(chave) || null;
+
+// Prazos de atraso por fase: só as fases do padrão (prazo salvo para uma fase que não existe mais é ignorado)
+export function prazosAtraso() {
+    const salvo = config('kanban_atraso') || {};
+    return Object.fromEntries(Object.entries(PADROES.kanban_atraso)
+        .map(([fase, padrao]) => [fase, Array.isArray(salvo[fase]) ? [...salvo[fase]] : [...padrao]]));
+}
 
 async function emailAtual() {
     const { data } = await supabaseClient.auth.getSession();

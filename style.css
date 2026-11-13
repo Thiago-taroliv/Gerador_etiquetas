@@ -1512,10 +1512,10 @@ button.secondary:hover {
 .kanban-tag.juncao.juntar { background: #1a56b0; color: #fff; cursor: pointer; }
 .kanban-tag.juncao.juntar:hover { background: #14468f; }
 .kanban-tag.rasc { background: #fff8e1; color: #8a6d00; }
-/* Configuração dos equipamentos: saída do estoque -> em configuração -> configurado */
-.kanban-tag.preparo-estoque { background: #f1f1f1; color: #666; }
-.kanban-tag.preparo-configurando { background: #fff1db; color: #a35a00; }
-.kanban-tag.preparo-configurado { background: #dcf5e3; color: #1e8e3e; }
+/* NF do pedido: não pedida -> pedida (aguardando o financeiro) -> emitida */
+.kanban-tag.nf-nao_pedida { background: #f1f1f1; color: #666; }
+.kanban-tag.nf-pedida { background: #fff1db; color: #a35a00; }
+.kanban-tag.nf-emitida { background: #dcf5e3; color: #1e8e3e; }
 .kanban-card-rodape { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 6px; }
 .kanban-icones { display: flex; gap: 4px; align-items: center; }
 .kanban-icone { font-size: 13px; line-height: 1; opacity: 0.75; cursor: default; }
@@ -1542,6 +1542,7 @@ button.resumo-chip:hover { transform: none; box-shadow: none; filter: brightness
 .resumo-chip.ok { background: #dcf5e3; color: #1e8e3e; }
 .resumo-chip.alerta { background: #fff4d6; color: #8a5a00; border-color: #f3d27a; }
 .resumo-chip.juncao { background: #e8f0fe; color: #1a56b0; border-color: #c3d6fb; }
+.resumo-chip.nf { background: #fff1db; color: #a35a00; border-color: #f3c98a; }
 .resumo-chip.ativo { border-color: currentColor; box-shadow: inset 0 0 0 1px currentColor; }
 .resumo-chip.limpar { background: #fff; color: #555; border-color: var(--border-light); }
 
