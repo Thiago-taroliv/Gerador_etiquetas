@@ -103,6 +103,14 @@ export function acharPedido(id) {
         || (window.__painelCache || []).find(r => String(r.id) === String(id));
 }
 
+// chave do card: 'h:<id>' (histórico) ou 'r:<id>' (rascunho)
+function registroDaChave(chave) {
+    const id = chave.slice(2);
+    return chave.startsWith('r:')
+        ? rascunhos.find(r => String(r.id) === id) || (window.__rascunhosCache || []).find(r => String(r.id) === id)
+        : acharPedido(id);
+}
+
 // Aplica os campos em todas as cópias do registro (kanban e lista do Histórico)
 export function atualizarCaches(id, campos) {
     [...pedidos, ...(window.__historicoCache || []), ...(window.__painelCache || [])]
