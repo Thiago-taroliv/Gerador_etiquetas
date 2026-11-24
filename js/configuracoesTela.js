@@ -115,6 +115,27 @@ const CARTOES = {
         limpar: v => v,
         validar: v => v >= 1 ? null : 'Informe pelo menos 1 dia.'
     },
+    retornos_desde: {
+        titulo: 'Retornos (beta): início da contagem',
+        ajuda: 'Só contam como retorno esperado os envios despachados a partir deste dia. Mudar a data recomeça a contagem (os recebidos já marcados continuam gravados).',
+        campos: v => `<input type="date" value="${escapeHtml(v)}" oninput="cfgValor('retornos_desde', this.value)" style="max-width:200px">`,
+        limpar: v => String(v || '').trim(),
+        validar: v => /^\d{4}-\d{2}-\d{2}$/.test(v) ? null : 'Informe a data.'
+    },
+    rastreio_links: {
+        titulo: 'Sites de rastreio',
+        ajuda: 'Site de cada transportadora, para abrir o rastreio direto da tela "Marcar entregas". O nome é comparado com a transportadora do pedido. Se a URL tiver {codigo}, ele é trocado pelo código de rastreio; senão, o site abre e o código vai para a área de transferência (é só colar).',
+        campos: v => `${v.map((r, i) => `
+            <div class="cfg-linha">
+                <input type="text" placeholder="Transportadora" value="${escapeHtml(r.nome)}" oninput="cfgCampo('rastreio_links', ${i}, 'nome', this.value)" style="max-width:180px">
+                <input type="text" placeholder="https://... (pode usar {codigo})" value="${escapeHtml(r.url)}" oninput="cfgCampo('rastreio_links', ${i}, 'url', this.value)">
+                <button type="button" class="btn-sm btn-neutral" onclick="cfgRemover('rastreio_links', ${i})">✕</button>
+            </div>`).join('')}
+            <button type="button" class="btn-sm btn-neutral" onclick="cfgAdicionar('rastreio_links')">+ Site</button>`,
+        novo: () => ({ nome: '', url: '' }),
+        limpar: v => v.map(r => ({ nome: r.nome.trim(), url: r.url.trim() })).filter(r => r.nome && r.url),
+        validar: v => v.find(r => !/^https?:\/\//i.test(r.url)) ? 'A URL precisa começar com http:// ou https://' : null
+    },
     transportadora_padrao: {
         titulo: 'Transportadora padrão',
         ajuda: 'Vem preenchida no Novo pedido.',

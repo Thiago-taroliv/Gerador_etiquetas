@@ -11,6 +11,7 @@ import { prazosAtraso } from './configuracoes.js';
 import { formularioAlterado } from './ui.js';
 import { semEnvio, entregaDe, rotuloEntrega, iconeEntrega } from './entrega.js';
 import { hojeInput, paraInput, deInput, problemaData, dataBR } from './datas.js';
+import { abrirEntregasLote } from './entregasLote.js';
 
 // Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Cadastros > Configurações)
 const limitesAtraso = prazosAtraso;
@@ -368,6 +369,7 @@ export function renderKanban() {
                  ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event, '${fase}')">
                 <div class="kanban-col-header">
                     <span>${rotulo}</span>
+                    ${fase === 'despachado' && todos.length ? `<button type="button" class="kanban-lote" onclick="abrirEntregasDoKanban()" title="Marcar vários pedidos como entregues, com a data do rastreio">✓ Marcar entregues</button>` : ''}
                     <span class="kanban-count" title="${todos.length} pedido(s), ${itens} item(ns)">${todos.length}${itens ? ` &middot; ${itens} it.` : ''}</span>
                 </div>
                 <div class="kanban-col-body">
@@ -699,6 +701,9 @@ window.kanbanDrop = function (ev, fase) {
     if (id.startsWith('r:')) moverRascunhoPara(id.slice(2), fase);
     else if (id) moverPedidoPara(id, fase);
 };
+
+// Marcar entregas em lote (entregasLote.js): depois de salvar, o quadro recarrega
+window.abrirEntregasDoKanban = () => abrirEntregasLote({ aoSalvar: () => carregarViewKanban() });
 
 window.carregarViewKanban = carregarViewKanban;
 window.renderKanban = renderKanban;

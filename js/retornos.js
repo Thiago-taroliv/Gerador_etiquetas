@@ -11,13 +11,21 @@ import { pedirCampos, confirmar } from './dialogo.js';
 import { hojeInput, deInput, problemaData } from './datas.js';
 import { abrirVisualizacaoEnvio } from './envioView.js';
 import { toast } from './toast.js';
+import { config } from './configuracoes.js';
 
 export const TIPOS_COM_RETORNO = ['MAN', 'COR', 'FOR'];
 const ROTULO_TIPO = { MAN: 'Manutenção', COR: 'Correção', FOR: 'Fornecedor' };
 const DIA = 864e5;
 
 let cache = null;      // { envios, retornos (null = sem tabela), desde }
-let estado = { agrupar: 'tecnico', mostrar: 'pendentes', tipo: '', busca: '', meses: '6', abertos: new Set() };
+let estado = { agrupar: 'tecnico', mostrar: 'pendentes', tipo: '', busca: '', meses: '', abertos: new Set() };
+
+// Início da contagem (Configurações: retornos_desde). Envios despachados antes dele não entram.
+function inicioContagem() {
+    const [a, m, d] = String(config('retornos_desde') || '').split('-').map(Number);
+    return a && m && d ? new Date(a, m - 1, d) : null;
+}
+const textoInicio = () => inicioContagem()?.toLocaleDateString('pt-BR') || '';
 let alvo = null;       // elemento onde a visão é desenhada
 
 // Unidades esperadas de volta de um envio: uma por IMEI (ou por quantidade, sem IMEI)
@@ -43,7 +51,10 @@ export function unidadesEsperadas(envio) {
 }
 
 async function carregar(recarregar) {
-    const desde = estado.meses ? new Date(Date.now() - Number(estado.meses) * 30 * DIA).toISOString() : '';
+    const periodo = estado.meses ? new Date(Date.now() - Number(estado.meses) * 30 * DIA) : null;
+    const inicio = inicioContagem();
+    const maisRecente = [periodo, inicio].filter(Boolean).sort((a, b) => b - a)[0];
+    const desde = maisRecente ? maisRecente.toISOString() : '';
     if (cache && !recarregar && cache.desde === desde) return true;
     const [envios, retornos] = await Promise.all([carregarEnviosComRetorno(TIPOS_COM_RETORNO, desde), carregarRetornos()]);
     if (!envios) return false;
@@ -108,14 +119,14 @@ function desenhar() {
     alvo.innerHTML = `
         <div class="painel-alerta beta">
             <b>Beta.</b> Cada equipamento (rastreador, kit ou teclado) enviado em ${TIPOS_COM_RETORNO.map(tp => `${tp} (${ROTULO_TIPO[tp]})`).join(', ')}
-            conta como uma unidade que deve voltar. Marque "Recebido" quando ela chegar. É uma estimativa: confira antes de cobrar alguém.
+            conta como uma unidade que deve voltar${textoInicio() ? `, contando os envios despachados a partir de <b>${textoInicio()}</b>` : ''}. Marque "Recebido" quando ela chegar. É uma estimativa: confira antes de cobrar alguém.
             ${semTabela ? '<br>⚠ Para marcar recebidos, rode o <code>sql/datas_retornos.sql</code> no SQL Editor do Supabase.' : ''}
         </div>
 
         <div class="painel-tiles retornos-tiles">
             <div class="painel-tile hero"><div class="painel-tile-rotulo">Aguardando retorno</div>
                 <div class="painel-tile-valor">${pendentes.length}</div>
-                <div class="painel-explica">Unidades enviadas que ainda não voltaram (envios ${estado.meses ? `dos últimos ${estado.meses} meses` : 'de qualquer data'}).</div></div>
+                <div class="painel-explica">Unidades enviadas que ainda não voltaram (envios ${estado.meses ? `dos últimos ${estado.meses} meses` : textoInicio() ? `despachados desde ${textoInicio()}` : 'de qualquer data'}).</div></div>
             ${porTipo.map(x => `<div class="painel-tile"><div class="painel-tile-rotulo">${x.tp} · ${ROTULO_TIPO[x.tp]}</div>
                 <div class="painel-tile-valor">${x.n}</div><div class="painel-explica">pendentes</div></div>`).join('')}
             <div class="painel-tile"><div class="painel-tile-rotulo">Há 30 dias ou mais</div>
@@ -133,7 +144,7 @@ function desenhar() {
                 ${opcao('tipo', '', 'Todos os tipos')}${TIPOS_COM_RETORNO.map(tp => opcao('tipo', tp, `${tp} · ${ROTULO_TIPO[tp]}`)).join('')}
             </select>
             <select class="kanban-filtro" onchange="retornosFiltro('meses', this.value, true)" title="Envios despachados nos últimos">
-                ${opcao('meses', '3', 'Últimos 3 meses')}${opcao('meses', '6', 'Últimos 6 meses')}${opcao('meses', '12', 'Últimos 12 meses')}${opcao('meses', '', 'Qualquer data')}
+                ${opcao('meses', '3', 'Últimos 3 meses')}${opcao('meses', '6', 'Últimos 6 meses')}${opcao('meses', '12', 'Últimos 12 meses')}${opcao('meses', '', textoInicio() ? `Desde ${textoInicio()}` : 'Qualquer data')}
             </select>
             <input type="text" class="retornos-busca" placeholder="Buscar técnico, unidade, IMEI, OS..." value="${escapeHtml(estado.busca)}"
                 oninput="retornosBusca(this)">

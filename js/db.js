@@ -489,6 +489,36 @@ export async function carregarDadosPainel(desde) {
     return null;
 }
 
+// --- MARCAR ENTREGAS EM LOTE ---
+
+const COLUNAS_ENTREGA = 'id, created_at, destinatario, unidade, referencia, transportadora, rastreio, fase, fase_em, fases_em, despachado_em, entregue_em, entrega:dados_completos->>entrega';
+
+// Despachados (em trânsito), do mais antigo para o mais novo
+export async function carregarEmTransito() {
+    const { data, error } = await supabaseClient.from('historico').select(COLUNAS_ENTREGA)
+        .eq('fase', 'despachado').order('despachado_em', { ascending: true }).limit(1000);
+    if (error) {
+        console.error('Erro ao buscar pedidos em trânsito:', error.message);
+        return null;
+    }
+    return data || [];
+}
+
+// Entregues com alguma data não confirmada (os mais recentes primeiro). { pedidos } ou { semColunas: true } ou null.
+export async function carregarEntreguesNaoConfirmados() {
+    const { data, error } = await supabaseClient.from('historico')
+        .select(COLUNAS_ENTREGA + ', despacho_confirmado, entrega_confirmada')
+        .eq('fase', 'entregue')
+        .or('entrega_confirmada.eq.false,despacho_confirmado.eq.false')
+        .order('fase_em', { ascending: false }).limit(1000);
+    if (error) {
+        if (faltaColuna(error)) return { semColunas: true };
+        console.error('Erro ao buscar entregues:', error.message);
+        return null;
+    }
+    return { pedidos: data || [] };
+}
+
 // --- RETORNOS DE MATERIAL (beta) ---
 
 // Envios despachados desde a data com tipo que gera retorno (ex. MAN, COR, FOR), com os itens

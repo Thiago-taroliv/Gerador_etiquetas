@@ -7,6 +7,7 @@ import { carregarDadosPainel } from './db.js';
 import { formatarFrete } from './planilha.js';
 import { abrirVisualizacaoEnvio, abrirModal } from './envioView.js';
 import { renderRetornos } from './retornos.js';
+import { abrirEntregasLote } from './entregasLote.js';
 
 let dados = null;          // { pedidos, semColunas, semConfirmacao }
 let carregadoDesde = null; // data mais antiga já carregada
@@ -206,10 +207,10 @@ function pendencias(itens) {
         <div class="painel-card-titulo">${total ? `Para os números ficarem certos <span class="painel-contador">${total}</span>` : '✓ Dados em dia'}</div>
         <div class="painel-card-sub">Pedidos com algum dado faltando ou só estimado. Clique para ver e corrigir no pedido.</div>
         <div class="painel-pend-lista">${itens.map(i => `
-            <div class="painel-pend${i.n ? '' : ' ok'}${i.n && i.lista ? ' clicavel' : ''}" ${i.n && i.lista ? `onclick="abrirListaPainel('${i.lista}')"` : ''}>
+            <div class="painel-pend${i.n ? '' : ' ok'}${i.n && (i.lista || i.acao) ? ' clicavel' : ''}" ${i.n && i.acao ? `onclick="${i.acao}"` : i.n && i.lista ? `onclick="abrirListaPainel('${i.lista}')"` : ''}>
                 <span class="painel-pend-n">${i.n || '✓'}</span>
                 <span><b>${i.titulo}</b><small>${i.dica}</small></span>
-                ${i.n && i.lista ? '<span class="painel-ver">ver ›</span>' : ''}
+                ${i.n && i.acao ? `<span class="painel-ver">${i.textoAcao} ›</span>` : i.n && i.lista ? '<span class="painel-ver">ver ›</span>' : ''}
             </div>`).join('')}</div>
     </div>`;
 }
@@ -316,7 +317,7 @@ function renderPainel() {
     const entregaNaoConf = filtrados.filter(r => entre(entregaDe(r), p) && !r.entrega_confirmada);
     const diasDe = r => Math.floor((agora - despachoDe(r)) / DIA);
     const itensPend = [
-        { n: emTransito.length, titulo: `Em trânsito há ${TRANSITO_ALERTA} dias ou mais`, dica: 'Confira no rastreio e marque a entrega com a data certa.',
+        { n: emTransito.length, titulo: `Em trânsito há ${TRANSITO_ALERTA} dias ou mais`, dica: 'Confira no rastreio e marque a entrega com a data certa.', acao: "abrirEntregasDoPainel('transito')", textoAcao: 'marcar',
           lista: guardarLista('transito', `Em trânsito há ${TRANSITO_ALERTA} dias ou mais`, 'Despachados ainda sem entrega marcada, de qualquer data. Abra o pedido e marque como entregue com a data do rastreio.', emTransito, r => `${diasDe(r)} dias`) },
         { n: semFrete.length, titulo: 'Despachados sem frete', dica: 'Ficam fora do gasto com frete.',
           lista: guardarLista('sem_frete', 'Despachados sem frete preenchido', 'Ficam fora do gasto. Abra o pedido e preencha em "Editar rastreio e frete".', semFrete) },
@@ -324,7 +325,7 @@ function renderPainel() {
           lista: guardarLista('sem_rastreio', 'Despachados sem rastreio', 'Abra o pedido e preencha em "Editar rastreio e frete".', semRastreio) },
         { n: despachoNaoConf.length, titulo: 'Despachos com data não confirmada', dica: 'Data é só a do arraste do card: fica fora dos prazos.',
           lista: guardarLista('desp_nc', 'Despachos com data não confirmada', 'A data gravada é o momento em que o card foi movido. Abra o pedido e use "Confirmar datas".', despachoNaoConf) },
-        { n: entregaNaoConf.length, titulo: 'Entregas com data não confirmada', dica: 'Fica fora do tempo de trânsito.',
+        { n: entregaNaoConf.length, titulo: 'Entregas com data não confirmada', dica: 'Fica fora do tempo de trânsito.', acao: "abrirEntregasDoPainel('confirmar')", textoAcao: 'confirmar',
           lista: guardarLista('entr_nc', 'Entregas com data não confirmada', 'A data gravada é o momento em que o card foi movido. Abra o pedido e use "Confirmar datas" com a data do rastreio.', entregaNaoConf) }
     ];
 
@@ -467,6 +468,10 @@ window.mudarVisaoPainel = function (v) {
 window.carregarPainel = carregarPainel;
 window.renderPainel = () => dados && visao === 'envios' && renderPainel();
 window.abrirListaPainel = abrirLista;
+// Pendências de entrega abrem a tela em lote; depois de salvar, o painel recarrega
+window.abrirEntregasDoPainel = qual => abrirEntregasLote({
+    aba: qual, antigos: qual === 'transito', aoSalvar: () => carregarPainel(true)
+});
 window.abrirPedidoDoPainel = id => abrirVisualizacaoEnvio(id);
 
 export const painelVisivel = () => $('tab-painel')?.style.display === 'block';

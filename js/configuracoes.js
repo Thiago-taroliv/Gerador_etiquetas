@@ -32,7 +32,15 @@ export const PADROES = {
     email_textos: { assunto: 'Nota fiscal para envio', saudacao: 'Olá financeiro,' },
     // Planilha de importação de veículos: Chip_Telefone fixo e o nome do cliente na plataforma por unidade
     veiculos_telefone: '1111111111111',
-    plataforma_clientes: []
+    plataforma_clientes: [],
+    // Retornos (beta): só contam os envios despachados a partir deste dia ('AAAA-MM-DD'). Mudar recomeça a contagem.
+    retornos_desde: '2026-11-24',
+    // Sites de rastreio por transportadora (o nome é comparado com a transportadora do pedido).
+    // Na URL, {codigo} é trocado pelo código de rastreio; sem ele, o site abre e o código vai para a área de transferência.
+    rastreio_links: [
+        { nome: 'Jadlog', url: 'https://www.jadlog.com.br/jadlog/home' },
+        { nome: 'Correios', url: 'https://rastreamento.correios.com.br/app/index.php' }
+    ]
 };
 
 let salvas = new Map(); // chave -> { valor, atualizado_por, atualizado_em }
@@ -86,6 +94,18 @@ export async function restaurarPadrao(chave) {
     salvas.delete(chave);
     return true;
 }
+
+// --- Sites de rastreio ---
+const normNome = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+export const sitesRastreio = () => config('rastreio_links') || [];
+// Site da transportadora do pedido: o primeiro cujo nome aparece na transportadora (ou o contrário)
+export function siteRastreio(transportadora) {
+    const t = normNome(transportadora);
+    if (!t) return null;
+    return sitesRastreio().find(s => normNome(s.nome) && (t.includes(normNome(s.nome)) || normNome(s.nome).includes(t))) || null;
+}
+// Endereço para abrir: com {codigo} na URL, já vem com o código
+export const urlRastreio = (site, codigo) => site.url.includes('{codigo}') ? site.url.replace(/\{codigo\}/g, encodeURIComponent(codigo || '')) : site.url;
 
 // --- Remetentes ---
 export const remetentes = () => config('remetentes') || [];
