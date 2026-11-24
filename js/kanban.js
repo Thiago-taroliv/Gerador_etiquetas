@@ -369,10 +369,10 @@ export function renderKanban() {
                  ondragover="kanbanDragOver(event)" ondragleave="kanbanDragLeave(event)" ondrop="kanbanDrop(event, '${fase}')">
                 <div class="kanban-col-header">
                     <span>${rotulo}</span>
-                    ${fase === 'despachado' && todos.length ? `<button type="button" class="kanban-lote" onclick="abrirEntregasDoKanban()" title="Marcar vários pedidos como entregues, com a data do rastreio">✓ Marcar entregues</button>` : ''}
                     <span class="kanban-count" title="${todos.length} pedido(s), ${itens} item(ns)">${todos.length}${itens ? ` &middot; ${itens} it.` : ''}</span>
                 </div>
                 <div class="kanban-col-body">
+                    ${fase === 'despachado' && todos.length ? `<button type="button" class="kanban-lote" onclick="abrirEntregasDoKanban()" title="Marcar vários pedidos como entregues, com a data do rastreio">✓ Marcar entregues em lote</button>` : ''}
                     ${visiveis.map(x => cardHtml(x.reg, x.chave, grupos, { rascunho: x.rascunho })).join('') || '<div class="kanban-vazio">Nenhum pedido</div>'}
                     ${botaoMais}
                     ${fase === 'entregue' ? '<div class="kanban-nota">Últimos 30 dias</div>' : ''}

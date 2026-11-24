@@ -2069,8 +2069,9 @@ button.passo-marca:hover { background: #e6e6ea; color: #444; transform: none; bo
 .historico-tabela strong { display: inline; font-size: 13.5px; margin: 0; }
 
 /* ============ MARCAR ENTREGAS EM LOTE ============ */
-.kanban-lote { margin: 0 6px 0 auto; padding: 2px 8px; font-size: 11px; font-weight: 700; border-radius: 10px; background: #dcf5e3; color: #1e8e3e; border: 1px solid #a8dcb8; box-shadow: none; white-space: nowrap; }
-.kanban-lote:hover { background: #c6edd2; color: #166c2f; transform: none; box-shadow: none; }
+.kanban-lote { display: block; width: 100%; margin: 0 0 8px; padding: 6px 8px; font-size: 12px; font-weight: 700; border-radius: 8px; background: #edf8f0; color: #1e8e3e; border: 1px dashed #8fcfa3; box-shadow: none; }
+.kanban-lote:hover { background: #dcf5e3; color: #166c2f; border-style: solid; transform: none; box-shadow: none; }
+.kanban-count { white-space: nowrap; }
 .modal-card.lote-card { max-width: min(1100px, 96vw); display: flex; flex-direction: column; }
 .lote-abas { display: inline-flex; border: 1px solid var(--border-light); border-radius: 8px; overflow: hidden; margin-bottom: 12px; align-self: flex-start; }
 .lote-filtros { margin: 0 0 10px; }
@@ -2100,4 +2101,3 @@ button.passo-marca:hover { background: #e6e6ea; color: #444; transform: none; bo
 .lote-site-novo input { margin: 0; }
 .lote-site-novo input:first-child { max-width: 200px; }
 .lote-resumo { margin: 0; }
-.kanban-lote { text-transform: none; letter-spacing: 0; }
