@@ -95,26 +95,44 @@
                     <div class="kanban-topo">
                         <div>
                             <strong>Painel</strong>
-                            <div class="small">Gasto com frete e prazos dos envios. Passe o mouse nos gráficos para ver os valores.</div>
+                            <div class="small">Gasto com frete, prazos dos envios e o que falta preencher. Clique nos números para ver os pedidos.</div>
                         </div>
                         <div class="kanban-acoes">
-                            <select id="painel_periodo" class="kanban-filtro" onchange="mudarPeriodoPainel()" title="Período">
-                                <option value="mes">Este mês</option>
-                                <option value="mes_passado">Mês passado</option>
-                                <option value="30">Últimos 30 dias</option>
-                                <option value="90">Últimos 90 dias</option>
-                                <option value="ano">Este ano</option>
-                                <option value="custom">Personalizado…</option>
-                            </select>
-                            <span id="painel_datas" class="painel-datas" style="display: none;">
-                                <input type="date" id="painel_de" onchange="carregarPainel()"> até
-                                <input type="date" id="painel_ate" onchange="carregarPainel()">
-                            </span>
-                            <select id="painel_transportadora" class="kanban-filtro" onchange="renderPainel()" title="Transportadora">
-                                <option value="">Todas as transportadoras</option>
-                            </select>
+                            <div class="painel-visoes" role="tablist">
+                                <button type="button" class="painel-visao ativo" data-visao="envios" onclick="mudarVisaoPainel('envios')">Envios</button>
+                                <button type="button" class="painel-visao" data-visao="retornos" onclick="mudarVisaoPainel('retornos')">Retornos <span class="selo-beta">beta</span></button>
+                            </div>
                             <button class="btn-outline" onclick="carregarPainel(true)">🔄 Atualizar</button>
                         </div>
+                    </div>
+                    <div class="painel-filtros painel-so-envios">
+                        <select id="painel_periodo" class="kanban-filtro" onchange="mudarPeriodoPainel()" title="Período">
+                            <option value="mes">Este mês</option>
+                            <option value="mes_passado">Mês passado</option>
+                            <option value="30">Últimos 30 dias</option>
+                            <option value="90">Últimos 90 dias</option>
+                            <option value="ano">Este ano</option>
+                            <option value="custom">Personalizado…</option>
+                        </select>
+                        <span id="painel_datas" class="painel-datas" style="display: none;">
+                            <input type="date" id="painel_de" onchange="carregarPainel()"> até
+                            <input type="date" id="painel_ate" onchange="carregarPainel()">
+                        </span>
+                        <select id="painel_transportadora" class="kanban-filtro" onchange="renderPainel()" title="Transportadora">
+                            <option value="">Todas as transportadoras</option>
+                        </select>
+                        <select id="painel_tecnico" class="kanban-filtro" onchange="renderPainel()" title="Técnico (destinatário)">
+                            <option value="">Todos os técnicos</option>
+                        </select>
+                        <select id="painel_unidade" class="kanban-filtro" onchange="renderPainel()" title="Unidade">
+                            <option value="">Todas as unidades</option>
+                        </select>
+                        <select id="painel_tipo" class="kanban-filtro" onchange="renderPainel()" title="Tipo (planilha de envio)">
+                            <option value="">Todos os tipos</option>
+                        </select>
+                        <label class="painel-check" title="Por padrão, os prazos usam só datas confirmadas (informadas no despacho e na entrega, ou corrigidas no pedido)">
+                            <input type="checkbox" id="painel_nao_confirmadas" onchange="renderPainel()"> Incluir datas não confirmadas nos prazos
+                        </label>
                     </div>
                     <div id="painel_aviso"></div>
                     <div id="painel_corpo"></div>
@@ -479,17 +497,30 @@
             <div id="tab-historico" class="tab-content" style="display: none;">
                 <div>
                     <div class="card">
-                        <div
-                            style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div class="kanban-topo">
                             <div>
                                 <strong>Histórico</strong>
-                                <div class="small">Todos os pedidos, do mais recente ao mais antigo, inclusive entregues e cancelados. Clique para abrir.</div>
+                                <div class="small">Todos os pedidos, inclusive entregues e cancelados. Clique para ver o envio; para editar, use "Abrir no editor".</div>
                             </div>
-                            <button class="btn-outline" onclick="loadHistoricoView()">🔄 Atualizar</button>
+                            <div class="kanban-acoes">
+                                <button class="btn-outline" onclick="verHistoricoComoPlanilha(this)" title="Os envios dos filtros abaixo no modelo da planilha de envio (só visualização)">▦ Ver como planilha</button>
+                                <button class="btn-outline" onclick="loadHistoricoView()">🔄 Atualizar</button>
+                            </div>
                         </div>
 
-                        <input id="historico_search" type="text" placeholder="Filtrar por destinatário, unidade ou referência..."
-                            oninput="renderHistoricoLista()" style="margin:0 0 12px;">
+                        <div class="historico-filtros">
+                            <input id="historico_search" type="text" placeholder="Buscar destinatário, unidade, OS/ticket, rastreio ou IMEI..."
+                                oninput="filtrarHistorico()" onkeydown="if(event.key==='Enter') filtrarHistorico(true)">
+                            <select id="historico_periodo" class="kanban-filtro" onchange="filtrarHistorico(true)" title="Criados no período">
+                                <option value="">Qualquer data</option>
+                                <option value="mes">Este mês</option>
+                                <option value="30">Últimos 30 dias</option>
+                                <option value="90">Últimos 90 dias</option>
+                                <option value="ano">Este ano</option>
+                            </select>
+                            <select id="historico_fase" class="kanban-filtro" onchange="filtrarHistorico(true)" title="Fase"></select>
+                            <select id="historico_tipo" class="kanban-filtro" onchange="filtrarHistorico(true)" title="Tipo (planilha de envio)"></select>
+                        </div>
 
                         <div id="historico_list" class="table-wrap">
                             <!-- A lista será carregada aqui via JS -->

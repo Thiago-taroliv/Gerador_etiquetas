@@ -41,11 +41,13 @@ function abrir({ titulo, mensagem, detalhe, tipo = 'pergunta', sim = 'OK', nao =
             rotulo.htmlFor = id;
             const input = criar('input');
             input.id = id;
-            input.type = 'text';
+            input.type = c.tipo || 'text';
             input.autocomplete = 'off';
             input.value = c.valor ?? '';
             input.placeholder = c.placeholder || '';
-            input.addEventListener('focus', () => input.select());
+            if (c.min) input.min = c.min;
+            if (c.max) input.max = c.max;
+            if (input.type === 'text') input.addEventListener('focus', () => input.select());
             inputs[c.nome] = input;
             card.append(rotulo, input);
             if (c.ajuda) card.appendChild(criar('div', 'dialogo-ajuda', c.ajuda));
@@ -156,7 +158,7 @@ export function avisar({ titulo, mensagem, detalhe, tipo = 'aviso', sim = 'Enten
     return naFila({ titulo, mensagem, detalhe, tipo, sim }).then(() => {});
 }
 
-// Pede um ou mais valores. campos: [{ nome, rotulo, valor, placeholder, ajuda, focar }].
+// Pede um ou mais valores. campos: [{ nome, rotulo, valor, placeholder, ajuda, focar, tipo ('text' | 'date'), min, max }].
 // validar(valores): devolve texto (ou { campo, mensagem }) quando há problema; o modal continua aberto.
 // Resolve com { nome: valor } já sem espaços nas pontas, ou null se cancelou.
 export function pedirCampos({ titulo, mensagem, tipo = 'pergunta', sim = 'Salvar', nao = 'Cancelar', campos, validar }) {

@@ -109,7 +109,7 @@ export function papelDoItem(it) {
     return 'acessorio';
 }
 
-const unidadeDoItem = (dados, it) =>
+export const unidadeDoItem = (dados, it) =>
     ((dados.client_mode === 'multi' ? it.client : '') || dados.unit_name || dados.dest_name || '');
 
 // Unidades avulsas de um item, uma por linha da planilha: os IMEIs informados
@@ -173,6 +173,21 @@ function descricaoKit(descRastreador) {
 
 // ICCID só vai para a planilha quando há número; sem número a coluna fica vazia
 const iccidDe = im => (im.iccid && /\d{6,}/.test(im.iccid) ? String(im.iccid).trim() : '');
+
+// Datas e dados do envio gravados no pedido, para as colunas de ENVIO (e "Data Recebimento").
+// Data Recebido: a data de entrega; pedido antigo, de antes dela existir, usa quando entrou em "Entregue".
+const dataCurta = data => data ? new Date(data).toLocaleDateString('pt-BR') : '';
+export function envioDoRegistro(reg, dados = reg?.dados_completos || {}) {
+    return {
+        // Criação do rascunho; envio sem rascunho usa a criação do registro (ou hoje, se ainda não foi salvo)
+        recebimento: dataCurta(dados.rascunho_em || reg?.created_at || Date.now()),
+        // Só preenche depois que o pedido foi despachado
+        dataEnvio: dataCurta(reg?.despachado_em),
+        rastreio: reg?.rastreio,
+        frete: reg?.frete,
+        recebido: reg?.fase === 'entregue' ? dataCurta(reg.entregue_em || reg.fase_em) : ''
+    };
+}
 
 // Monta as linhas (array de arrays, uma posição por coluna) a partir dos dados do formulário/rascunho/histórico.
 // montarKits: junta rastreador + teclado avulsos da mesma unidade numa linha só (na ordem dos IMEIs).

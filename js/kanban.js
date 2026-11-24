@@ -10,6 +10,7 @@ import { pendenciasEnvio } from './importarEstoque.js';
 import { prazosAtraso } from './configuracoes.js';
 import { formularioAlterado } from './ui.js';
 import { semEnvio, entregaDe, rotuloEntrega, iconeEntrega } from './entrega.js';
+import { hojeInput, paraInput, deInput, problemaData, dataBR } from './datas.js';
 
 // Dias parado na fase a partir dos quais o card fica amarelo / vermelho (Cadastros > Configurações)
 const limitesAtraso = prazosAtraso;
@@ -487,6 +488,7 @@ window.kanbanDropCard = async function (ev, chave) {
 // Move o pedido de fase com atualização otimista; volta ao estado anterior se o banco falhar
 // extrasIniciais: outros campos a gravar junto, ex. { mesclado_em: null }
 // Retirada / instalação na Ranor não tem trânsito: "Despachado" vai direto para "Entregue"
+// A saída e a entrega pedem a data em que aconteceram (vem marcada como confirmada)
 export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
     let reg = acharPedido(id);
     const sem = semEnvio(reg?.dados_completos);
@@ -504,24 +506,16 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
         if (!voltar) return false;
     }
 
-    const extras = { ...extrasIniciais };
     // Saída do pedido: despacho pela transportadora, ou a entrega na Ranor (retirada / instalação)
-    const saindo = fase === 'despachado' || (sem && fase === 'entregue' && !reg.despachado_em);
-    if (saindo) {
-        if (!(await confirmarEtapasDoDespacho(reg))) return false;
-        if (!sem) {
-            const despacho = await pedirDadosDespacho(reg, { despachando: true });
-            if (!despacho) return false;
-            Object.assign(extras, despacho);
-        }
-    }
+    const saindo = !reg.despachado_em && (fase === 'despachado' || fase === 'entregue');
+    if (saindo && !(await confirmarEtapasDoDespacho(reg))) return false;
+    const datas = await dadosDaSaida(reg, fase, sem);
+    if (!datas) return false;
 
     // O quadro pode ter recarregado enquanto o modal estava aberto
     reg = acharPedido(id);
     if (!reg) return false;
-    // Data de envio: voltar de "Entregue" mantém a original; voltar para antes do despacho a apaga
-    if (saindo && !reg.despachado_em) extras.despachado_em = new Date().toISOString();
-    else if (reg.despachado_em && fase !== 'cancelado' && ordemFase(fase) < ordemFase('despachado')) extras.despachado_em = null;
+    const extras = { ...extrasIniciais, ...datas, ...datasAoVoltar(reg, fase) };
     const antes = { fase: reg.fase, fase_em: reg.fase_em };
     Object.keys(extras).forEach(campo => { antes[campo] = reg[campo]; });
     atualizarCaches(id, { fase, fase_em: new Date().toISOString(), ...extras });
@@ -538,6 +532,60 @@ export async function moverPedidoPara(id, fase, extrasIniciais = {}) {
         else oferecerPixFrete(reg);
     }
     return ok;
+}
+
+// Voltar de fase apaga as datas que deixam de valer: antes do despacho, a de despacho; saindo de "Entregue", a de entrega.
+// Voltar de "Entregue" para "Despachado" mantém a data de despacho original.
+function datasAoVoltar(reg, fase) {
+    if (fase === 'cancelado') return {};
+    const extras = {};
+    if (reg.despachado_em && ordemFase(fase) < ordemFase('despachado')) Object.assign(extras, { despachado_em: null, despacho_confirmado: false });
+    if (reg.fase === 'entregue' && fase !== 'entregue') Object.assign(extras, { entregue_em: null, entrega_confirmada: false });
+    return extras;
+}
+
+// Pergunta os dados da saída ao mover para "Despachado" / "Entregue". Devolve os campos a gravar ({} se não é saída),
+// ou null se a pessoa cancelou. fase_em vai junto: a fase começa na data informada, não na hora do arraste.
+async function dadosDaSaida(reg, fase, sem) {
+    if (fase !== 'despachado' && fase !== 'entregue') return {};
+    if (sem) {
+        // Retirada / instalação: a saída e a entrega são a mesma data
+        const quando = await pedirDataEntrega(reg, { sem: true });
+        if (!quando) return null;
+        return { despachado_em: quando, despacho_confirmado: true, fase_em: quando, entregue_em: quando, entrega_confirmada: true };
+    }
+    const extras = {};
+    if (!reg.despachado_em) {
+        const despacho = await pedirDadosDespacho(reg, { despachando: true });
+        if (!despacho) return null;
+        Object.assign(extras, despacho, { fase_em: despacho.despachado_em });
+    }
+    if (fase === 'entregue') {
+        const quando = await pedirDataEntrega({ ...reg, ...extras });
+        if (!quando) return null;
+        Object.assign(extras, { fase_em: quando, entregue_em: quando, entrega_confirmada: true });
+    }
+    return extras;
+}
+
+// Data em que o pedido foi entregue (a do rastreio). ISO, ou null se cancelou.
+// sem: retirada / instalação na Ranor (a data em que o técnico retirou / foi instalado)
+export async function pedirDataEntrega(reg = {}, { sem = false, valor = '' } = {}) {
+    const minimo = sem ? '' : paraInput(reg.despachado_em);
+    const rotulo = sem ? `Data da ${rotuloEntrega(entregaDe(reg.dados_completos)).toLowerCase()}` : 'Data da entrega';
+    const dados = await pedirCampos({
+        titulo: sem ? rotuloEntrega(entregaDe(reg.dados_completos)) : 'Pedido entregue',
+        mensagem: sem
+            ? `"${reg.destinatario || 'Sem destinatário'}": quando saiu da Ranor?`
+            : `"${reg.destinatario || 'Sem destinatário'}": confira no rastreio${reg.rastreio ? ` (${reg.rastreio})` : ''} o dia em que chegou.`,
+        sim: sem ? 'Marcar entregue' : 'Confirmar entrega',
+        campos: [{
+            nome: 'data', rotulo, tipo: 'date', valor: valor || hojeInput(), max: hojeInput(), min: minimo,
+            ajuda: minimo ? `Despachado em ${dataBR(minimo)}.` : ''
+        }],
+        validar: v => problemaData(v.data, { rotulo, minimo, rotuloMinimo: `do despacho (${dataBR(minimo)})` })
+    });
+    return dados && deInput(dados.data);
 }
 
 // Despachar trava os itens: avisa se ainda falta alguma etapa do pedido
@@ -562,22 +610,33 @@ async function confirmarEtapasDoDespacho({ destinatario, status, dados_completos
     });
 }
 
-// Pergunta rastreio e valor do frete (ambos opcionais). null se cancelou.
+// Pergunta rastreio e valor do frete (ambos opcionais) e, ao despachar, a data do despacho. null se cancelou.
+// Despachando, devolve também { despachado_em, despacho_confirmado: true }.
 export async function pedirDadosDespacho(reg = {}, { despachando = false } = {}) {
     const dados = await pedirCampos({
         titulo: despachando ? 'Despachar pedido' : 'Rastreio e frete',
         mensagem: despachando
-            ? 'Os dois campos são opcionais e podem ser preenchidos depois, no detalhe do pedido. Depois de despachado, os itens ficam bloqueados.'
+            ? 'Rastreio e frete são opcionais e podem ser preenchidos depois, no detalhe do pedido. Depois de despachado, os itens ficam bloqueados.'
             : 'Os dois campos são opcionais.',
         sim: despachando ? 'Despachar' : 'Salvar',
         campos: [
-            { nome: 'rastreio', rotulo: 'Código de rastreio', valor: reg.rastreio || '' },
+            ...(despachando ? [{ nome: 'data', rotulo: 'Data do despacho', tipo: 'date', valor: hojeInput(), max: hojeInput(),
+                ajuda: 'O dia em que o pedido saiu da Ranor (se não foi hoje, corrija).' }] : []),
+            { nome: 'rastreio', rotulo: 'Código de rastreio', valor: reg.rastreio || '', focar: despachando },
             { nome: 'frete', rotulo: 'Valor do frete (R$)', valor: formatarFrete(reg.frete), placeholder: 'Ex: 25,90' }
         ],
-        validar: v => Number.isNaN(lerValor(v.frete))
-            ? { campo: 'frete', mensagem: 'Valor do frete inválido. Use, por exemplo, 25,90.' } : null
+        validar: v => {
+            if (despachando) {
+                const p = problemaData(v.data, { rotulo: 'A data do despacho' });
+                if (p) return { campo: 'data', mensagem: p };
+            }
+            return Number.isNaN(lerValor(v.frete))
+                ? { campo: 'frete', mensagem: 'Valor do frete inválido. Use, por exemplo, 25,90.' } : null;
+        }
     });
-    return dados && { rastreio: dados.rastreio || null, frete: lerValor(dados.frete) };
+    if (!dados) return null;
+    const campos = { rastreio: dados.rastreio || null, frete: lerValor(dados.frete) };
+    return despachando ? { ...campos, despachado_em: deInput(dados.data), despacho_confirmado: true } : campos;
 }
 
 // Rascunho arrastado para uma fase: cria o registro no histórico já nessa fase.
@@ -588,13 +647,11 @@ async function moverRascunhoPara(draftId, fase) {
     const sem = semEnvio(rasc.dados_completos);
     if (sem && fase === 'despachado') fase = 'entregue';
 
-    let extras = {};
-    if (fase === 'despachado' || (sem && fase === 'entregue')) {
-        if (!(await confirmarEtapasDoDespacho({ destinatario: rasc.destinatario, dados_completos: rasc.dados_completos, fase: 'rascunho' }))) return false;
-        extras = sem ? {} : await pedirDadosDespacho({}, { despachando: true });
-        if (!extras) return false;
-        extras.despachado_em = new Date().toISOString();
-    }
+    const base = { destinatario: rasc.destinatario, dados_completos: rasc.dados_completos, created_at: rasc.created_at, fase: 'rascunho' };
+    const saindo = fase === 'despachado' || fase === 'entregue';
+    if (saindo && !(await confirmarEtapasDoDespacho(base))) return false;
+    const extras = await dadosDaSaida(base, fase, sem);
+    if (!extras) return false;
 
     const salvo = await registrarNoHistorico({ ...rasc.dados_completos, rascunho_em: rasc.created_at });
     if (!salvo) {

@@ -233,13 +233,25 @@ export function proximaFase(faseAtual, status) {
     return ordemFase(sugerida) > ordemFase(faseAtual) ? sugerida : faseAtual;
 }
 
-// Move o pedido para outra fase. extras: outros campos a gravar junto, ex. { rastreio }
-export async function moverFase(id, fase, extras = {}) {
-    const { error } = await supabaseClient
-        .from('historico')
-        .update({ fase, fase_em: new Date().toISOString(), ...extras })
-        .eq('id', id);
+// Colunas do sql/datas_retornos.sql: se o SQL ainda não foi rodado, grava o resto sem elas
+const COLUNAS_CONFIRMACAO = ['despacho_confirmado', 'entrega_confirmada'];
+const faltaColuna = error => COLUNAS_CONFIRMACAO.some(c => String(error?.message || '').includes(c));
 
+async function gravarNoHistorico(id, campos) {
+    let { error } = await supabaseClient.from('historico').update(campos).eq('id', id);
+    if (error && faltaColuna(error)) {
+        console.warn('Rode o sql/datas_retornos.sql: a confirmação das datas não foi gravada.');
+        const resto = { ...campos };
+        COLUNAS_CONFIRMACAO.forEach(c => delete resto[c]);
+        ({ error } = await supabaseClient.from('historico').update(resto).eq('id', id));
+    }
+    return error;
+}
+
+// Move o pedido para outra fase. extras: outros campos a gravar junto, ex. { rastreio }.
+// extras.fase_em: quando a fase começou de fato (ex. a data de entrega informada); sem ele, agora.
+export async function moverFase(id, fase, extras = {}) {
+    const error = await gravarNoHistorico(id, { fase, fase_em: new Date().toISOString(), ...extras });
     if (error) {
         console.error('Erro ao mover fase:', error.message);
         return false;
@@ -257,9 +269,9 @@ export async function faseDoPedido(id) {
     return data.fase;
 }
 
-// campos: { rastreio, frete }
+// campos: { rastreio, frete } ou as datas corrigidas ({ despachado_em, despacho_confirmado, entregue_em, ... })
 export async function atualizarDespacho(id, campos) {
-    const { error } = await supabaseClient.from('historico').update(campos).eq('id', id);
+    const error = await gravarNoHistorico(id, campos);
     if (error) {
         console.error('Erro ao salvar rastreio:', error.message);
         return false;
@@ -357,20 +369,52 @@ export async function registrarNoHistorico(dados, historicoId = null, etapas = {
 
 export const HISTORICO_POR_PAGINA = 50;
 
-// pagina 0 = 50 mais recentes, pagina 1 = os 50 seguintes, ...
-export async function carregarHistorico(pagina = 0) {
-    const inicio = pagina * HISTORICO_POR_PAGINA;
-    const { data, error } = await supabaseClient
-        .from('historico')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .range(inicio, inicio + HISTORICO_POR_PAGINA - 1);
+// Filtros do Histórico, aplicados no banco (a busca vale para todos os pedidos, não só os carregados).
+// filtros: { termo, fase, tipo, desde (ISO) }. termo procura em destinatário, unidade, referência,
+// rastreio e transportadora; com 6 dígitos ou mais, também nos IMEIs dos itens.
+function consultaHistorico(colunas, { termo = '', fase = '', tipo = '', desde = '' } = {}, comImei = true) {
+    let q = supabaseClient.from('historico').select(colunas);
+    // Vírgula, parênteses e curingas quebram o filtro "or" do Supabase
+    const t = String(termo).replace(/[,()*%\\"]/g, ' ').trim();
+    if (t) {
+        const campos = ['destinatario', 'unidade', 'referencia', 'rastreio', 'transportadora'].map(c => `${c}.ilike.*${t}*`);
+        if (comImei && /^\d{6,}$/.test(t)) campos.push(`dados_completos->>items.ilike.*${t}*`);
+        q = q.or(campos.join(','));
+    }
+    if (fase === 'em_andamento') q = q.in('fase', FASES_ANTES_DA_SAIDA);
+    else if (fase) q = q.eq('fase', fase);
+    if (tipo) q = q.eq('dados_completos->>planilha_tipo', tipo);
+    if (desde) q = q.gte('created_at', desde);
+    return q.order('created_at', { ascending: false });
+}
 
+// pagina 0 = 50 mais recentes, pagina 1 = os 50 seguintes, ... null em caso de erro.
+export async function carregarHistorico(pagina = 0, filtros = {}) {
+    const inicio = pagina * HISTORICO_POR_PAGINA;
+    const buscar = comImei => consultaHistorico('*', filtros, comImei).range(inicio, inicio + HISTORICO_POR_PAGINA - 1);
+    let { data, error } = await buscar(true);
+    if (error && filtros.termo) ({ data, error } = await buscar(false));
     if (error) {
         console.error('Erro ao buscar histórico:', error.message);
-        return [];
+        return null;
     }
     return data || [];
+}
+
+// Todos os pedidos dos filtros (para ver como planilha), até o limite. { pedidos, cortado } ou null.
+export async function carregarHistoricoCompleto(filtros = {}, limite = 3000) {
+    const todos = [];
+    for (let de = 0; de < limite; de += 500) {
+        let { data, error } = await consultaHistorico('*', filtros, true).range(de, Math.min(de + 499, limite - 1));
+        if (error && filtros.termo) ({ data, error } = await consultaHistorico('*', filtros, false).range(de, Math.min(de + 499, limite - 1)));
+        if (error) {
+            console.error('Erro ao buscar histórico:', error.message);
+            return null;
+        }
+        todos.push(...data);
+        if (data.length < 500) return { pedidos: todos, cortado: false };
+    }
+    return { pedidos: todos, cortado: true };
 }
 
 // Grava as etapas do status (e-mail, romaneio, etiqueta, NF emitida) e avança a fase se for o caso
@@ -414,14 +458,16 @@ export async function gravarEscolhaKits(id, montar) {
 
 // Pedidos para o painel: criados ou despachados desde a data, sem os cancelados.
 // Não traz os dados do formulário (pesados). semColunas: o sql/painel.sql ainda não foi rodado.
+// Também traz os que estão em trânsito (despachados e não entregues), de qualquer data, para as pendências.
+// semColunas: o sql/painel.sql ainda não foi rodado. semConfirmacao: o sql/datas_retornos.sql ainda não foi rodado.
 export async function carregarDadosPainel(desde) {
-    const base = 'id, created_at, fase, fase_em, despachado_em, frete, transportadora, destinatario, unidade, referencia, status, rascunho_em:dados_completos->>rascunho_em, entrega:dados_completos->>entrega';
+    const base = 'id, created_at, fase, fase_em, despachado_em, frete, rastreio, transportadora, destinatario, unidade, referencia, status, rascunho_em:dados_completos->>rascunho_em, entrega:dados_completos->>entrega, tipo:dados_completos->>planilha_tipo';
     const buscar = async colunas => {
         const todos = [];
         for (let de = 0; ; de += 1000) {
             const { data, error } = await supabaseClient.from('historico').select(colunas)
                 .neq('fase', 'cancelado')
-                .or(`created_at.gte."${desde}",despachado_em.gte."${desde}"`)
+                .or(`created_at.gte."${desde}",despachado_em.gte."${desde}",fase.eq.despachado`)
                 .order('created_at', { ascending: true })
                 .range(de, de + 999);
             if (error) return { error };
@@ -429,17 +475,75 @@ export async function carregarDadosPainel(desde) {
             if (data.length < 1000) return { data: todos };
         }
     };
-    let r = await buscar(base + ', entregue_em, fases_em');
-    let semColunas = false;
-    if (r.error) {
-        r = await buscar(base);
-        semColunas = true;
+    const tentativas = [
+        { colunas: base + ', entregue_em, fases_em, despacho_confirmado, entrega_confirmada', semColunas: false, semConfirmacao: false },
+        { colunas: base + ', entregue_em, fases_em', semColunas: false, semConfirmacao: true },
+        { colunas: base, semColunas: true, semConfirmacao: true }
+    ];
+    for (const t of tentativas) {
+        const r = await buscar(t.colunas);
+        if (!r.error) return { pedidos: r.data, semColunas: t.semColunas, semConfirmacao: t.semConfirmacao };
+        console.warn('Painel:', r.error.message);
     }
-    if (r.error) {
-        console.error('Erro ao carregar o painel:', r.error.message);
+    console.error('Erro ao carregar o painel.');
+    return null;
+}
+
+// --- RETORNOS DE MATERIAL (beta) ---
+
+// Envios despachados desde a data com tipo que gera retorno (ex. MAN, COR, FOR), com os itens
+export async function carregarEnviosComRetorno(tipos, desde) {
+    const todos = [];
+    for (let de = 0; ; de += 1000) {
+        let q = supabaseClient.from('historico')
+            .select('id, destinatario, unidade, referencia, transportadora, fase, despachado_em, tipo:dados_completos->>planilha_tipo, itens:dados_completos->items, client_mode:dados_completos->>client_mode, unit_name:dados_completos->>unit_name')
+            .in('fase', ['despachado', 'entregue'])
+            .in('dados_completos->>planilha_tipo', tipos);
+        if (desde) q = q.gte('despachado_em', desde);
+        const { data, error } = await q.order('despachado_em', { ascending: true }).range(de, de + 999);
+        if (error) {
+            console.error('Erro ao buscar envios com retorno:', error.message);
+            return null;
+        }
+        todos.push(...data);
+        if (data.length < 1000) return todos;
+    }
+}
+
+// Unidades já recebidas de volta. null: a tabela não existe (sql/datas_retornos.sql não foi rodado).
+export async function carregarRetornos() {
+    const todos = [];
+    for (let de = 0; ; de += 1000) {
+        const { data, error } = await supabaseClient.from('retornos').select('*').range(de, de + 999);
+        if (error) {
+            console.warn('Retornos:', error.message);
+            return null;
+        }
+        todos.push(...data);
+        if (data.length < 1000) return todos;
+    }
+}
+
+export async function registrarRetorno({ historico_id, chave, recebido_em, obs }) {
+    const { data: sessao } = await supabaseClient.auth.getSession();
+    const { data, error } = await supabaseClient.from('retornos')
+        .upsert([{ historico_id: String(historico_id), chave, recebido_em, obs: obs || null, registrado_por: sessao?.session?.user?.email || null }],
+            { onConflict: 'historico_id,chave' })
+        .select();
+    if (error) {
+        console.error('Erro ao registrar retorno:', error.message);
         return null;
     }
-    return { pedidos: r.data, semColunas };
+    return data[0];
+}
+
+export async function desfazerRetorno(id) {
+    const { error } = await supabaseClient.from('retornos').delete().eq('id', id);
+    if (error) {
+        console.error('Erro ao desfazer retorno:', error.message);
+        return false;
+    }
+    return true;
 }
 
 // Um pedido completo (para abrir o detalhe a partir do painel)

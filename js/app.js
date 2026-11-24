@@ -1,6 +1,6 @@
 import { AppState, $ } from './config.js';
 import { checkSession, handleLogin, handleLogout } from './auth.js';
-import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, carregarHistorico, HISTORICO_POR_PAGINA, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, deletarPendente, FASES, rotuloFase, faseSugerida, estadoNF, ROTULOS_NF, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido, carregarPedido } from './db.js';
+import { loadJsonFile, salvarDestinatarioAtual, salvarOuAtualizarDestinatario, popularSelectDestinatarios, exportToJSON, atualizarStatusHistorico, registrarNoHistorico, salvarPendente, deletarPendente, FASES, rotuloFase, faseSugerida, estadoNF, ROTULOS_NF, atualizarDespacho, cancelarPedido, gravarEscolhaKits, faseDoPedido, carregarPedido } from './db.js';
 import { carregarViewKanban, renderKanban, kanbanVisivel, acharPedido, atualizarCaches, moverPedidoPara, pedirDadosDespacho, rascunhoDoPedido, marcarNF } from './kanban.js';
 import { verificarJuncao, finalizarJuncao, juncaoAberta, fecharJuncao, separarPedido, podeSeparar } from './juncao.js';
 import { renderDeParaCRUD } from './dePara.js';
@@ -10,8 +10,10 @@ import { abrirImportarEstoque, fecharImportarEstoque, importarEstoqueAberto } fr
 // Depois de criar os rascunhos, o kanban mostra os novos cards
 window.abrirImportarEstoque = () => abrirImportarEstoque(() => { if (kanbanVisivel()) carregarViewKanban(); });
 import { onSenderChange, popularSelectRemetentes, onClientSelect, addItem, removeItem, collectData, clearItems, preencherFormulario, limparFormulario, ligarMascaraDoc, validarDoc, buscarCep, marcarFormularioSalvo, formularioAlterado } from './ui.js';
-import { confirmar } from './dialogo.js';
+import { confirmar, pedirCampos } from './dialogo.js';
+import { hojeInput, paraInput, deInput, problemaData } from './datas.js';
 import { iniciarPainel, carregarPainel, painelVisivel } from './painel.js';
+import './historico.js';
 import './imeis.js';
 import { composeDocuments, renderEmailPreview, buildEmailBody, buildEmailSubject, avisosEmail } from './render.js';
 import { conferirEmail, resumoDoPedido } from './conferencia.js';
@@ -20,7 +22,7 @@ import { abrirMontarKit } from './kitModal.js';
 import { montarKit, desmontarKit, totalKits } from './kit.js';
 import { toast } from './toast.js';
 import { renderItemsCRUD } from './items.js';
-import { gerarLinhasPlanilha, contarKits, formatarFrete } from './planilha.js';
+import { gerarLinhasPlanilha, contarKits, formatarFrete, envioDoRegistro } from './planilha.js';
 import { grupoParaFormulario } from './importarPlanilha.js';
 import { abrirImportarPlanilha, fecharImportarPlanilha, importarPlanilhaAberto, novaBaseImportada, limparBaseImportada, escolherArquivoImportar, usarEnvioImportado } from './importarPlanilhaModal.js';
 import { abrirPreviewPlanilha, fecharPreviewPlanilha, alternarGrupoPlanilha, adicionarLinhaPlanilha, restaurarPlanilha, confirmarCopiaPlanilha, previewPlanilhaAberto, alternarKitsPlanilha } from './planilhaPreview.js';
@@ -190,84 +192,6 @@ function renderListaDestinatarios(arr) {
     });
     container.innerHTML = html;
 }
-
-window.loadHistoricoView = async function () {
-    const container = document.getElementById('historico_list');
-    container.innerHTML = '<div class="empty-state">Carregando...</div>';
-
-    const pagina = await carregarHistorico(0);
-    window.__historicoCache = pagina; // Cache para uso no modal e no filtro
-    window.__historicoPagina = 0;
-    window.__historicoTemMais = pagina.length === HISTORICO_POR_PAGINA;
-    renderHistoricoLista();
-};
-
-// Busca os próximos 50 envios e acrescenta à lista
-window.carregarMaisHistorico = async function (btn) {
-    if (btn) { btn.disabled = true; btn.textContent = 'Carregando...'; }
-    const proxima = (window.__historicoPagina || 0) + 1;
-    const pagina = await carregarHistorico(proxima);
-    window.__historicoCache = (window.__historicoCache || []).concat(pagina);
-    window.__historicoPagina = proxima;
-    window.__historicoTemMais = pagina.length === HISTORICO_POR_PAGINA;
-    renderHistoricoLista();
-};
-
-// Desenha a tabela do histórico aplicando o filtro digitado
-window.renderHistoricoLista = function () {
-    const container = document.getElementById('historico_list');
-    const historico = window.__historicoCache || [];
-    const termo = ($('historico_search')?.value || '').trim().toLowerCase();
-
-    if (historico.length === 0) {
-        container.innerHTML = '<div class="empty-state">Nenhum envio encontrado no histórico.</div>';
-        return;
-    }
-
-    const filtrados = termo
-        ? historico.filter(r => [r.destinatario, r.unidade, r.referencia].join(' ').toLowerCase().includes(termo))
-        : historico;
-
-    if (filtrados.length === 0) {
-        container.innerHTML = '<div class="empty-state">Nenhum envio corresponde ao filtro.</div>';
-        return;
-    }
-
-    const selo = (feito, label) => `<span class="status-badge${feito ? ' done' : ''}">${label}</span>`;
-
-    let html = '<table class="data-table"><thead><tr>';
-    html += '<th>Data</th><th>Destinatário / Unidade</th><th>Ref.</th><th>Status</th>';
-    html += '</tr></thead><tbody>';
-
-    filtrados.forEach(reg => {
-        const data = new Date(reg.created_at).toLocaleString('pt-BR');
-        const st = reg.status || {};
-
-        html += `<tr class="clickable" onclick="abrirDetalheHistorico('${reg.id}')">
-            <td class="col-date">${data}</td>
-            <td>
-                <strong>${escapeHtml(reg.destinatario)}</strong>
-                ${reg.unidade && reg.unidade !== reg.destinatario ? `<br><small>${escapeHtml(reg.unidade)}</small>` : ''}
-            </td>
-            <td class="col-ref">${escapeHtml(reg.referencia) || '—'}</td>
-            <td>
-                <div class="status-badges">
-                    <span class="fase-badge fase-${escapeHtml(reg.fase)}">${escapeHtml(rotuloFase(reg.fase))}</span>
-                    ${selo(st.email, 'E-mail')}${selo(st.nf_emitida, 'NF')}${selo(st.romaneio, 'Romaneio')}${selo(st.etiqueta, 'Etiqueta')}
-                </div>
-            </td>
-        </tr>`;
-    });
-
-    html += '</tbody></table>';
-    html += `<div class="empty-state" style="padding:14px;">
-        ${termo ? `${filtrados.length} de ${historico.length} envios carregados &middot; ` : ''}
-        ${window.__historicoTemMais
-            ? '<button class="btn-sm btn-neutral" onclick="carregarMaisHistorico(this)">Carregar mais antigos</button>'
-            : `${historico.length} envio(s) no total`}
-    </div>`;
-    container.innerHTML = html;
-};
 
 // --- PEDIDO ABERTO: passos e situação (coluna ao lado do formulário) ---
 
@@ -440,6 +364,7 @@ function renderSituacao() {
                    </select>`}
         </div>
         ${sem ? '' : linhaNF(reg)}
+        ${linhasDatas(reg, sem)}
         ${sem
             ? `<div class="situacao-linha"><span class="situacao-rotulo">Saída</span><span>${escapeHtml(rotuloEntrega(entregaDe(reg.dados_completos)))}</span></div>`
             : `<div class="situacao-linha"><span class="situacao-rotulo">Rastreio</span><span>${escapeHtml(reg.rastreio) || '—'}</span></div>
@@ -456,6 +381,86 @@ function renderSituacao() {
                 : '<button type="button" class="btn-sm btn-danger" onclick="cancelarPedidoAberto()">Cancelar pedido</button>'}
         </div>`);
 }
+
+// Datas de despacho e entrega, com a marca de confirmadas (as não confirmadas ficam fora dos prazos do painel)
+function linhasDatas(reg, sem) {
+    if (!FASES_ENVIADO.includes(reg.fase) && !reg.despachado_em) return '';
+    const selo = ok => ok
+        ? '<span class="data-selo ok" title="Data informada por alguém">✓ confirmada</span>'
+        : '<span class="data-selo pendente" title="Só o momento em que o card foi movido: fica fora dos prazos do painel">não confirmada</span>';
+    const linha = (rotulo, data, ok) => `<div class="situacao-linha"><span class="situacao-rotulo">${rotulo}</span>
+        <span>${data ? new Date(data).toLocaleDateString('pt-BR') : '—'} ${data ? selo(ok) : ''}</span></div>`;
+    const entregue = reg.fase === 'entregue';
+    const pode = reg.fase !== 'cancelado';
+    return (sem
+        ? linha(rotuloEntrega(entregaDe(reg.dados_completos)), reg.entregue_em || reg.despachado_em, reg.entrega_confirmada)
+        : linha('Despacho', reg.despachado_em, reg.despacho_confirmado)
+            + (entregue ? linha('Entrega', reg.entregue_em || reg.fase_em, reg.entrega_confirmada) : ''))
+        + (pode ? `<div class="situacao-acoes"><button type="button" class="btn-sm btn-neutral" onclick="corrigirDatasDoPedido()">${
+            (sem ? reg.entrega_confirmada : reg.despacho_confirmado && (!entregue || reg.entrega_confirmada)) ? 'Corrigir datas' : 'Confirmar datas'}</button></div>` : '');
+}
+
+// Confirma ou corrige as datas de despacho e entrega (a data informada passa a valer no painel e na planilha)
+window.corrigirDatasDoPedido = async function () {
+    const reg = pedidoAberto();
+    if (!reg) return;
+    const sem = semEnvio(reg.dados_completos);
+    const entregue = reg.fase === 'entregue';
+    const hoje = hojeInput();
+    const rotSem = sem ? `Data da ${rotuloEntrega(entregaDe(reg.dados_completos)).toLowerCase()}` : '';
+    const campos = sem
+        ? [{ nome: 'entrega', rotulo: rotSem, tipo: 'date', max: hoje, valor: paraInput(reg.entregue_em || reg.despachado_em) || hoje }]
+        : [
+            { nome: 'despacho', rotulo: 'Data do despacho', tipo: 'date', max: hoje, valor: paraInput(reg.despachado_em) || hoje },
+            ...(entregue ? [{ nome: 'entrega', rotulo: 'Data da entrega', tipo: 'date', max: hoje, valor: paraInput(reg.entregue_em || reg.fase_em) || hoje,
+                ajuda: reg.rastreio ? `Confira no rastreio ${reg.rastreio}.` : '' }] : [])
+        ];
+    const v = await pedirCampos({
+        titulo: 'Datas do pedido',
+        mensagem: 'As datas salvas aqui ficam marcadas como confirmadas e passam a contar nos prazos do painel.',
+        sim: 'Salvar datas',
+        campos,
+        validar: x => {
+            if (!sem) {
+                const p = problemaData(x.despacho, { rotulo: 'A data do despacho' });
+                if (p) return { campo: 'despacho', mensagem: p };
+            }
+            if (!entregue && !sem) return null;
+            const p = problemaData(x.entrega, { rotulo: sem ? rotSem : 'A data da entrega', minimo: sem ? '' : x.despacho, rotuloMinimo: 'do despacho' });
+            return p ? { campo: 'entrega', mensagem: p } : null;
+        }
+    });
+    if (!v) return;
+
+    const fases = { ...(reg.fases_em || {}) };
+    const mudar = {};
+    if (sem) {
+        const quando = deInput(v.entrega);
+        Object.assign(mudar, { despachado_em: quando, despacho_confirmado: true, entregue_em: quando, entrega_confirmada: true });
+        if (entregue) { mudar.fase_em = quando; fases.entregue = quando; }
+    } else {
+        const despacho = mesmoDia(reg.despachado_em, v.despacho) ? reg.despachado_em : deInput(v.despacho);
+        Object.assign(mudar, { despachado_em: despacho, despacho_confirmado: true });
+        fases.despachado = despacho;
+        if (reg.fase === 'despachado') mudar.fase_em = despacho;
+        if (entregue) {
+            const entrega = mesmoDia(reg.entregue_em || reg.fase_em, v.entrega) ? (reg.entregue_em || reg.fase_em) : deInput(v.entrega);
+            Object.assign(mudar, { entregue_em: entrega, entrega_confirmada: true, fase_em: entrega });
+            fases.entregue = entrega;
+        }
+    }
+    if (reg.fases_em) mudar.fases_em = fases;
+    if (await atualizarDespacho(reg.id, mudar)) {
+        aplicarNoPedido(reg.id, mudar);
+        esquecerSituacao();
+        atualizarEditor();
+        toast('Datas confirmadas.');
+    } else {
+        toast('Não foi possível salvar as datas.', 'error');
+    }
+};
+// Mantém a hora gravada quando o dia não mudou
+const mesmoDia = (iso, input) => !!iso && paraInput(iso) === input;
 
 // Marca ou desmarca à mão uma etapa (e-mail, NF emitida, romaneio, etiqueta) do pedido aberto
 window.alternarEtapa = async function (campo) {
@@ -968,16 +973,7 @@ window.alternarKitsPlanilha = alternarKitsPlanilha;
 function abrirLinhas(dados, titulo, aoMudarKits, reg = null) {
     // Kit fica numa linha só por padrão; separado apenas se a pessoa desmarcar
     const marcado = dados.montar_kits !== false;
-    const dataBR = data => data ? new Date(data).toLocaleDateString('pt-BR') : '';
-    const envio = {
-        // Criação do rascunho; envio sem rascunho usa a criação do registro (ou hoje, se ainda não foi salvo)
-        recebimento: dataBR(dados.rascunho_em || reg?.created_at || Date.now()),
-        // Só preenche depois que o pedido foi movido para "Despachado"
-        dataEnvio: dataBR(reg?.despachado_em),
-        rastreio: reg?.rastreio,
-        frete: reg?.frete,
-        recebido: reg?.fase === 'entregue' ? dataBR(reg.fase_em) : ''
-    };
+    const envio = envioDoRegistro(reg, dados);
     const gerar = montar => gerarLinhasPlanilha(dados, { montarKits: montar, envio });
     const linhas = gerar(marcado);
     if (linhas.length === 0) { toast('Adicione pelo menos um item.', 'warning'); return; }
